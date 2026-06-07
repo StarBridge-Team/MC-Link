@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ref } from "vue";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils";
 
@@ -40,32 +39,19 @@ interface Props {
   variant?: VariantProps<typeof buttonVariants>["variant"];
   size?: VariantProps<typeof buttonVariants>["size"];
   className?: string;
-  pressed?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   variant: "default",
   size: "default",
-  pressed: false,
 });
-
-const isPressed = ref(props.pressed);
 </script>
 
 <template>
   <button
-    :class="cn(buttonVariants({ variant, size, className }), isPressed ? 'scale-95 opacity-90' : '')"
+    :class="cn(buttonVariants({ variant, size, className }))"
     v-bind="$attrs"
-    @mousedown="isPressed = true"
-    @mouseup="isPressed = false"
-    @mouseleave="isPressed = false"
   >
     <slot />
   </button>
 </template>
-
-<style scoped>
-.scale-95 {
-  transform: scale(0.95);
-}
-</style>

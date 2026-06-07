@@ -1,0 +1,6 @@
+# 网络设置
+# 配置网络连接参数
+
+relay_auto_select: true
+relay_address: ""
+connection_timeout: 10

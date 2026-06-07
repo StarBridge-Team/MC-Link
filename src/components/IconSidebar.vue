@@ -1,32 +1,28 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-
 interface IconSidebarProps {
   activeIcon: string;
   iconItems: Array<{ id: string; icon: string; title: string }>;
+  playerName: string;
 }
 
-defineProps<IconSidebarProps>();
+defineProps<IconSidebarProps & { showToast: (msg: string) => void }>();
 const emit = defineEmits<{
-  iconChange: [icon: string]
+  iconChange: [icon: string];
 }>();
-
-const pressedIconId = ref<string | null>(null);
 </script>
 
 <template>
   <div class="icon-sidebar">
-    <div
-      v-for="item in iconItems"
-      :key="item.id"
-      :class="['sidebar-icon-item', { active: activeIcon === item.id, 'clickable-active': pressedIconId === item.id }]"
-      :title="item.title"
-      @mousedown="pressedIconId = item.id"
-      @mouseup="pressedIconId = null"
-      @mouseleave="pressedIconId = null"
-      @click="emit('iconChange', item.id)"
-    >
-      <i :class="['bi', item.icon]"></i>
+    <div class="sidebar-top">
+      <div
+        v-for="item in iconItems"
+        :key="item.id"
+        :class="['sidebar-icon-item', { active: activeIcon === item.id }]"
+        :title="item.title"
+        @click="emit('iconChange', item.id)"
+      >
+        <i :class="['bi', item.icon]"></i>
+      </div>
     </div>
   </div>
 </template>
@@ -38,8 +34,14 @@ const pressedIconId = ref<string | null>(null);
   flex-direction: column;
   align-items: center;
   padding: 10px 0;
-  gap: 8px;
   -webkit-app-region: no-drag;
+}
+
+.sidebar-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .sidebar-icon-item {
@@ -76,10 +78,6 @@ const pressedIconId = ref<string | null>(null);
   height: 20px;
   background: var(--accent-primary);
   border-radius: 0 3px 3px 0;
-}
-
-.sidebar-icon-item.clickable-active {
-  transform: scale(0.93);
 }
 
 @media (prefers-color-scheme: light) {

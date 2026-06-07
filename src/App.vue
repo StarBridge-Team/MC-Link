@@ -2,9 +2,14 @@
 import { ref } from "vue";
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from "@tauri-apps/api/core";
+import TextSidebar from './components/TextSidebar.vue';
 import IconSidebar from './components/IconSidebar.vue';
-import ConnectPage from './components/ConnectPage.vue';
+import HomePage from './components/HomePage.vue';
+import ConnectPage from './components/connect/ConnectPage.vue';
 import RelayPage from './components/RelayPage.vue';
+import AdapterPage from './components/AdapterPage.vue';
+import Kaifaing from './components/Kaifaing.vue';
+import SettingPage from './components/setting/SettingPage.vue';
 
 interface Toast {
   id: number;
@@ -15,26 +20,42 @@ interface Toast {
 const toasts = ref<Toast[]>([]);
 let toastId = 0;
 
-const activeIcon = ref("connect");
+const activeIcon = ref("home");
+const activeText = ref("account");
+const isConnected = ref(false);
+const playerName = ref(localStorage.getItem("player_name") || "玩家");
+
+// 图标切换防抖，防止快速点击卡顿
+let iconChangeTimer: ReturnType<typeof setTimeout> | null = null;
+function handleIconChange(icon: string) {
+  if (iconChangeTimer) clearTimeout(iconChangeTimer);
+  iconChangeTimer = setTimeout(() => {
+    if (icon === 'setting') activeText.value = 'account';
+    activeIcon.value = icon;
+  }, 100);
+}
+
+function handleTextChange(text: string) {
+  activeText.value = text;
+}
 
 const iconItems = [
+  { id: "home", icon: "bi-house", title: "首页" },
   { id: "connect", icon: "bi-wifi", title: "联机" },
   { id: "relay", icon: "bi-hdd-network", title: "中继" },
+  { id: "team", icon: "bi-flag", title: "队伍" },
+  { id: "adapter", icon: "bi-plug", title: "适配器" },
+  { id: "setting", icon: "bi-gear", title: "设置" },
 ];
-
-function handleIconChange(icon: string) {
-  activeIcon.value = icon;
-}
 
 function showToast(msg: string) {
   const isError = msg.includes('错误') || msg.includes('失败');
   if (toasts.value.length >= 3) {
     toasts.value.shift();
   }
-  toasts.value.push({ id: ++toastId, msg, isError });
-  setTimeout(() => {
-    removeToast(toasts.value[0]?.id);
-  }, 2000);
+  const id = ++toastId;
+  toasts.value.push({ id, msg, isError });
+  setTimeout(() => removeToast(id), 2000);
 }
 
 function removeToast(id: number) {
@@ -100,11 +121,26 @@ async function handleClose() {
         <IconSidebar
           :active-icon="activeIcon"
           :icon-items="iconItems"
+          :player-name="playerName"
+          :show-toast="showToast"
           @icon-change="handleIconChange"
+          v-if="!isConnected"
+        />
+        <TextSidebar
+          :active-icon="activeIcon"
+          :active-text="activeText"
+          @text-change="handleTextChange"
+          v-if="!isConnected && activeIcon === 'setting'"
         />
         <div class="page">
-          <ConnectPage v-show="activeIcon === 'connect'" :show-toast="showToast" />
-          <RelayPage v-show="activeIcon === 'relay'" :show-toast="showToast" />
+          <Transition name="page-fade" mode="out-in">
+            <HomePage v-if="activeIcon === 'home'" key="home" :show-toast="showToast" :player-name="playerName" @name-change="playerName = $event" />
+            <ConnectPage v-else-if="activeIcon === 'connect'" key="connect" :show-toast="showToast" :player-name="playerName" @running-change="isConnected = $event" />
+            <Kaifaing v-else-if="activeIcon === 'team'" key="team" />
+            <RelayPage v-else-if="activeIcon === 'relay'" key="relay" :show-toast="showToast" />
+            <AdapterPage v-else-if="activeIcon === 'adapter'" key="adapter" :show-toast="showToast" />
+            <SettingPage v-else-if="activeIcon === 'setting'" key="setting" :active-tab="activeText" :show-toast="showToast" @back="activeIcon = 'home'" />
+          </Transition>
         </div>
       </div>
     </div>
@@ -121,6 +157,7 @@ async function handleClose() {
         </div>
       </TransitionGroup>
     </div>
+
   </div>
 </template>
 
@@ -197,7 +234,7 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.2);
   pointer-events: none;
   z-index: 0;
 }
@@ -274,7 +311,6 @@ body {
 }
 
 .win-btn:active {
-  transform: scale(0.95);
   background: rgba(255, 255, 255, 0.05);
 }
 
@@ -360,10 +396,6 @@ box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.btn:active {
-  transform: scale(0.98);
-  transition: transform 0.1s ease;
-}
 
 .btn:disabled {
   opacity: 0.6;
@@ -439,5 +471,168 @@ box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 .toast-leave-to {
   opacity: 0;
   transform: translateX(-20px) scale(0.95);
+}
+
+/* Animation 1: 全局页面淡出 + 上浮 */
+.page-fade-enter-active {
+  transition: opacity 450ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              transform 450ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.page-fade-leave-active {
+  transition: opacity 250ms ease-out, transform 250ms ease-out;
+}
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* Animation 2: 通用按压反馈 */
+button:active, a:active, [role="button"]:active,
+.tb-btn:active, .mode-btn:active, .adapter-item:active,
+.sidebar-icon-item:active, .sidebar-text-item:active {
+  transform: scale(0.96) !important;
+  transition: transform 120ms ease;
+}
+
+/* Animation 3: 列表交错浮出 */
+@keyframes fade-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.stagger-list > .stagger-item {
+  opacity: 0;
+  animation: fade-up-in 450ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.stagger-list > .stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-list > .stagger-item:nth-child(2) { animation-delay: 50ms; }
+.stagger-list > .stagger-item:nth-child(3) { animation-delay: 100ms; }
+.stagger-list > .stagger-item:nth-child(4) { animation-delay: 150ms; }
+.stagger-list > .stagger-item:nth-child(5) { animation-delay: 200ms; }
+.stagger-list > .stagger-item:nth-child(6) { animation-delay: 250ms; }
+.stagger-list > .stagger-item:nth-child(7) { animation-delay: 300ms; }
+.stagger-list > .stagger-item:nth-child(8) { animation-delay: 350ms; }
+.stagger-list > .stagger-item:nth-child(9) { animation-delay: 400ms; }
+.stagger-list > .stagger-item:nth-child(10) { animation-delay: 450ms; }
+
+/* Animation 4: 状态颜色平滑过渡 */
+button, a, [role="button"], input, select, textarea, label,
+.tb-btn, .mode-btn, .adapter-item {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Dialog styles */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(4px);
+}
+
+.dialog-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  width: 460px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.dialog-card-small {
+  width: 380px;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dialog-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dialog-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.dialog-section {
+  padding: 16px 24px 0;
+}
+
+.dialog-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dialog-desc {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
+.dialog-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 14px;
+  letter-spacing: 1px;
+  transition: border-color 0.2s ease;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 20px 24px;
 }
 </style>

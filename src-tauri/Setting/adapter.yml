@@ -1,0 +1,5 @@
+# 适配器设置
+# 配置联机适配器
+
+auto_start: false
+adapter_path: ""

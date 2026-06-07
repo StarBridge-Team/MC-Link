@@ -1,8 +1,8 @@
 [package]
 name = "mc-link"
-version = "0.2.16"
+version = "0.3.2"
 description = "MC Link - 我的世界联机工具"
-authors = ["棱镜Prism工作室"]
+authors = ["Cugo,棱镜Prism工作室"]
 edition = "2021"
 
 [lib]
@@ -13,17 +13,23 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+mc-link-common = { path = "../mc-link-common" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
-aes = "0.8"
-cipher = { version = "0.4", features = ["block-padding"] }
+serde_yaml = "0.9"
 rand = "0.8"
 uuid = { version = "1.0", features = ["v4"] }
-chrono = "0.4"
 raw-window-handle = "0.6"
 uapi-sdk-rust = "0.1.15"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.12", features = ["blocking", "stream"] }
+futures-util = "0.3"
+tar = "0.4"
+flate2 = "1"
+sha2 = "0.10"
+base64 = "0.22"
+aes-gcm = "0.10"
+rand_core = { version = "0.6", features = ["std"] }

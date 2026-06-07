@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
 import { cn } from '../lib/utils';
-import Button from './ui/Button.vue';
 
 interface TextSidebarProps {
   activeIcon: string;
@@ -35,38 +34,80 @@ watch(() => props.activeIcon, (newIcon, oldIcon) => {
 <template>
   <!-- 联机侧边栏 -->
   <div v-if="activeIcon === 'connect'" class="text-sidebar" :class="{ 'animate-in': showSidebarAnimation }">
-    <Button
-      variant="ghost"
-      :class="cn('sidebar-text-item !justify-start text-item', { active: activeText === 'join' })"
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'join' })"
       @click="emit('textChange', 'join')"
     >
       加入房间
-    </Button>
-    <Button
-      variant="ghost"
-      :class="cn('sidebar-text-item !justify-start text-item', { active: activeText === 'create' })"
+    </div>
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'create' })"
       @click="emit('textChange', 'create')"
     >
       创建房间
-    </Button>
+    </div>
   </div>
   
   <!-- 中继服务器侧边栏 -->
   <div v-if="activeIcon === 'relay'" class="text-sidebar" :class="{ 'animate-in': showSidebarAnimation }">
-    <Button
-      variant="ghost"
-      :class="cn('sidebar-text-item !justify-start text-item', { active: activeText === 'server' })"
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'server' })"
       @click="emit('textChange', 'server')"
     >
       服务器设置
-    </Button>
-    <Button
-      variant="ghost"
-      :class="cn('sidebar-text-item !justify-start text-item', { active: activeText === 'logs' })"
+    </div>
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'logs' })"
       @click="emit('textChange', 'logs')"
     >
       运行日志
-    </Button>
+    </div>
+  </div>
+
+  <!-- 设置侧边栏 -->
+  <div v-if="activeIcon === 'setting'" class="text-sidebar" :class="{ 'animate-in': showSidebarAnimation }">
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'account' })"
+      @click="emit('textChange', 'account')"
+    >
+      <i class="bi bi-person-circle"></i>
+      账号
+    </div>
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'network' })"
+      @click="emit('textChange', 'network')"
+    >
+      <i class="bi bi-wifi"></i>
+      网络
+    </div>
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'personalization' })"
+      @click="emit('textChange', 'personalization')"
+    >
+      <i class="bi bi-palette"></i>
+      个性化
+    </div>
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'adapter' })"
+      @click="emit('textChange', 'adapter')"
+    >
+      <i class="bi bi-plug"></i>
+      适配器
+    </div>
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'connector' })"
+      @click="emit('textChange', 'connector')"
+    >
+      <i class="bi bi-hdd-network"></i>
+      联机器
+    </div>
+    <div
+      :class="cn('sidebar-text-item text-item', { active: activeText === 'about' })"
+      @click="emit('textChange', 'about')"
+    >
+      <i class="bi bi-info-circle"></i>
+      关于
+    </div>
   </div>
 </template>
 
@@ -79,7 +120,7 @@ watch(() => props.activeIcon, (newIcon, oldIcon) => {
   padding: 15px 10px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   -webkit-app-region: no-drag;
   transition: all 0.3s ease;
   border-right: 1px solid rgba(255, 255, 255, 0.03);
@@ -101,6 +142,77 @@ watch(() => props.activeIcon, (newIcon, oldIcon) => {
   -webkit-backdrop-filter: blur(24px);
 }
 
+.sidebar-text-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  position: relative;
+}
+
+.sidebar-text-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.sidebar-text-item.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.sidebar-text-item.active::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  background: var(--accent-primary);
+  border-radius: 0 3px 3px 0;
+}
+
+.sidebar-text-item i {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+@media (prefers-color-scheme: light) {
+  .sidebar-text-item {
+    color: rgba(0, 0, 0, 0.45);
+  }
+  .sidebar-text-item:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: rgba(0, 0, 0, 0.75);
+  }
+  .sidebar-text-item.active {
+    background: rgba(0, 0, 0, 0.08);
+    color: #000;
+  }
+}
+
+[data-theme="light"] .sidebar-text-item {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="light"] .sidebar-text-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.75);
+}
+
+[data-theme="light"] .sidebar-text-item.active {
+  background: rgba(0, 0, 0, 0.08);
+  color: #000;
+}
+
+/* 浮现动画 */
 .text-item {
   opacity: 0;
   animation: itemEnter 0.4s ease-out forwards;
@@ -110,6 +222,8 @@ watch(() => props.activeIcon, (newIcon, oldIcon) => {
 .text-item:nth-child(2) { animation-delay: 0.05s; }
 .text-item:nth-child(3) { animation-delay: 0.1s; }
 .text-item:nth-child(4) { animation-delay: 0.15s; }
+.text-item:nth-child(5) { animation-delay: 0.2s; }
+.text-item:nth-child(6) { animation-delay: 0.25s; }
 
 @keyframes itemEnter {
   0% {

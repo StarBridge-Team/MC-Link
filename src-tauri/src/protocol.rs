@@ -1,22 +1,18 @@
-use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use crate::crypto;
+
+use mc_link_common::crypto;
+use mc_link_common::utils::resolve_address as common_resolve_address;
 
 pub fn read_packet(stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
-    let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf)?;
-    let len = u32::from_be_bytes(len_buf) as usize;
-    let mut buf = vec![0u8; len];
-    stream.read_exact(&mut buf)?;
-    Ok(buf)
+    mc_link_common::protocol::read_packet(stream)
 }
 
 pub fn write_packet(stream: &mut TcpStream, data: &[u8]) -> std::io::Result<()> {
-    let len_buf = (data.len() as u32).to_be_bytes();
-    stream.write_all(&len_buf)?;
-    stream.write_all(data)?;
-    stream.flush()?;
-    Ok(())
+    mc_link_common::protocol::write_packet(stream, data)
+}
+
+pub fn resolve_address(addr_str: &str) -> Option<SocketAddr> {
+    common_resolve_address(addr_str)
 }
 
 pub fn pack_packet(room: &str, password: &str, data: &[u8]) -> Vec<u8> {
@@ -45,19 +41,6 @@ pub fn try_decrypt_response(data: &[u8], password: &str) -> Option<Vec<u8>> {
     let encrypted_start = 1 + room_len + 1 + pass_len;
     let encrypted = &data[encrypted_start..];
     crypto::decrypt(encrypted, password)
-}
-
-pub fn resolve_address(addr_str: &str) -> Option<SocketAddr> {
-    if let Ok(addr) = addr_str.parse::<SocketAddr>() {
-        return Some(addr);
-    }
-    let parts: Vec<&str> = addr_str.rsplitn(2, ':').collect();
-    if parts.len() != 2 {
-        return None;
-    }
-    let port = parts[0].parse::<u16>().ok()?;
-    let hostname = parts[1];
-    std::net::ToSocketAddrs::to_socket_addrs(&(hostname, port)).ok()?.next()
 }
 
 pub fn relay_test_packet(room: &str, password: &str) -> Vec<u8> {

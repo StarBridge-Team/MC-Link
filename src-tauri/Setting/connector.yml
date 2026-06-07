@@ -1,0 +1,5 @@
+# 联机器设置
+# 配置联机参数
+
+default_port: 25565
+lan_scan_enabled: true

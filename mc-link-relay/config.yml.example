@@ -1,7 +1,7 @@
 # MC-Link 中继服务器配置文件
 
-# 中央服务器地址（默认: central-server.link.xigo.top:50248）
-central_server: "central-server.link.xigo.top:50248"
+# 中央服务器地址
+central_server: "mk.aini2.cn:8878"
 
 # 监听端口（默认: 57894）
 relay_port: 57894
@@ -10,11 +10,14 @@ relay_port: 57894
 # 不配置则自动检测本地IP
 # report_address: "192.168.1.100:57894"
 
-# 心跳间隔（秒，默认: 60）
-heartbeat_interval: 60
+# 心跳间隔（秒，默认: 5）
+heartbeat_interval: 5
 
 # 延迟探测间隔（秒，默认: 300）
 latency_check_interval: 300
+
+# 中继探测间隔（秒，默认: 180）
+probe_interval: 180
 
 # 带宽限制（MB/s，可选，默认无限制，最低10 MB/s）
 # bandwidth_limit_mbps: 100

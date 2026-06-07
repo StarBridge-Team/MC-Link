@@ -19,14 +19,28 @@ interface IpInfo {
 
 const AUTO_ID = "__auto__";
 
-const relayList = ref<RelayInfo[]>([]);
+function loadCachedRelayList(): RelayInfo[] {
+  try {
+    const cached = localStorage.getItem("relay_list");
+    return cached ? JSON.parse(cached) : [];
+  } catch { return []; }
+}
+
+const relayList = ref<RelayInfo[]>(loadCachedRelayList());
 const searchQuery = ref("");
 const selectedRelay = ref<string | null>(localStorage.getItem("relay_selected") || AUTO_ID);
 watch(selectedRelay, (val) => {
-  if (val) localStorage.setItem("relay_selected", val);
+  localStorage.setItem("relay_selected", val || AUTO_ID);
 });
 const customRelay = ref<{ address: string; latency: number; pinging: boolean } | null>(null);
-const ipInfoMap = ref<Record<string, IpInfo>>({});
+const ipInfoMap = ref<Record<string, IpInfo>>(loadCachedIpInfo());
+
+function loadCachedIpInfo(): Record<string, IpInfo> {
+  try {
+    const cached = localStorage.getItem("relay_ipinfo");
+    return cached ? JSON.parse(cached) : {};
+  } catch { return {}; }
+}
 let pingTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface RelayEntry {
@@ -61,6 +75,7 @@ async function fetchIpInfo(addr: string) {
   try {
     const info = await invoke<IpInfo>("get_ip_info", { host });
     ipInfoMap.value = { ...ipInfoMap.value, [addr]: info };
+    try { localStorage.setItem("relay_ipinfo", JSON.stringify(ipInfoMap.value)); } catch {}
   } catch (e: any) {
     props.showToast(`查询 ${host} 节点地域失败：${e}`);
     ipInfoMap.value = { ...ipInfoMap.value, [addr]: { region: "", isp: "" } };
@@ -90,6 +105,7 @@ onMounted(async () => {
   try {
     const relays = await invoke<RelayInfo[]>("get_relays");
     relayList.value = relays;
+    localStorage.setItem("relay_list", JSON.stringify(relays));
     for (const r of relays) {
       fetchIpInfo(r.address);
     }
