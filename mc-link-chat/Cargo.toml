@@ -3,13 +3,11 @@ name = "mc-link-chat"
 version = "0.1.0"
 edition = "2021"
 authors = ["Cugo", "棱镜Prism工作室"]
-description = "MC Link 聊天服务器 - 统一文字/语音服务"
+description = "MC Link 语音服务器"
 
 [dependencies]
 mc-link-common = { path = "../mc-link-common" }
 tokio = { version = "1.0", features = ["full"] }
-tokio-tungstenite = "0.21"
-futures-util = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4"] }

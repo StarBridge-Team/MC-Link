@@ -56,7 +56,7 @@ pub fn start_console(state: Arc<CentralState>, restart_fn: impl Fn() -> bool + S
                     }
                 }
                 "c" => {
-                    let relays = state.relays.lock().unwrap();
+                    let relays = state.relays.lock().unwrap_or_else(|e| e.into_inner());
                     println!("\n中继列表 (共 {} 个):", relays.len());
                     for (_id, relay) in relays.iter() {
                         println!("  - {} @ {} (最后活跃: {}s前)",
@@ -65,7 +65,7 @@ pub fn start_console(state: Arc<CentralState>, restart_fn: impl Fn() -> bool + S
                     println!();
                 }
                 "t" => {
-                    let topo = state.topology.lock().unwrap();
+                    let topo = state.topology.lock().unwrap_or_else(|e| e.into_inner());
                     println!("\n拓扑:");
                     for edge in topo.edges.values() {
                         println!("  {} <-> {} 延迟={}ms 丢包={:.0}%",
@@ -77,8 +77,8 @@ pub fn start_console(state: Arc<CentralState>, restart_fn: impl Fn() -> bool + S
                     println!();
                 }
                 "p" => {
-                    let paths = state.active_paths.lock().unwrap();
-                    let room_paths = state.room_paths.lock().unwrap();
+                    let paths = state.active_paths.lock().unwrap_or_else(|e| e.into_inner());
+                    let room_paths = state.room_paths.lock().unwrap_or_else(|e| e.into_inner());
                     println!("\n活跃路径:");
                     for (path_id, path) in paths.iter() {
                         let room = room_paths.iter().find(|(_, pid)| *pid == path_id);

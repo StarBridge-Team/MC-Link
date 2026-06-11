@@ -1,13 +1,10 @@
-//! MC Link 聊天服务器
+//! MC Link 聊天服务器 - 纯语音服务
 //!
-//! 统一文字/语音服务，单端口入口 + 协议分流。
-//! 注册到中央服务器，连接最优中继加速聊天。
+//! 注册到中央服务器，连接最优中继加速语音聊天。
 
 mod central;
-mod inbox;
 mod protocol;
 mod relay_client;
-mod text;
 mod voice;
 
 use std::collections::HashMap;
@@ -17,7 +14,6 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 
-use crate::inbox::InboxStore;
 use crate::protocol::ServiceType;
 
 /// 默认配置
@@ -49,7 +45,7 @@ async fn main() {
     let chat_udp_port = find_available_udp(udp_base).unwrap_or(udp_base);
 
     log::info!("===========================================");
-    log::info!("  MC-Link 聊天服务器 v0.1.0");
+    log::info!("  MC-Link 语音服务器 v0.1.0");
     log::info!("===========================================");
     log::info!("  监听端口: {}", DEFAULT_PORT);
     log::info!("  UDP 端口: {}", chat_udp_port);
@@ -122,15 +118,6 @@ async fn main() {
     });
 
     // ===== 共享状态 =====
-    let inbox = InboxStore::default();
-    crate::inbox::spawn_ttl_cleaner(
-        inbox.clone(),
-        std::time::Duration::from_secs(protocol::TTL_CLEANUP_INTERVAL_SECS),
-    );
-
-    let teams: Arc<RwLock<HashMap<String, HashMap<String, tokio::sync::mpsc::UnboundedSender<tokio_tungstenite::tungstenite::Message>>>>> =
-        Arc::new(RwLock::new(HashMap::new()));
-
     let voice_rooms: Arc<RwLock<HashMap<String, Vec<String>>>> =
         Arc::new(RwLock::new(HashMap::new()));
     let port_map: Arc<RwLock<HashMap<u16, String>>> =
@@ -140,8 +127,6 @@ async fn main() {
 
     // ===== 主循环：接受连接 =====
     while let Ok((mut stream, peer_addr)) = listener.accept().await {
-        let inbox = inbox.clone();
-        let teams = teams.clone();
         let voice_rooms = voice_rooms.clone();
         let port_map = port_map.clone();
 
@@ -162,9 +147,6 @@ async fn main() {
             };
 
             match service {
-                ServiceType::Text => {
-                    text::handle_text_stream(stream, peer_addr, inbox, teams).await;
-                }
                 ServiceType::Voice => {
                     let team_id = "voice_unknown".to_string();
                     let udp_port = voice::create_voice_room(

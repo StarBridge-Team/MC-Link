@@ -1,4 +1,5 @@
 use std::net::{SocketAddr, TcpStream};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use mc_link_common::log::{log, LogLevel};
@@ -17,13 +18,25 @@ pub fn handle_client(
     bandwidth_limit: Option<f64>,
 ) {
     let addr_str = addr.to_string();
-    let client_clone = stream.try_clone().unwrap();
+    let client_clone = match stream.try_clone() {
+        Ok(c) => c,
+        Err(e) => {
+            log(LogLevel::Error, &format!("克隆客户端流失败: {}", e));
+            return;
+        }
+    };
     client_clone.set_nodelay(true).ok();
-    state
-        .clients
-        .lock()
-        .unwrap()
-        .insert(addr_str.clone(), Arc::new(std::sync::Mutex::new(client_clone)));
+    match state.clients.lock() {
+        Ok(mut clients) => {
+            clients.insert(addr_str.clone(), Arc::new(std::sync::Mutex::new(client_clone)));
+        }
+        Err(_) => {
+            log(LogLevel::Error, "客户端列表锁中毒，无法插入");
+            return;
+        }
+    }
+
+    state.traffic_connections.fetch_add(1, Ordering::Relaxed);
 
     // 带宽限制跟踪
     let mut total_bytes_sent: u64 = 0;
@@ -56,8 +69,9 @@ pub fn handle_client(
     }
 
     // 客户端断开，清理
-    {
-        let _ = state.clients.lock().unwrap().remove(&addr_str);
+    state.traffic_connections.fetch_sub(1, Ordering::Relaxed);
+    if let Ok(mut clients) = state.clients.lock() {
+        clients.remove(&addr_str);
     }
     if let Some(room_name) = host_room {
         cleanup_room(&state, &room_name, &addr, &addr_str);
@@ -201,7 +215,10 @@ fn handle_custom_data(
     pass_len: usize,
 ) {
     let host_addr = {
-        let rooms = state.rooms.lock().unwrap();
+        let rooms = match state.rooms.lock() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
         rooms.get(room).map(|info| info.host_addr)
     };
     let host_addr = match host_addr {
@@ -220,18 +237,27 @@ fn handle_custom_data(
     packet.extend_from_slice(&data[1 + room_len + 1..1 + room_len + 1 + pass_len]);
     packet.extend_from_slice(encrypted);
 
-    let clients = state.clients.lock().unwrap();
+    let clients = match state.clients.lock() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
     if host_addr != src {
         // 收到成员的数据 -> 转发给房主（回包给MC Link房主客户端）
         if let Some(host_stream) = clients.get(&host_addr.to_string()) {
-            let mut host_stream = host_stream.lock().unwrap();
+            let mut host_stream = match host_stream.lock() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
             write_packet(&mut host_stream, &packet).ok();
         }
     } else {
         // 收到房主的数据 -> 转发给所有成员（发包给MC Link成员客户端）
         for (addr, client) in clients.iter() {
             if *addr != host_addr.to_string() {
-                let mut client = client.lock().unwrap();
+                let mut client = match client.lock() {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
                 write_packet(&mut client, &packet).ok();
             }
         }
@@ -253,7 +279,10 @@ fn handle_data(state: &RelayState, src: SocketAddr, data: &[u8]) {
     let room_name = String::from_utf8_lossy(&data[4..4 + room_name_len]);
     let actual_data = &data[4 + room_name_len..];
     let host_addr = {
-        let rooms = state.rooms.lock().unwrap();
+        let rooms = match state.rooms.lock() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
         rooms
             .get(room_name.as_ref())
             .map(|room| room.host_addr)
@@ -264,9 +293,15 @@ fn handle_data(state: &RelayState, src: SocketAddr, data: &[u8]) {
     };
     if host_addr != src {
         // 成员->房主：转发到房主（回包给房主客户端）
-        let clients = state.clients.lock().unwrap();
+        let clients = match state.clients.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
         if let Some(host_stream) = clients.get(&host_addr.to_string()) {
-            let mut host_stream = host_stream.lock().unwrap();
+            let mut host_stream = match host_stream.lock() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
             let mut packet = vec![0x40];
             packet.extend_from_slice(&room_name_len.to_be_bytes());
             packet.extend_from_slice(room_name.as_bytes());
@@ -296,7 +331,10 @@ fn handle_test_packet(state: &RelayState, src: SocketAddr, data: &[u8]) {
         return;
     }
     let host_info = {
-        let rooms = state.rooms.lock().unwrap();
+        let rooms = match state.rooms.lock() {
+            Ok(r) => r,
+            Err(_) => return,
+        };
         rooms
             .get(room_name.as_ref())
             .map(|room| (room.host_addr, room.host_addr == src))
@@ -307,9 +345,15 @@ fn handle_test_packet(state: &RelayState, src: SocketAddr, data: &[u8]) {
     };
     if !is_same_relay {
         // 成员->房主：转发测试包到房主
-        let clients = state.clients.lock().unwrap();
+        let clients = match state.clients.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
         if let Some(host_stream) = clients.get(&host_addr.to_string()) {
-            let mut host_stream = host_stream.lock().unwrap();
+            let mut host_stream = match host_stream.lock() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
             write_packet(&mut host_stream, &[0x41]).ok();
             log(
                 LogLevel::Info,
@@ -318,10 +362,16 @@ fn handle_test_packet(state: &RelayState, src: SocketAddr, data: &[u8]) {
         }
     } else {
         // 房主->成员：转发测试包到所有成员（发包给成员客户端）
-        let clients = state.clients.lock().unwrap();
+        let clients = match state.clients.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
         for (addr, client) in clients.iter() {
             if *addr != host_addr.to_string() {
-                let mut client = client.lock().unwrap();
+                let mut client = match client.lock() {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
                 write_packet(&mut client, &[0x41]).ok();
                 log(
                     LogLevel::Info,

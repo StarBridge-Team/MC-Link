@@ -108,7 +108,7 @@ fn find_optimal_path(
 
 /// 为房间分配最优路径并推送给中继
 pub fn assign_room_path(state: &CentralState, room_name: &str, host_relay_id: &str, client_relay_id: &str) {
-    let topology = state.topology.lock().unwrap();
+    let topology = state.topology.lock().unwrap_or_else(|e| e.into_inner());
 
     let path = if host_relay_id == client_relay_id {
         if let Some(node) = topology.nodes.get(host_relay_id) {
@@ -135,8 +135,8 @@ pub fn assign_room_path(state: &CentralState, room_name: &str, host_relay_id: &s
         ));
 
         let path_id = path.path_id.clone();
-        state.active_paths.lock().unwrap().insert(path_id.clone(), path.clone());
-        state.room_paths.lock().unwrap().insert(room_name.to_string(), path_id.clone());
+        state.active_paths.lock().unwrap_or_else(|e| e.into_inner()).insert(path_id.clone(), path.clone());
+        state.room_paths.lock().unwrap_or_else(|e| e.into_inner()).insert(room_name.to_string(), path_id.clone());
 
         push_room_route_to_relays(state, room_name, &path);
     } else {
@@ -146,7 +146,7 @@ pub fn assign_room_path(state: &CentralState, room_name: &str, host_relay_id: &s
 
 /// 推送路径和路由到相关中继
 fn push_room_route_to_relays(state: &CentralState, room_name: &str, path: &PathResult) {
-    let relay_streams = state.relay_streams.lock().unwrap();
+    let relay_streams = state.relay_streams.lock().unwrap_or_else(|e| e.into_inner());
 
     let host_relay_id = path.hops.first().map(|h| h.node_id.as_str()).unwrap_or("");
     let member_relay_id = path.hops.last().map(|h| h.node_id.as_str()).unwrap_or("");
@@ -211,9 +211,9 @@ fn push_room_route_to_relays(state: &CentralState, room_name: &str, path: &PathR
 
 /// 当中继断开时重路由受影响的路径
 pub fn reroute_affected_paths(state: &CentralState, dead_relay_id: &str) {
-    let room_paths = state.room_paths.lock().unwrap();
-    let active_paths = state.active_paths.lock().unwrap();
-    let rooms = state.rooms.lock().unwrap();
+    let room_paths = state.room_paths.lock().unwrap_or_else(|e| e.into_inner());
+    let active_paths = state.active_paths.lock().unwrap_or_else(|e| e.into_inner());
+    let rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut affected: Vec<(String, String)> = Vec::new();
     for (room_name, path_id) in room_paths.iter() {
@@ -231,7 +231,7 @@ pub fn reroute_affected_paths(state: &CentralState, dead_relay_id: &str) {
 
     if affected.is_empty() { return; }
 
-    let relays_snapshot = state.relays.lock().unwrap();
+    let relays_snapshot = state.relays.lock().unwrap_or_else(|e| e.into_inner());
     let fallback_relays: Vec<String> = relays_snapshot.keys()
         .filter(|id| *id != dead_relay_id)
         .cloned()

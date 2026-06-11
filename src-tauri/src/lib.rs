@@ -6,7 +6,8 @@ mod central;
 mod state;
 mod adapter;
 mod terracotta_client;
-mod oauth;
+mod revamp;
+mod revamp_relay;
 #[macro_use]
 mod commands;
 use commands::*;
@@ -17,22 +18,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::Manager;
 use state::AppState;
+use state::DataDir;
 use adapter::AdapterManager;
-use oauth::OAuthState;
 
-fn launch_adapters(app: &tauri::App) {
-    let manager = AdapterManager::new();
-    manager.launch_all();
+fn launch_adapters(app: &tauri::App, data_dir: &std::path::Path) {
+    let manager = AdapterManager::new(data_dir);
     app.manage(Arc::new(Mutex::new(manager)));
-}
-
-fn init_oauth(app: &tauri::App) {
-    let data_dir = app.path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."));
-    std::fs::create_dir_all(&data_dir).ok();
-    let oauth_state = OAuthState::new(data_dir);
-    app.manage(Arc::new(oauth_state));
 }
 
 /// 仅在 Windows 11 和 macOS 上启用窗口毛玻璃效果
@@ -87,6 +78,11 @@ fn is_windows_11() -> bool {
 
 #[cfg(windows)]
 fn apply_mica_backdrop(window: &tauri::WebviewWindow) {
+    apply_mica_backdrop_typed(window, 2);
+}
+
+#[cfg(windows)]
+pub(crate) fn apply_mica_backdrop_typed(window: &tauri::WebviewWindow, backdrop_type: u32) {
     use raw_window_handle::HasWindowHandle;
     if let Ok(handle) = window.window_handle() {
         if let raw_window_handle::RawWindowHandle::Win32(win32) = handle.as_raw() {
@@ -102,7 +98,6 @@ fn apply_mica_backdrop(window: &tauri::WebviewWindow) {
                     ) -> i32;
                 }
                 // DWMSBT_MAINWINDOW (Mica) = 2，比 Acrylic 更轻量且适配深色模式
-                let backdrop_type: u32 = 2;
                 DwmSetWindowAttribute(hwnd, 38, &backdrop_type as *const _ as *const _, 4);
             }
             // 触发窗口重绘使 DWM 属性变更生效
@@ -129,7 +124,7 @@ fn apply_mica_backdrop(window: &tauri::WebviewWindow) {
 }
 
 #[cfg(target_os = "macos")]
-fn apply_vibrancy_backdrop(window: &tauri::WebviewWindow) {
+pub(crate) fn apply_vibrancy_backdrop(window: &tauri::WebviewWindow) {
     use raw_window_handle::HasWindowHandle;
     if let Ok(handle) = window.window_handle() {
         if let raw_window_handle::RawWindowHandle::AppKit(ns) = handle.as_raw() {
@@ -192,9 +187,14 @@ pub fn run() {
             stop_signal: Arc::new(Mutex::new(None)),
         })
         .setup(|app| {
+            let data_dir = app.path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            std::fs::create_dir_all(&data_dir).ok();
+            app.manage(DataDir(data_dir.clone()));
+
             tray::setup_tray(app.handle())?;
-            launch_adapters(app);
-            init_oauth(app);
+            launch_adapters(app, &data_dir);
             setup_window_effects(app);
 
             #[cfg(desktop)]
@@ -250,16 +250,17 @@ pub fn run() {
             minimize_window,
             maximize_window,
             close_window,
+            drag_window,
             exit_app,
             show_window,
             show_main_window,
             set_tray_size,
+            resize_window,
             ping_relay,
             get_ip_info,
             download_adapter,
+            adapter_startup_init,
             get_adapter_status,
-            start_adapter,
-            stop_adapter,
             get_terracotta_state,
             start_terracotta_host,
             start_terracotta_guest,
@@ -267,14 +268,29 @@ pub fn run() {
             get_tauri_version,
             get_players,
             check_room_exists,
-            get_oauth_user,
-            is_oauth_logged_in,
-            get_oauth_config,
-            save_oauth_config,
-            oauth_login,
-            oauth_logout,
             get_setting,
             save_setting,
+            get_personalization,
+            save_personalization,
+            get_default_effect,
+            set_window_effect,
+            get_background_files,
+            get_background_file_url,
+            revamp_ping,
+            revamp_get_nodes,
+            revamp_get_rooms,
+            revamp_room_exists,
+            revamp_create_room,
+            revamp_join_room,
+            revamp_leave_room,
+            revamp_get_version,
+            revamp_register,
+            revamp_login,
+            revamp_start_host,
+            revamp_join_room_cmd,
+            init_app,
+            prepare_app,
+            check_room_full,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

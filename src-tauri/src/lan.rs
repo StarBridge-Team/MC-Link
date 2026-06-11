@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use serde::Serialize;
 
@@ -55,28 +55,14 @@ pub fn scan_lan_servers() -> Result<Vec<LanServer>, String> {
     Ok(servers.into_values().collect())
 }
 
-pub fn lan_discovery_broadcaster(running: Arc<Mutex<bool>>, motd: String, port: u16) {
+pub fn lan_discovery_broadcaster(running: Arc<AtomicBool>, motd: String, port: u16) {
     let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
     socket.set_broadcast(true).unwrap();
 
     let message = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
     let addr: SocketAddr = MULTICAST_ADDR.parse().unwrap();
 
-    while *running.lock().unwrap() {
-        socket.send_to(message.as_bytes(), addr).ok();
-        std::thread::sleep(Duration::from_millis(1500));
-    }
-}
-
-#[allow(dead_code)]
-pub fn lan_discovery_broadcaster_atomic(running: Arc<AtomicBool>, motd: String, port: u16) {
-    let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-    socket.set_broadcast(true).unwrap();
-
-    let message = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
-    let addr: SocketAddr = MULTICAST_ADDR.parse().unwrap();
-
-    while !running.load(Ordering::Relaxed) {
+    while running.load(Ordering::Relaxed) {
         socket.send_to(message.as_bytes(), addr).ok();
         std::thread::sleep(Duration::from_millis(1500));
     }

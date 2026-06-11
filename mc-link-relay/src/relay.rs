@@ -1,4 +1,5 @@
 use std::net::{SocketAddr, TcpStream};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -40,6 +41,9 @@ pub fn report_path_broken(state: &RelayState, path_id: &str, broken_relay_id: &s
 /// 处理隧道帧（0x34）- 接收并转发多跳隧道数据
 pub fn handle_tunnel_frame(state: &RelayState, src: SocketAddr, data: &[u8]) {
     let packet_data = &data[1..];
+    // 统计接收字节（不含命令字节）
+    state.traffic_bytes_recv.fetch_add(packet_data.len() as u64, Ordering::Relaxed);
+
     let mut header = match TunnelFrameHeader::decode(packet_data) {
         Some(h) => h,
         None => {
@@ -50,7 +54,7 @@ pub fn handle_tunnel_frame(state: &RelayState, src: SocketAddr, data: &[u8]) {
 
     let path_id_str = hex::encode(header.path_id);
     let path = {
-        let table = state.path_table.lock().unwrap();
+        let table = state.path_table.lock().unwrap_or_else(|e| e.into_inner());
         match table.get(&path_id_str) {
             Some(p) => p.clone(),
             None => {
@@ -107,7 +111,7 @@ pub fn handle_tunnel_frame(state: &RelayState, src: SocketAddr, data: &[u8]) {
         packet.extend_from_slice(&header.encode());
         packet.extend_from_slice(payload);
 
-        let mut peers = state.peer_connections.lock().unwrap();
+        let mut peers = state.peer_connections.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(stream_arc) = peers.get(&next_hop.address) {
             if let Ok(mut s) = stream_arc.lock() {
                 if write_packet(&mut s, &packet).is_ok() {
@@ -148,7 +152,7 @@ pub fn handle_tunnel_frame(state: &RelayState, src: SocketAddr, data: &[u8]) {
         if payload.is_empty() {
             return;
         }
-        let clients = state.clients.lock().unwrap();
+        let clients = state.clients.lock().unwrap_or_else(|e| e.into_inner());
         for (addr, stream_arc) in clients.iter() {
             if let Ok(mut s) = stream_arc.lock() {
                 if write_packet(&mut s, payload).is_ok() {
@@ -168,7 +172,7 @@ pub fn handle_path_assignment(state: &RelayState, data: &[u8]) {
     let packet_data = &data[1..];
     match serde_json::from_slice::<PathAssignment>(packet_data) {
         Ok(assignment) => {
-            let mut table = state.path_table.lock().unwrap();
+            let mut table = state.path_table.lock().unwrap_or_else(|e| e.into_inner());
             table.insert(assignment.path_id.clone(), assignment.clone());
             log(
                 LogLevel::Info,
@@ -194,7 +198,7 @@ pub fn handle_room_route(state: &RelayState, data: &[u8]) {
     match serde_json::from_slice::<RoomRoute>(packet_data) {
         Ok(route) => {
             if route.direction == "reverse" {
-                let mut rev = state.reverse_route_map.lock().unwrap();
+                let mut rev = state.reverse_route_map.lock().unwrap_or_else(|e| e.into_inner());
                 rev.entry(route.room_name.clone()).or_default().push(route.clone());
                 log(
                     LogLevel::Info,
@@ -205,7 +209,7 @@ pub fn handle_room_route(state: &RelayState, data: &[u8]) {
                     ),
                 );
             } else {
-                let mut fwd = state.room_route_map.lock().unwrap();
+                let mut fwd = state.room_route_map.lock().unwrap_or_else(|e| e.into_inner());
                 fwd.insert(route.room_name.clone(), route.clone());
                 log(
                     LogLevel::Info,
@@ -263,7 +267,10 @@ pub fn send_tunnel_direct(
     let mut out = vec![0x34];
     out.extend_from_slice(&frame_data);
 
-    let mut peers = state.peer_connections.lock().unwrap();
+    // 统计发送字节
+    state.traffic_bytes_sent.fetch_add(out.len() as u64, Ordering::Relaxed);
+
+    let mut peers = state.peer_connections.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(stream_arc) = peers.get(&next_hop.address) {
         if let Ok(mut s) = stream_arc.lock() {
             if write_packet(&mut s, &out).is_ok() {
@@ -272,12 +279,16 @@ pub fn send_tunnel_direct(
         }
         peers.remove(&next_hop.address);
     }
+    let next_addr_clone = next_hop.address.clone();
+    drop(peers);
 
     match TcpStream::connect(next_addr) {
         Ok(mut stream) => {
             if write_packet(&mut stream, &out).is_ok() {
                 if let Ok(clone) = stream.try_clone() {
-                    peers.insert(next_hop.address.clone(), Arc::new(std::sync::Mutex::new(clone)));
+                    if let Ok(mut peers) = state.peer_connections.lock() {
+                        peers.insert(next_addr_clone, Arc::new(std::sync::Mutex::new(clone)));
+                    }
                 }
                 true
             } else {
@@ -297,13 +308,13 @@ pub fn send_tunnel_direct(
 
 /// 通过隧道将数据包发送到目标中继（多跳发包）
 pub fn tunnel_packet_to_relay(state: &RelayState, packet: &[u8], room: &str) -> bool {
-    let route = match state.room_route_map.lock().unwrap().get(room) {
+    let route = match state.room_route_map.lock().unwrap_or_else(|e| e.into_inner()).get(room) {
         Some(r) => r.clone(),
         None => return false,
     };
 
     let full_path = {
-        let table = state.path_table.lock().unwrap();
+        let table = state.path_table.lock().unwrap_or_else(|e| e.into_inner());
         match table.get(&route.path_id) {
             Some(p) => p.clone(),
             None => return false,
@@ -337,7 +348,7 @@ pub fn tunnel_packet_to_relay(state: &RelayState, packet: &[u8], room: &str) -> 
 /// 通过隧道将数据包转发到远程成员（多跳发包到其它中继）
 pub fn tunnel_to_remote_members(state: &RelayState, packet: &[u8], room: &str) {
     let routes = {
-        let rev = state.reverse_route_map.lock().unwrap();
+        let rev = state.reverse_route_map.lock().unwrap_or_else(|e| e.into_inner());
         rev.get(room).cloned()
     };
     let routes = match routes {
@@ -347,7 +358,7 @@ pub fn tunnel_to_remote_members(state: &RelayState, packet: &[u8], room: &str) {
 
     for route in &routes {
         let full_path = {
-            let table = state.path_table.lock().unwrap();
+            let table = state.path_table.lock().unwrap_or_else(|e| e.into_inner());
             table.get(&route.path_id).cloned()
         };
         let full_path = match full_path {
@@ -406,7 +417,7 @@ fn handle_reverse_tunnel_payload(state: &RelayState, payload: &[u8], path: &Path
     let command = &decrypted[0..4];
 
     if command == b"REGC" {
-        let rooms = state.rooms.lock().unwrap();
+        let rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
         if !rooms.contains_key(&room) {
             return;
         }
@@ -447,13 +458,13 @@ fn handle_reverse_tunnel_payload(state: &RelayState, payload: &[u8], path: &Path
             state
                 .rooms
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .get(&room)
                 .map(|r| r.host_addr)
         };
         if let Some(addr) = host_addr {
-            if let Some(stream_arc) = state.clients.lock().unwrap().get(&addr.to_string()) {
-                let mut s = stream_arc.lock().unwrap();
+            if let Some(stream_arc) = state.clients.lock().unwrap_or_else(|e| e.into_inner()).get(&addr.to_string()) {
+                let mut s = stream_arc.lock().unwrap_or_else(|e| e.into_inner());
                 crate::protocol::write_packet(&mut s, &join_pkt).ok();
             }
         }
@@ -463,13 +474,13 @@ fn handle_reverse_tunnel_payload(state: &RelayState, payload: &[u8], path: &Path
             state
                 .rooms
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .get(&room)
                 .map(|r| r.host_addr)
         };
         if let Some(addr) = host_addr {
-            if let Some(stream_arc) = state.clients.lock().unwrap().get(&addr.to_string()) {
-                let mut s = stream_arc.lock().unwrap();
+            if let Some(stream_arc) = state.clients.lock().unwrap_or_else(|e| e.into_inner()).get(&addr.to_string()) {
+                let mut s = stream_arc.lock().unwrap_or_else(|e| e.into_inner());
                 crate::protocol::write_packet(&mut s, payload).ok();
             }
         }

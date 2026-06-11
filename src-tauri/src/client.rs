@@ -36,12 +36,12 @@ impl ClientMode {
     where
         F: Fn(String) + Send + 'static,
     {
-        *self.log_callback.lock().unwrap() = Some(Box::new(callback));
+        *self.log_callback.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(callback));
     }
 
     fn log(&self, msg: String) {
         println!("{}", msg);
-        if let Some(ref callback) = *self.log_callback.lock().unwrap() {
+        if let Some(ref callback) = *self.log_callback.lock().unwrap_or_else(|e| e.into_inner()) {
             callback(msg);
         }
     }
@@ -61,7 +61,7 @@ impl ClientMode {
     }
 
     pub fn start(&mut self, stop_signal: Arc<AtomicBool>) -> Result<String, String> {
-        *self.running.lock().unwrap() = true;
+        *self.running.lock().unwrap_or_else(|e| e.into_inner()) = true;
 
         let motd = self.motd.clone();
 
@@ -119,12 +119,12 @@ impl ClientMode {
 
         let local_clients = Arc::new(Mutex::new(Vec::new()));
 
-        let running_clone = self.running.clone();
+        let stop_signal_clone = stop_signal.clone();
         let motd_clone = motd.clone();
         thread::Builder::new()
             .name("client-lan-broadcast".into())
             .spawn(move || {
-                Self::start_lan_broadcast(running_clone, motd_clone, local_port);
+                Self::start_lan_broadcast(stop_signal_clone, motd_clone, local_port);
             })
             .map_err(|e| format!("启动LAN广播线程失败: {}", e))?;
 
@@ -158,7 +158,7 @@ impl ClientMode {
         Ok(format!("成员模式已结束"))
     }
 
-    fn start_lan_broadcast(running: Arc<Mutex<bool>>, motd: String, port: u16) {
+    fn start_lan_broadcast(running: Arc<AtomicBool>, motd: String, port: u16) {
         Self::log_debug(format!("LAN广播线程启动，端口: {}", port));
         lan::lan_discovery_broadcaster(running, motd, port);
         Self::log_debug("LAN广播线程退出".to_string());
@@ -175,8 +175,15 @@ impl ClientMode {
                     stream.set_nodelay(true).ok();
                     stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
                     Self::log_debug(format!("新Minecraft连接(中继模式): {}", addr));
-                    let client_ref = Arc::new(Mutex::new(Some(stream.try_clone().unwrap())));
-                    local_clients.lock().unwrap().push(client_ref.clone());
+                    let cloned = match stream.try_clone() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            Self::log_debug(format!("克隆客户端连接失败: {}", e));
+                            continue;
+                        }
+                    };
+                    let client_ref = Arc::new(Mutex::new(Some(cloned)));
+                    local_clients.lock().unwrap_or_else(|e| e.into_inner()).push(client_ref.clone());
 
                     let relay = relay_stream.clone();
                     let ss = stop_signal.clone();
@@ -196,7 +203,7 @@ impl ClientMode {
                                         payload.extend_from_slice(&buf[..n]);
                                         let packet = protocol::pack_packet(&r, &pw, &payload);
                                         {
-                                            let mut relay_guard = relay.lock().unwrap();
+                                            let mut relay_guard = relay.lock().unwrap_or_else(|e| e.into_inner());
                                             if protocol::write_packet(&mut relay_guard, &packet).is_err() {
                                                 ss.store(true, Ordering::SeqCst);
                                                 break;
@@ -208,7 +215,7 @@ impl ClientMode {
                                 }
                             }
                             let _ = stream.shutdown(Shutdown::Both);
-                            client_cleanup.lock().unwrap().take();
+                            client_cleanup.lock().unwrap_or_else(|e| e.into_inner()).take();
                         })
                         .ok();
                 }
@@ -256,9 +263,9 @@ impl ClientMode {
             let data = &decrypted[4..];
 
             let data_vec = data.to_vec();
-            let mut clients = local_clients.lock().unwrap();
+            let mut clients = local_clients.lock().unwrap_or_else(|e| e.into_inner());
             clients.retain_mut(|client| {
-                let mut guard = client.lock().unwrap();
+                let mut guard = client.lock().unwrap_or_else(|e| e.into_inner());
                 match guard.as_mut() {
                     Some(stream) => {
                         stream.set_nodelay(true).ok();
@@ -282,6 +289,6 @@ impl ClientMode {
 
     #[allow(dead_code)]
     pub fn stop(&mut self) {
-        *self.running.lock().unwrap() = false;
+        *self.running.lock().unwrap_or_else(|e| e.into_inner()) = false;
     }
 }

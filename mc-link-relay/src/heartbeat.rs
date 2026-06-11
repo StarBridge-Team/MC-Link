@@ -14,7 +14,7 @@ pub fn send_register(stream: &mut TcpStream, state: &RelayState) {
         .unwrap_or_else(|| format!("{}:{}", local_ip(), state.relay_port));
     let req = serde_json::json!({
         "id": state.relay_id.clone(),
-        "name": state.relay_name.lock().unwrap().clone(),
+        "name": state.relay_name.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         "address": address,
         "private": state.private_mode,
         "transit": state.transit_mode,

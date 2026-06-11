@@ -25,7 +25,7 @@ pub fn handle_create_room(
     data: &[u8],
 ) -> Option<String> {
     if let Ok(req) = serde_json::from_slice::<CreateRoomReq>(data) {
-        let mut rooms = state.rooms.lock().unwrap();
+        let mut rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
         if rooms.contains_key(&req.room_name) {
             write_packet(stream, &[0x21, 0x01]).ok();
             return None;
@@ -55,7 +55,7 @@ pub fn handle_find_room(
     data: &[u8],
 ) {
     if let Ok(req) = serde_json::from_slice::<FindRoomReq>(data) {
-        let rooms = state.rooms.lock().unwrap();
+        let rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(room) = rooms.get(&req.room_name) {
             let response = serde_json::json!({"exists": true, "host_addr": room.host_addr.to_string()});
             let mut packet = vec![0x23];
@@ -79,7 +79,7 @@ pub fn handle_regh(
     room_len: usize,
     pass_len: usize,
 ) -> Option<String> {
-    let mut rooms = state.rooms.lock().unwrap();
+    let mut rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
     if rooms.contains_key(room) {
         drop(rooms);
         log(LogLevel::Warn, &format!("[REGH] 房间已存在: {}", room));
@@ -120,7 +120,7 @@ pub fn handle_regc(
     room_len: usize,
     pass_len: usize,
 ) -> Option<String> {
-    let rooms = state.rooms.lock().unwrap();
+    let rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
     let room_info = match rooms.get(room) {
         Some(info) => info.clone(),
         None => {
@@ -138,7 +138,7 @@ pub fn handle_regc(
     );
 
     // 通知房主有成员加入
-    let clients = state.clients.lock().unwrap();
+    let clients = state.clients.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(host_stream) = clients.get(&room_info.host_addr.to_string()) {
         let member_join_enc = encrypt(b"MEMBER_JOIN", password);
         let mut member_join_packet = Vec::new();
@@ -147,7 +147,7 @@ pub fn handle_regc(
         member_join_packet.push(pass_len as u8);
         member_join_packet.extend_from_slice(&data[1 + room_len + 1..1 + room_len + 1 + pass_len]);
         member_join_packet.extend_from_slice(&member_join_enc);
-        let mut host_stream = host_stream.lock().unwrap();
+        let mut host_stream = host_stream.lock().unwrap_or_else(|e| e.into_inner());
         write_packet(&mut host_stream, &member_join_packet).ok();
         log(
             LogLevel::Info,
@@ -161,7 +161,7 @@ pub fn handle_regc(
 /// 房间断开连接时的清理工作
 pub fn cleanup_room(state: &RelayState, room_name: &str, addr: &SocketAddr, addr_str: &str) {
     let is_host = {
-        let rooms = state.rooms.lock().unwrap();
+        let rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
         rooms
             .get(room_name)
             .map(|r| r.host_addr == *addr)
@@ -170,7 +170,7 @@ pub fn cleanup_room(state: &RelayState, room_name: &str, addr: &SocketAddr, addr
     if is_host {
         let member_count;
         {
-            let clients = state.clients.lock().unwrap();
+            let clients = state.clients.lock().unwrap_or_else(|e| e.into_inner());
             let member_addrs: Vec<String> = clients
                 .keys()
                 .filter(|ca| *ca != addr_str)
@@ -185,7 +185,7 @@ pub fn cleanup_room(state: &RelayState, room_name: &str, addr: &SocketAddr, addr
                 }
             }
         }
-        state.rooms.lock().unwrap().remove(room_name);
+        state.rooms.lock().unwrap_or_else(|e| e.into_inner()).remove(room_name);
         log(
             LogLevel::Info,
             &format!(
@@ -206,11 +206,11 @@ pub fn send_mc_ready_to_host(
     pass_len: usize,
 ) {
     let host_addr = {
-        let rooms = state.rooms.lock().unwrap();
+        let rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
         rooms.get(room).map(|info| info.host_addr)
     };
     if let Some(host_addr) = host_addr {
-        let clients = state.clients.lock().unwrap();
+        let clients = state.clients.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(host_stream) = clients.get(&host_addr.to_string()) {
             let mc_ready_enc = encrypt(b"MC_READY", password);
             let mut mc_ready_packet = Vec::new();
@@ -219,7 +219,7 @@ pub fn send_mc_ready_to_host(
             mc_ready_packet.push(pass_len as u8);
             mc_ready_packet.extend_from_slice(&data[1 + room_len + 1..1 + room_len + 1 + pass_len]);
             mc_ready_packet.extend_from_slice(&mc_ready_enc);
-            let mut host_stream = host_stream.lock().unwrap();
+            let mut host_stream = host_stream.lock().unwrap_or_else(|e| e.into_inner());
             write_packet(&mut host_stream, &mc_ready_packet).ok();
             log(
                 LogLevel::Info,

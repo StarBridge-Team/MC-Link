@@ -114,32 +114,12 @@ watch(() => props.activeIcon, (newIcon, oldIcon) => {
 <style scoped>
 .text-sidebar {
   width: 180px;
-  background: rgba(30, 30, 46, 0.12);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
   padding: 15px 10px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   -webkit-app-region: no-drag;
-  transition: all 0.3s ease;
-  border-right: 1px solid rgba(255, 255, 255, 0.03);
-}
-
-@media (prefers-color-scheme: light) {
-  .text-sidebar {
-    background: rgba(255, 255, 255, 0.25);
-    border-right: 1px solid rgba(255, 255, 255, 0.15);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-  }
-}
-
-[data-theme="light"] .text-sidebar {
-  background: rgba(255, 255, 255, 0.25);
-  border-right: 1px solid rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  transition: all calc(0.3s * var(--anim-speed, 1)) ease;
 }
 
 .sidebar-text-item {
@@ -149,7 +129,7 @@ watch(() => props.activeIcon, (newIcon, oldIcon) => {
   padding: 8px 12px;
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all calc(0.2s * var(--anim-speed, 1)) ease;
   font-size: 13px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.55);
@@ -215,15 +195,15 @@ watch(() => props.activeIcon, (newIcon, oldIcon) => {
 /* 浮现动画 */
 .text-item {
   opacity: 0;
-  animation: itemEnter 0.4s ease-out forwards;
+  animation: itemEnter calc(0.4s * var(--anim-speed, 1)) ease-out forwards;
 }
 
-.text-item:nth-child(1) { animation-delay: 0s; }
-.text-item:nth-child(2) { animation-delay: 0.05s; }
-.text-item:nth-child(3) { animation-delay: 0.1s; }
-.text-item:nth-child(4) { animation-delay: 0.15s; }
-.text-item:nth-child(5) { animation-delay: 0.2s; }
-.text-item:nth-child(6) { animation-delay: 0.25s; }
+.text-item:nth-child(1) { animation-delay: calc(0s * var(--anim-speed, 1)); }
+.text-item:nth-child(2) { animation-delay: calc(0.05s * var(--anim-speed, 1)); }
+.text-item:nth-child(3) { animation-delay: calc(0.1s * var(--anim-speed, 1)); }
+.text-item:nth-child(4) { animation-delay: calc(0.15s * var(--anim-speed, 1)); }
+.text-item:nth-child(5) { animation-delay: calc(0.2s * var(--anim-speed, 1)); }
+.text-item:nth-child(6) { animation-delay: calc(0.25s * var(--anim-speed, 1)); }
 
 @keyframes itemEnter {
   0% {

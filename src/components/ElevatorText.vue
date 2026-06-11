@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from "vue"
+import { ref, watch, nextTick, onUnmounted } from "vue"
 
 const props = defineProps<{
   text: string;
@@ -22,6 +22,10 @@ watch(() => props.text, (newVal, oldVal) => {
       items.value = [newVal]
     }, 400)
   })
+})
+
+onUnmounted(() => {
+  if (timer) clearTimeout(timer)
 })
 </script>
 

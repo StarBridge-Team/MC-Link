@@ -1,8 +1,12 @@
 use std::net::TcpStream;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use crate::protocol;
+
+static RELAY_CACHE: Mutex<Option<(Vec<RelayInfo>, Instant)>> = Mutex::new(None);
+const CACHE_TTL: Duration = Duration::from_secs(60);
 
 const CENTRAL_SERVER_ADDR: &str = "mk.aini2.cn:8878";
 
@@ -55,12 +59,35 @@ fn send_request(cmd: u8, data: &[u8]) -> Option<Vec<u8>> {
 }
 
 pub fn get_relays() -> Option<Vec<RelayInfo>> {
+    // 先检查缓存
+    if let Ok(cache) = RELAY_CACHE.lock() {
+        if let Some((ref relays, ref time)) = *cache {
+            if time.elapsed() < CACHE_TTL {
+                return Some(relays.clone());
+            }
+        }
+    }
     let response = send_request(0x12, &[])?;
     if !response.is_empty() && response[0] == 0x13 {
-        serde_json::from_slice(&response[1..]).ok()
+        if let Ok(relays) = serde_json::from_slice::<Vec<RelayInfo>>(&response[1..]) {
+            if let Ok(mut cache) = RELAY_CACHE.lock() {
+                *cache = Some((relays.clone(), Instant::now()));
+            }
+            Some(relays)
+        } else {
+            None
+        }
     } else {
         None
     }
+}
+
+/// 强制刷新中继缓存
+pub fn refresh_relay_cache() -> Option<Vec<RelayInfo>> {
+    if let Ok(mut cache) = RELAY_CACHE.lock() {
+        *cache = None;
+    }
+    get_relays()
 }
 
 pub fn create_room(room_name: &str, password: &str, relay_id: &str) -> Option<RoomInfo> {
@@ -88,8 +115,8 @@ pub struct PlayerInfo {
     pub joined_at: u64,
 }
 
-pub fn join_room(room_name: &str, player_name: &str, role: &str, relay_id: Option<&str>) -> bool {
-    let mut req = serde_json::json!({"room_name": room_name, "player_name": player_name, "role": role});
+pub fn join_room(room_name: &str, player_name: &str, role: &str, password: &str, relay_id: Option<&str>) -> bool {
+    let mut req = serde_json::json!({"room_name": room_name, "player_name": player_name, "role": role, "password": password});
     if let Some(rid) = relay_id {
         req["relay_id"] = serde_json::json!(rid);
     }

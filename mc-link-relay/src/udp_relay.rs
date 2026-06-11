@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use mc_link_common::log::{log, LogLevel};
 
@@ -26,11 +27,42 @@ pub fn start_udp_relay(port: u16) {
     log(LogLevel::Info, &format!("UDP 中继监听在 {}", bind_addr));
 
     let teams: UdpTeams = Arc::new(Mutex::new(HashMap::new()));
+    let last_seen: Arc<Mutex<HashMap<SocketAddr, Instant>>> = Arc::new(Mutex::new(HashMap::new()));
+    let mut cleanup_counter = 0u32;
     let mut buf = [0u8; 4096];
 
     loop {
         match socket.recv_from(&mut buf) {
             Ok((n, src)) => {
+                // 更新该地址的最后活动时间
+                if let Ok(mut ls) = last_seen.lock() {
+                    ls.insert(src, Instant::now());
+                }
+
+                // 每转发 100 次清理超过 300 秒未活动的成员
+                cleanup_counter += 1;
+                if cleanup_counter >= 100 {
+                    cleanup_counter = 0;
+                    if let (Ok(mut t), Ok(ls)) = (teams.lock(), last_seen.lock()) {
+                        let now = Instant::now();
+                        let mut empty_teams = Vec::new();
+                        for (team_id, members) in t.iter_mut() {
+                            members.retain(|addr| {
+                                ls.get(addr)
+                                    .map(|t| now.duration_since(*t).as_secs() < 300)
+                                    .unwrap_or(false)
+                            });
+                            if members.is_empty() {
+                                empty_teams.push(team_id.clone());
+                            }
+                        }
+                        for team_id in empty_teams {
+                            t.remove(&team_id);
+                            log(LogLevel::Info, &format!("[UDP/清理] 移除空队伍 {}", team_id));
+                        }
+                    }
+                }
+
                 if n < 36 {
                     continue;
                 }
@@ -51,7 +83,10 @@ pub fn start_udp_relay(port: u16) {
 
                 // 自动注册该地址到队伍（若不存在）
                 {
-                    let mut t = teams.lock().unwrap();
+                    let mut t = match teams.lock() {
+                        Ok(g) => g,
+                        Err(_) => continue,
+                    };
                     let members = t.entry(team_id.clone()).or_default();
                     if !members.contains(&src) {
                         members.push(src);
@@ -60,7 +95,10 @@ pub fn start_udp_relay(port: u16) {
                 }
 
                 // 转发给队伍中除发送者外的所有人
-                let t = teams.lock().unwrap();
+                let t = match teams.lock() {
+                    Ok(g) => g,
+                    Err(_) => continue,
+                };
                 if let Some(members) = t.get(&team_id) {
                     for &addr in members {
                         if addr != src {

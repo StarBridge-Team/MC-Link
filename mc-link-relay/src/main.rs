@@ -10,6 +10,7 @@ mod udp_relay;
 use std::collections::HashMap;
 use std::io::{IsTerminal, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -44,6 +45,9 @@ pub struct RelayState {
     pub reverse_route_map: Mutex<HashMap<String, Vec<relay::RoomRoute>>>,
     pub peer_connections: Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>,
     running: Mutex<bool>,
+    pub traffic_bytes_sent: AtomicU64,
+    pub traffic_bytes_recv: AtomicU64,
+    pub traffic_connections: AtomicU32,
 }
 
 impl RelayState {
@@ -65,15 +69,18 @@ impl RelayState {
             reverse_route_map: Mutex::new(HashMap::new()),
             peer_connections: Mutex::new(HashMap::new()),
             running: Mutex::new(true),
+            traffic_bytes_sent: AtomicU64::new(0),
+            traffic_bytes_recv: AtomicU64::new(0),
+            traffic_connections: AtomicU32::new(0),
         }
     }
 
     fn stop(&self) {
-        *self.running.lock().unwrap() = false;
+        *self.running.lock().unwrap_or_else(|e| e.into_inner()) = false;
     }
 
     fn is_running(&self) -> bool {
-        *self.running.lock().unwrap()
+        *self.running.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -142,7 +149,7 @@ fn main() {
         config.transit_mode,
     ));
     let config = Arc::new(Mutex::new(config));
-    let bandwidth_limit = config.lock().unwrap().bandwidth_limit_mbps;
+    let bandwidth_limit = config.lock().unwrap_or_else(|e| e.into_inner()).bandwidth_limit_mbps;
 
     // 启动 UDP 中继线程
     let udp_port_relay = state.udp_port;
@@ -152,8 +159,8 @@ fn main() {
 
     // 心跳线程
     let state_for_heartbeat = state.clone();
-    let heartbeat_interval = config.lock().unwrap().heartbeat_interval;
-    let central_server_hb = config.lock().unwrap().central_server.clone();
+    let heartbeat_interval = config.lock().unwrap_or_else(|e| e.into_inner()).heartbeat_interval;
+    let central_server_hb = config.lock().unwrap_or_else(|e| e.into_inner()).central_server.clone();
     thread::spawn(move || {
         let central_addr: SocketAddr = resolve_server(&central_server_hb);
         loop {
@@ -190,9 +197,9 @@ fn main() {
 
     // 中继探测线程
     let state_for_probe = state.clone();
-    let central_server_probe = config.lock().unwrap().central_server.clone();
+    let central_server_probe = config.lock().unwrap_or_else(|e| e.into_inner()).central_server.clone();
     let relay_id_for_probe = state.relay_id.clone();
-    let probe_interval = config.lock().unwrap().probe_interval;
+    let probe_interval = config.lock().unwrap_or_else(|e| e.into_inner()).probe_interval;
     thread::spawn(move || {
         thread::sleep(Duration::from_secs(15));
         let central_addr: SocketAddr = resolve_server(&central_server_probe);
@@ -261,7 +268,7 @@ fn main() {
             }
 
             let stale_peers: Vec<String> = {
-                let peers = state_for_health.peer_connections.lock().unwrap();
+                let peers = state_for_health.peer_connections.lock().unwrap_or_else(|e| e.into_inner());
                 let mut stale = Vec::new();
                 for (addr, stream_arc) in peers.iter() {
                     if let Ok(mut s) = stream_arc.try_lock() {
@@ -275,7 +282,7 @@ fn main() {
             };
 
             for addr in &stale_peers {
-                state_for_health.peer_connections.lock().unwrap().remove(addr);
+                state_for_health.peer_connections.lock().unwrap_or_else(|e| e.into_inner()).remove(addr);
                 log(
                     LogLevel::Warn,
                     &format!("[对等连接] 连接 {} 已断开，已清理", addr),
@@ -290,6 +297,47 @@ fn main() {
             }
 
             thread::sleep(Duration::from_secs(15));
+        }
+    });
+
+    // 流量上报线程 - 每 30 秒上报流量统计到中央服务器
+    let state_for_traffic = state.clone();
+    let central_traffic = config.lock().unwrap_or_else(|e| e.into_inner()).central_server.clone();
+    thread::spawn(move || {
+        let central_addr: SocketAddr = resolve_server(&central_traffic);
+        // 启动后先等 10 秒再开始上报
+        thread::sleep(Duration::from_secs(10));
+        loop {
+            if !state_for_traffic.is_running() {
+                break;
+            }
+
+            let sent = state_for_traffic.traffic_bytes_sent.swap(0, Ordering::Relaxed);
+            let recv = state_for_traffic.traffic_bytes_recv.swap(0, Ordering::Relaxed);
+            let conns = state_for_traffic.traffic_connections.load(Ordering::Relaxed);
+
+            // 只在有流量或连接时才上报
+            if sent > 0 || recv > 0 || conns > 0 {
+                let report = serde_json::json!({
+                    "relay_id": state_for_traffic.relay_id,
+                    "bytes_sent": sent,
+                    "bytes_recv": recv,
+                    "connections": conns,
+                    "timestamp": now_secs(),
+                });
+
+                if let Ok(mut stream) = TcpStream::connect_timeout(&central_addr, Duration::from_secs(5)) {
+                    let mut packet = vec![0x38];
+                    packet.extend_from_slice(report.to_string().as_bytes());
+                    crate::protocol::write_packet(&mut stream, &packet).ok();
+                    log(LogLevel::Info, &format!(
+                        "[流量/上报] sent={} recv={} conns={}",
+                        sent, recv, conns
+                    ));
+                }
+            }
+
+            thread::sleep(Duration::from_secs(30));
         }
     });
 
@@ -341,7 +389,7 @@ fn main() {
                     state_for_input.stop();
                 }
                 "r" | "reload" => {
-                    let mut cfg = config_for_input.lock().unwrap();
+                    let mut cfg = config_for_input.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(loaded) = load_config_inner(&config_path) {
                         *cfg = loaded;
                         log(LogLevel::Info, "配置已重载");
@@ -351,12 +399,12 @@ fn main() {
                 }
                 "name" => {
                     if arg.is_empty() {
-                        let name = state_for_input.relay_name.lock().unwrap().clone();
+                        let name = state_for_input.relay_name.lock().unwrap_or_else(|e| e.into_inner()).clone();
                         log(LogLevel::Info, &format!("当前名称: {}", name));
                     } else {
                         let new_name = arg.to_string();
-                        *state_for_input.relay_name.lock().unwrap() = new_name.clone();
-                        let mut cfg = config_for_input.lock().unwrap();
+                        *state_for_input.relay_name.lock().unwrap_or_else(|e| e.into_inner()) = new_name.clone();
+                        let mut cfg = config_for_input.lock().unwrap_or_else(|e| e.into_inner());
                         cfg.relay_name = Some(new_name.clone());
                         save_config(&config_path, &cfg);
                         log(LogLevel::Info, &format!("中继名称已设置为: {}", new_name));
@@ -364,7 +412,7 @@ fn main() {
                 }
                 "rate" => {
                     if arg.is_empty() {
-                        let cfg = config_for_input.lock().unwrap();
+                        let cfg = config_for_input.lock().unwrap_or_else(|e| e.into_inner());
                         match cfg.bandwidth_limit_mbps {
                             Some(limit) => {
                                 log(LogLevel::Info, &format!("当前速率限制: {} MB/s", limit))
@@ -373,7 +421,7 @@ fn main() {
                         }
                     } else if let Ok(mbps) = arg.parse::<f64>() {
                         let limit = if mbps <= 0.0 { None } else { Some(mbps) };
-                        let mut cfg = config_for_input.lock().unwrap();
+                        let mut cfg = config_for_input.lock().unwrap_or_else(|e| e.into_inner());
                         cfg.bandwidth_limit_mbps = limit;
                         save_config(&config_path, &cfg);
                         match limit {
@@ -387,7 +435,7 @@ fn main() {
                     }
                 }
                 "pt" => {
-                    let table = state_for_input.path_table.lock().unwrap();
+                    let table = state_for_input.path_table.lock().unwrap_or_else(|e| e.into_inner());
                     println!("\n路径表 (共 {} 条):", table.len());
                     for (path_id, path) in table.iter() {
                         println!(
@@ -425,7 +473,7 @@ fn main() {
             break;
         }
 
-        if let Ok((mut stream, _)) = listener.lock().unwrap().accept() {
+        if let Ok((mut stream, _)) = listener.lock().unwrap_or_else(|e| e.into_inner()).accept() {
             stream.set_nodelay(true).ok();
             // 自定义协议（MC Link 游戏协议）
             stream.set_nonblocking(false).ok();

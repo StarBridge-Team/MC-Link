@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import Dialog from "./common/Dialog.vue";
+import Input from "./ui/Input.vue";
 
 const props = defineProps<{
   showToast: (msg: string) => void;
@@ -39,8 +41,6 @@ function saveAccount() {
   showAccountDialog.value = false;
   props.showToast(`已设置名字: ${name}`);
 }
-
-
 </script>
 
 <template>
@@ -77,62 +77,33 @@ function saveAccount() {
       </div>
     </div>
 
-    <Teleport to="body">
-      <div v-if="showAccountDialog" class="dialog-overlay" @click.self="showAccountDialog = false">
-        <div class="dialog-card dialog-card-small">
-          <div class="dialog-header">
-            <h3>账号</h3>
-            <button class="dialog-close" @click="showAccountDialog = false">
-              <i class="bi bi-x"></i>
-            </button>
-          </div>
-          <div class="dialog-section">
-            <label class="dialog-label">你的名字</label>
-            <input
-              type="text"
-              v-model="editingName"
-              placeholder="输入你的名字"
-              class="dialog-input"
-              maxlength="16"
-              @keyup.enter="saveAccount"
-            />
-            <p class="dialog-desc">此名字会展示给其他玩家，仅 MC Link 联机时可见</p>
-          </div>
-          <div class="dialog-actions">
-            <button class="btn" @click="showAccountDialog = false">取消</button>
-            <button class="btn btn-primary" @click="saveAccount">保存</button>
-          </div>
-        </div>
-      </div>
+    <Dialog :show="showAccountDialog" title="账号" small @close="showAccountDialog = false">
+      <label class="dialog-label">你的名字</label>
+      <Input type="text" v-model="editingName" placeholder="输入你的名字" maxlength="16" @keyup.enter="saveAccount" />
+      <p class="dialog-desc">此名字会展示给其他玩家，仅 MC Link 联机时可见</p>
+      <template #actions>
+        <Button @click="showAccountDialog = false">取消</Button>
+        <Button variant="primary" @click="saveAccount">保存</Button>
+      </template>
+    </Dialog>
 
-      <div v-if="showPlayerListDialog" class="dialog-overlay" @click.self="showPlayerListDialog = false">
-        <div class="dialog-card dialog-card-small">
-          <div class="dialog-header">
-            <h3>队伍</h3>
-            <button class="dialog-close" @click="showPlayerListDialog = false">
-              <i class="bi bi-x"></i>
-            </button>
+    <Dialog :show="showPlayerListDialog" title="队伍" small @close="showPlayerListDialog = false">
+      <div v-if="playerList.length === 0" class="empty-list">暂无在线玩家</div>
+      <div v-else class="player-list">
+        <div v-for="(p, i) in playerList" :key="i" class="player-item">
+          <div class="player-avatar">
+            <i class="bi bi-person-fill"></i>
           </div>
-          <div class="dialog-section">
-            <div v-if="playerList.length === 0" class="empty-list">暂无在线玩家</div>
-            <div v-else class="player-list">
-              <div v-for="(p, i) in playerList" :key="i" class="player-item">
-                <div class="player-avatar">
-                  <i class="bi bi-person-fill"></i>
-                </div>
-                <div class="player-info">
-                  <span class="player-name">{{ p.name }}</span>
-                  <span class="player-role">{{ p.role === "host" ? "房主" : "成员" }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="dialog-actions">
-            <button class="btn" @click="showPlayerListDialog = false">关闭</button>
+          <div class="player-info">
+            <span class="player-name">{{ p.name }}</span>
+            <span class="player-role">{{ p.role === "host" ? "房主" : "成员" }}</span>
           </div>
         </div>
       </div>
-    </Teleport>
+      <template #actions>
+        <Button @click="showPlayerListDialog = false">关闭</Button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -229,69 +200,7 @@ function saveAccount() {
   font-weight: 500;
 }
 
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  backdrop-filter: blur(4px);
-}
-
-.dialog-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  width: 460px;
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
-}
-
-.dialog-card-small {
-  width: 380px;
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.dialog-close {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  transition: all 0.15s ease;
-}
-
-.dialog-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.dialog-section {
-  padding: 16px 24px 0;
-}
-
+/* Dialog scoped styles for content */
 .dialog-label {
   display: block;
   font-size: 13px;
@@ -307,31 +216,6 @@ function saveAccount() {
   color: var(--text-muted);
   margin: 8px 0 0;
   line-height: 1.4;
-}
-
-.dialog-input {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  font-size: 14px;
-  letter-spacing: 1px;
-  transition: border-color 0.15s ease;
-}
-
-.dialog-input:focus {
-  outline: none;
-  border-color: var(--accent-primary);
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 20px 24px;
 }
 
 .player-list {

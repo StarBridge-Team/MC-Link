@@ -20,7 +20,10 @@ pub fn is_custom_protocol(data: &[u8]) -> bool {
     if pass_len == 0 || pass_len > 100 {
         return false;
     }
-    if data.len() < 1 + room_len + 1 + pass_len + 16 {
+    // GCM 加密输出: nonce(12) + ciphertext_with_tag(plaintext + 16)
+    // 最小密文长度 = 12 + 最小明文(至少含4字节命令) + 16 = 32
+    const GCM_OVERHEAD: usize = 28; // NONCE_SIZE(12) + TAG_SIZE(16)
+    if data.len() < 1 + room_len + 1 + pass_len + GCM_OVERHEAD {
         return false;
     }
     true

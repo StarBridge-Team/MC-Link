@@ -1,6 +1,7 @@
 //! 中央服务器数据结构和共享状态
 
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fs;
 use std::sync::{Arc, Mutex};
 
@@ -74,6 +75,36 @@ pub struct LatencyEntry {
     pub samples: Vec<u64>,
 }
 
+// ===== 流量统计 =====
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrafficReport {
+    pub relay_id: String,
+    pub bytes_sent: u64,
+    pub bytes_recv: u64,
+    pub connections: u32,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrafficStats {
+    pub bytes_sent_total: u64,
+    pub bytes_recv_total: u64,
+    pub last_report: u64,
+    pub current_connections: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatsSnapshot {
+    pub timestamp: u64,
+    pub relay_count: usize,
+    pub online_relay_count: usize,
+    pub room_count: usize,
+    pub player_count: usize,
+    pub path_count: usize,
+    pub total_traffic_bytes: u64,
+}
+
 // ===== 拓扑图 =====
 
 pub struct TopologyGraph {
@@ -120,7 +151,11 @@ pub struct CentralState {
     pub room_paths: Mutex<HashMap<String, String>>,
     pub addr_to_id: Mutex<HashMap<String, String>>,
     pub relay_streams: Mutex<HashMap<String, Arc<Mutex<std::net::TcpStream>>>>,
+    /// 使用单调时钟跟踪心跳时间，不受系统时间跳变影响
+    pub heartbeat_instants: Mutex<HashMap<String, std::time::Instant>>,
     pub running: Arc<Mutex<bool>>,
+    pub traffic_reports: Mutex<HashMap<String, TrafficStats>>,
+    pub stats_history: Mutex<VecDeque<StatsSnapshot>>,
 }
 
 fn default_true() -> bool { true }
@@ -137,12 +172,15 @@ impl CentralState {
             room_paths: Mutex::new(HashMap::new()),
             addr_to_id: Mutex::new(HashMap::new()),
             relay_streams: Mutex::new(HashMap::new()),
+            heartbeat_instants: Mutex::new(HashMap::new()),
             running: Arc::new(Mutex::new(true)),
+            traffic_reports: Mutex::new(HashMap::new()),
+            stats_history: Mutex::new(VecDeque::new()),
         }
     }
 
     pub fn save_relays(&self) {
-        let relays = self.relays.lock().unwrap();
+        let relays = self.relays.lock().unwrap_or_else(|e| e.into_inner());
         if let Ok(json) = serde_json::to_string_pretty(&*relays) {
             if let Err(e) = fs::write(RELAYS_FILE, json) {
                 log(LogLevel::Error, &format!("保存中继列表失败: {}", e));
@@ -153,15 +191,15 @@ impl CentralState {
     pub fn load_relays(&self) {
         if let Ok(content) = fs::read_to_string(RELAYS_FILE) {
             if let Ok(relays) = serde_json::from_str::<HashMap<String, RelayNode>>(&content) {
-                let mut current = self.relays.lock().unwrap();
+                let mut current = self.relays.lock().unwrap_or_else(|e| e.into_inner());
                 *current = relays;
                 log(LogLevel::Info, &format!("已加载 {} 个中继服务器", current.len()));
             }
         }
     }
 
-    pub fn stop(&self) { *self.running.lock().unwrap() = false; }
-    pub fn is_running(&self) -> bool { *self.running.lock().unwrap() }
+    pub fn stop(&self) { *self.running.lock().unwrap_or_else(|e| e.into_inner()) = false; }
+    pub fn is_running(&self) -> bool { *self.running.lock().unwrap_or_else(|e| e.into_inner()) }
 }
 
 // ===== 请求/响应结构 =====
@@ -231,6 +269,7 @@ pub struct JoinRoomReq {
     pub room_name: String,
     pub player_name: String,
     pub role: String,
+    pub password: Option<String>,
     pub relay_id: Option<String>,
 }
 

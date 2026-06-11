@@ -3,7 +3,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import ElevatorText from "../ElevatorText.vue";
-import TeamDialog from "../TeamDialog.vue";
+import { startRevampHost, joinRevampRoom, leaveRoom } from "../../lib/revamp";
+import Input from "../ui/Input.vue";
+import InputGroup from "../common/InputGroup.vue";
 
 const props = defineProps<{
   showToast: (msg: string) => void;
@@ -29,16 +31,24 @@ const selectedMode = ref<"host" | "member">((localStorage.getItem(PERSIST_KEY + 
 const terracottaResult = ref<{ room?: string; url?: string } | null>(null);
 const mcLinkVersion = ref("");
 const terracottaInstalled = ref(false);
+const revampNode = ref(localStorage.getItem("revamp_node_selected") || "");
 const showLogs = ref(true);
-const showTeamDialog = ref(false);
-const teamMembers = ref<{ name: string; role: string }[]>([]);
+
+// 房间名校验：只允许 0-9 a-z A-Z
+watch(roomName, (val) => {
+  const filtered = val.replace(/[^0-9a-zA-Z]/g, '');
+  if (filtered !== val) roomName.value = filtered;
+  localStorage.setItem(PERSIST_KEY + "room_name", filtered);
+});
 
 const availableAdapters = computed(() => [
   { id: "mc-link", name: "MC Link", icon: "bi-link-45deg", version: mcLinkVersion.value || "v0.2.16", status: "ready" as const },
+  { id: "revamp", name: "MC Link revamp", icon: "bi-arrow-repeat", version: "v1", status: "ready" as const },
   { id: "taoli", name: "陶瓦联机 (Terracotta)", icon: "bi-cpu", version: "v1.0.0", status: terracottaInstalled.value ? "ready" : "preparing" },
 ]);
 
 const useTerracotta = computed(() => selectedAdapters.value.includes("taoli"));
+const useRevamp = computed(() => selectedAdapters.value.includes("revamp"));
 
 const adapterLabels = computed(() => {
   return selectedAdapters.value.map(id => {
@@ -48,8 +58,6 @@ const adapterLabels = computed(() => {
 });
 
 const modeLabel = computed(() => selectedMode.value === "host" ? "房主" : "成员");
-const isTeamRoom = computed(() => selectedAdapters.value.includes("mc-link") && currentMode.value === "running");
-
 const statusText = computed(() => {
   if (isConnecting.value) return "连接中...";
   if (currentMode.value === "running") return "已连接";
@@ -73,13 +81,19 @@ watch(selectedAdapters, (val) => {
   localStorage.setItem(PERSIST_KEY + "adapters", JSON.stringify(val));
 }, { deep: true });
 
-watch(roomName, (val) => localStorage.setItem(PERSIST_KEY + "room_name", val));
 watch(roomPassword, (val) => localStorage.setItem(PERSIST_KEY + "room_password", val));
 watch(roomCode, (val) => localStorage.setItem(PERSIST_KEY + "room_code", val));
+
+function onVisibilityChange() {
+  if (document.visibilityState === "visible") {
+    revampNode.value = localStorage.getItem("revamp_node_selected") || "";
+  }
+}
 
 onUnmounted(() => {
   if (unlistenLog) unlistenLog();
   if (unlistenLatency) unlistenLatency();
+  document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 
 onMounted(async () => {
@@ -90,6 +104,9 @@ onMounted(async () => {
   unlistenLatency = await listen<number>("latency-update", (event) => {
     latencyMs.value = event.payload;
   });
+  // 从 localStorage 刷新 revamp 节点选择
+  revampNode.value = localStorage.getItem("revamp_node_selected") || "";
+  document.addEventListener("visibilitychange", onVisibilityChange);
   try {
     mcLinkVersion.value = await invoke<string>("get_app_version");
   } catch {
@@ -120,6 +137,11 @@ function toggleAdapter(id: string) {
   }
 }
 
+function openRelayPage() {
+  const sb = document.querySelector("[data-page=\"relay\"]");
+  if (sb) (sb as HTMLElement).click();
+}
+
 async function confirmStart() {
   if (currentMode.value === "running" || isConnecting.value) {
     props.showToast("联机功能已在运行中");
@@ -137,6 +159,18 @@ async function confirmStart() {
     return;
   }
 
+  const useRevampCheck = useRevamp.value;
+  if (useRevampCheck) {
+    if (!roomName.value || !roomPassword.value) {
+      props.showToast("请填写房间名和密码");
+      return;
+    }
+    if (selectedMode.value === "host" && !revampNode.value) {
+      props.showToast("请先在中继页面选择一个 revamp 节点");
+      return;
+    }
+  }
+
   const hasRoomCode = useTerracotta.value;
   if (hasRoomCode && roomCode.value && !/^U\/[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}$/.test(roomCode.value)) {
     props.showToast("房间码格式错误，应为 U/XXXX-XXXX-XXXX-XXXX");
@@ -147,7 +181,51 @@ async function confirmStart() {
   logs.value = [];
 
   try {
-    if (useTerracotta.value) {
+    if (useRevampCheck) {
+      if (selectedMode.value === "host") {
+        // 房主 mode: 扫描局域网自动获取本地 MC 端口
+        const [nodeIp, nodePort] = revampNode.value.split(":");
+        let localPort = 0;
+        try {
+          const servers: any[] = await invoke("scan_lan_servers");
+          if (servers.length > 0) {
+            localPort = servers[0].port;
+          }
+        } catch {}
+        if (localPort === 0) {
+          props.showToast("未检测到局域网 MC 服务器，请先开启局域网联机");
+          isConnecting.value = false;
+          return;
+        }
+        const result = await startRevampHost({
+          localPort,
+          nodeIp,
+          nodePort,
+          roomId: roomName.value,
+          password: roomPassword.value,
+          playerName: props.playerName,
+        });
+        currentMode.value = "running";
+        emit("runningChange", true);
+        props.showToast(result);
+      } else {
+        // 成员 mode: 加入 revamp 房间
+        const result = await joinRevampRoom({
+          roomId: roomName.value,
+          password: roomPassword.value,
+          playerName: props.playerName,
+        });
+        if (result.status === "ok") {
+          const addr = `${result.node_ip}:${result.node_port}`;
+          await navigator.clipboard.writeText(addr);
+          props.showToast(`已复制节点地址: ${addr}`);
+          currentMode.value = "running";
+          emit("runningChange", true);
+        } else {
+          props.showToast(`加入失败: ${result.status}`);
+        }
+      }
+    } else if (useTerracotta.value) {
       if (selectedMode.value === "host") {
         const result: any = await invoke("start_terracotta_host", { roomCode: roomCode.value, playerName: props.playerName });
         terracottaResult.value = { room: result.room, url: result.url };
@@ -156,7 +234,7 @@ async function confirmStart() {
           emit("runningChange", true);
           props.showToast(`房间已创建! 房间码: ${result.room || "未知"}`);
         } else if (result.state === "exception") {
-          props.showToast(`陶瓦联机异常 (代码: ${result.type || "未知"})`);
+          props.showToast(`陶瓦联机异常 (代码: ${result.exception_type || "未知"})`);
         }
       } else {
         const result: any = await invoke("start_terracotta_guest", { roomCode: roomCode.value, playerName: props.playerName });
@@ -166,7 +244,7 @@ async function confirmStart() {
           emit("runningChange", true);
           props.showToast(`已连接! 本地地址: ${result.url || "未知"}`);
         } else if (result.state === "exception") {
-          props.showToast(`陶瓦联机异常 (代码: ${result.type || "未知"})`);
+          props.showToast(`陶瓦联机异常 (代码: ${result.exception_type || "未知"})`);
         }
       }
     } else {
@@ -193,6 +271,15 @@ async function confirmStart() {
 }
 
 async function stopOnline() {
+  // revamp 适配器模式下清理房间
+  if (selectedAdapters.value.includes("revamp") && roomName.value) {
+    try {
+      await leaveRoom({ room_id: roomName.value, player_name: props.playerName });
+    } catch {
+      // 忽略清理失败
+    }
+  }
+
   try {
     await invoke("stop_online");
     props.showToast("联机已停止");
@@ -205,19 +292,6 @@ async function stopOnline() {
     logs.value = [];
     terracottaResult.value = null;
   }
-}
-
-async function openTeamDialog() {
-  try {
-    const players: any = await invoke("get_players", { roomName: roomName.value });
-    teamMembers.value = (players || []).map((p: any) => ({
-      name: p.name,
-      role: p.role === "host" ? "队长" : "成员",
-    }));
-  } catch {
-    teamMembers.value = [];
-  }
-  showTeamDialog.value = true;
 }
 
 function autoScroll(el: Event) {
@@ -276,20 +350,29 @@ defineExpose({ confirmStart, isConnecting });
           <div class="no-adapter-hint">请在右边选择一个适配器</div>
         </template>
 
-        <template v-if="selectedAdapters.includes('mc-link')">
-          <div class="input-group">
-            <label>房间名</label>
-            <input type="text" v-model="roomName" placeholder="输入房间名" class="form-input" />
-          </div>
-          <div class="input-group">
-            <label>密码</label>
-            <input type="password" v-model="roomPassword" placeholder="输入密码" class="form-input" />
-          </div>
+        <template v-if="selectedAdapters.includes('mc-link') || useRevamp">
+          <InputGroup label="房间名">
+            <Input type="text" v-model="roomName" placeholder="输入房间名" />
+          </InputGroup>
+          <InputGroup label="密码">
+            <Input type="password" v-model="roomPassword" placeholder="输入密码" />
+          </InputGroup>
         </template>
+
+        <div v-if="useRevamp && selectedMode === 'host'" class="room-code-group">
+          <label class="section-label">选择节点</label>
+          <div class="revamp-node-info">
+            <i class="bi bi-hdd-network"></i>
+            <span v-if="revampNode">{{ revampNode }}</span>
+            <span v-else class="text-muted">未选择</span>
+            <button class="revamp-node-btn" @click="openRelayPage">去选择</button>
+          </div>
+          <div class="revamp-hint">在「中继」页面选择 revamp 节点后自动显示</div>
+        </div>
 
         <div v-if="useTerracotta && selectedMode === 'member'" class="room-code-group">
           <label class="section-label">房间码</label>
-          <input
+          <Input
             type="text"
             v-model="roomCode"
             placeholder="U/XXXX-XXXX-XXXX-XXXX"
@@ -298,7 +381,7 @@ defineExpose({ confirmStart, isConnecting });
         </div>
         <div v-if="useTerracotta && selectedMode === 'host'" class="room-code-group">
           <label class="section-label">房间码 <span class="opt-label">（可选，留空自动生成）</span></label>
-          <input
+          <Input
             type="text"
             v-model="roomCode"
             placeholder="U/XXXX-XXXX-XXXX-XXXX"
@@ -357,10 +440,6 @@ defineExpose({ confirmStart, isConnecting });
 
   <div v-if="currentMode === 'running'" class="bottom-bar">
     <div class="bottom-bar-left">
-      <button v-if="isTeamRoom" class="tb-btn" title="队伍" @click="openTeamDialog">
-        <i class="bi bi-flag-fill"></i>
-        <span>队伍</span>
-      </button>
       <button class="tb-btn" title="运行日志" @click="showLogs = !showLogs">
         <i class="bi bi-terminal"></i>
         <span>{{ showLogs ? '隐藏日志' : '运行日志' }}</span>
@@ -371,20 +450,14 @@ defineExpose({ confirmStart, isConnecting });
       </button>
     </div>
     <div class="bottom-bar-right">
-      <button class="btn btn-danger btn-stop" @click="stopOnline">
+      <Button variant="danger" class="btn-stop" @click="stopOnline">
         <i class="bi bi-stop-fill"></i>
         停止联机
-      </button>
+      </Button>
     </div>
   </div>
 
-  <TeamDialog
-    :visible="showTeamDialog"
-    :room-name="roomName"
-    :members="teamMembers"
-    @close="showTeamDialog = false"
-  />
-</template>
+  </template>
 
 <style scoped>
 .top-bar {
@@ -500,14 +573,6 @@ defineExpose({ confirmStart, isConnecting });
   font-size: 15px;
 }
 
-.btn-stop {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 20px;
-  font-size: 13px;
-}
-
 .content-area {
   flex: 1;
   min-height: 0;
@@ -539,14 +604,6 @@ defineExpose({ confirmStart, isConnecting });
   display: flex;
   justify-content: flex-end;
   padding-top: 24px;
-}
-
-.btn-start {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 28px;
-  font-size: 15px;
 }
 
 .section-label {
@@ -615,40 +672,6 @@ defineExpose({ confirmStart, isConnecting });
 .mode-btn-desc {
   font-size: 11px;
   color: var(--text-muted);
-}
-
-.input-group {
-  margin-bottom: 12px;
-}
-
-.input-group label {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.form-input, .code-input {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  font-size: 14px;
-  transition: border-color 0.15s ease;
-}
-
-.code-input {
-  letter-spacing: 1px;
-}
-
-.form-input:focus,
-.code-input:focus {
-  outline: none;
-  border-color: var(--accent-primary);
 }
 
 .opt-label {
@@ -887,128 +910,44 @@ defineExpose({ confirmStart, isConnecting });
   margin-top: 16px;
 }
 
-/* Dialog styles */
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+/* ===== Revamp 节点信息 ===== */
+.revamp-node-info {
   display: flex;
   align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  backdrop-filter: blur(4px);
-}
-
-.dialog-card {
-  background: var(--bg-secondary);
+  gap: 10px;
+  padding: 10px 14px;
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  width: 460px;
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
-}
-
-.dialog-card-small {
-  width: 380px;
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0;
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.dialog-close {
-  width: 32px;
-  height: 32px;
   border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: var(--bg-tertiary);
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: monospace;
+}
+
+.revamp-node-info i {
   font-size: 18px;
+  color: var(--accent-primary);
+}
+
+.revamp-node-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent-primary);
+  font-size: 12px;
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.dialog-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+.revamp-node-btn:hover {
+  background: rgba(0, 102, 204, 0.1);
 }
 
-.dialog-section {
-  padding: 16px 24px 0;
-}
-
-.dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 20px 24px;
-}
-
-.player-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.player-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-}
-
-.player-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.player-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.player-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.player-role {
+.revamp-hint {
   font-size: 11px;
   color: var(--text-muted);
-}
-
-.empty-list {
-  text-align: center;
-  color: var(--text-muted);
-  padding: 20px 0;
-  font-size: 14px;
+  margin-top: 6px;
 }
 </style>

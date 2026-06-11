@@ -51,7 +51,7 @@ impl HostMode {
     where
         F: Fn(String) + Send + 'static,
     {
-        *self.log_callback.lock().unwrap() = Some(Box::new(callback));
+        *self.log_callback.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(callback));
     }
 
     #[allow(dead_code)]
@@ -59,12 +59,12 @@ impl HostMode {
     where
         F: Fn() + Send + 'static,
     {
-        *self.test_callback.lock().unwrap() = Some(Box::new(callback));
+        *self.test_callback.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(callback));
     }
 
     fn log(&self, msg: String) {
         println!("{}", msg);
-        if let Some(ref callback) = *self.log_callback.lock().unwrap() {
+        if let Some(ref callback) = *self.log_callback.lock().unwrap_or_else(|e| e.into_inner()) {
             callback(msg);
         }
     }
@@ -119,14 +119,14 @@ impl HostMode {
         self.game_port = selected_game_port;
         self.motd = motd;
         let running = self.running.clone();
-        *running.lock().unwrap() = true;
+        *running.lock().unwrap_or_else(|e| e.into_inner()) = true;
         let game_port = self.game_port;
 
         let relay_stream = self.relay_stream.clone().ok_or("请先调用 connect_and_register")?;
 
         self.log(format!("[启动] 房主模式，游戏端口: {}", game_port));
 
-        let relay_stream = relay_stream.lock().unwrap().try_clone().map_err(|e| e.to_string())?;
+        let relay_stream = relay_stream.lock().unwrap_or_else(|e| e.into_inner()).try_clone().map_err(|e| e.to_string())?;
         relay_stream.set_nodelay(true).ok();
 
         let relay_for_read = relay_stream.try_clone().map_err(|e| e.to_string())?;
@@ -187,7 +187,7 @@ impl HostMode {
 
         while !stop_signal.load(Ordering::Relaxed) {
             let mc_data = {
-                let guard = mc_stream.lock().unwrap();
+                let guard = mc_stream.lock().unwrap_or_else(|e| e.into_inner());
                 let stream = match guard.as_ref() {
                     Some(s) => s,
                     None => break,
@@ -213,7 +213,7 @@ impl HostMode {
                 payload.extend_from_slice(&data);
 
                 let packet = protocol::pack_packet(&room, &password, &payload);
-                if protocol::write_packet(&mut relay_stream.lock().unwrap(), &packet).is_err() {
+                if protocol::write_packet(&mut relay_stream.lock().unwrap_or_else(|e| e.into_inner()), &packet).is_err() {
                     stop_signal.store(true, Ordering::SeqCst);
                     break;
                 }
@@ -222,7 +222,7 @@ impl HostMode {
             }
         }
 
-        if let Some(stream) = mc_stream.lock().unwrap().take() {
+        if let Some(stream) = mc_stream.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = stream.shutdown(Shutdown::Both);
         }
         mc_connected.store(false, Ordering::SeqCst);
@@ -231,7 +231,7 @@ impl HostMode {
     fn tcp_to_mc_relay(relay_stream: Arc<Mutex<TcpStream>>, mc_stream: Arc<Mutex<Option<TcpStream>>>, mc_connected: Arc<AtomicBool>, stop_signal: Arc<AtomicBool>, game_port: u16, _room: String, password: String, log_callback: Arc<Mutex<Option<Box<dyn Fn(String) + Send>>>>, test_callback: Arc<Mutex<Option<Box<dyn Fn() + Send>>>>) {
         let log = |msg: String| {
             println!("{}", msg);
-            if let Some(ref callback) = *log_callback.lock().unwrap() {
+            if let Some(ref callback) = *log_callback.lock().unwrap_or_else(|e| e.into_inner()) {
                 callback(msg);
             }
         };
@@ -254,7 +254,7 @@ impl HostMode {
             };
 
             if !packet.is_empty() && packet[0] == 0x41 {
-                if let Some(ref callback) = *test_callback.lock().unwrap() {
+                if let Some(ref callback) = *test_callback.lock().unwrap_or_else(|e| e.into_inner()) {
                     callback();
                 }
                 continue;
@@ -284,7 +284,7 @@ impl HostMode {
                             break;
                         }
                         stream.flush().ok();
-                        mc_stream.lock().unwrap().replace(stream);
+                        mc_stream.lock().unwrap_or_else(|e| e.into_inner()).replace(stream);
                         mc_connected.store(true, Ordering::SeqCst);
                         connected = true;
                     }
@@ -298,7 +298,7 @@ impl HostMode {
             }
 
             let mc_write_ok = {
-                let guard = mc_stream.lock().unwrap();
+                let guard = mc_stream.lock().unwrap_or_else(|e| e.into_inner());
                 match guard.as_ref() {
                     Some(mc) => match mc.try_clone() {
                         Ok(mut mc_clone) => {
@@ -317,7 +317,7 @@ impl HostMode {
             }
         }
 
-        if let Some(stream) = mc_stream.lock().unwrap().take() {
+        if let Some(stream) = mc_stream.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = stream.shutdown(Shutdown::Both);
         }
         mc_connected.store(false, Ordering::SeqCst);
@@ -327,7 +327,7 @@ impl HostMode {
     pub fn send_test_packet(&self) {
         if let Some(ref stream) = self.relay_stream {
             let packet = protocol::relay_test_packet(&self.room, &self.password);
-            let mut stream = stream.lock().unwrap();
+            let mut stream = stream.lock().unwrap_or_else(|e| e.into_inner());
             let _ = protocol::write_packet(&mut stream, &packet);
             println!("[测试] 已发送测试数据包");
         }
@@ -335,6 +335,6 @@ impl HostMode {
 
     #[allow(dead_code)]
     pub fn stop(&mut self) {
-        *self.running.lock().unwrap() = false;
+        *self.running.lock().unwrap_or_else(|e| e.into_inner()) = false;
     }
 }

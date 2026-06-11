@@ -4,14 +4,16 @@ use std::time::{Duration, Instant};
 use std::thread;
 use tauri::Emitter;
 use tauri::Manager;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use futures_util::StreamExt;
+use tokio::io::AsyncWriteExt;
 use crate::central;
 use crate::client::ClientMode;
 use crate::host::HostMode;
 use crate::lan;
 use crate::protocol;
 use crate::state::AppState;
+use crate::state::DataDir;
 use crate::adapter::AdapterManager;
 use crate::terracotta_client::TerracottaClient;
 use uapi_sdk_rust::services::GetNetworkIpinfoParams;
@@ -41,7 +43,7 @@ pub(crate) fn scan_lan_servers() -> Result<Vec<LanServerInfo>, String> {
 
 #[tauri::command]
 pub(crate) fn get_latency(state: tauri::State<'_, AppState>) -> u64 {
-    *state.latency_ms.lock().unwrap()
+    state.latency_ms.lock().map(|g| *g).unwrap_or(0)
 }
 
 pub(crate) fn latency_monitor(relay_addr: std::net::SocketAddr, state: Arc<AppState>, window: tauri::Window) {
@@ -60,17 +62,23 @@ pub(crate) fn latency_monitor(relay_addr: std::net::SocketAddr, state: Arc<AppSt
                         protocol::write_packet(&mut stream, &[0x32])?;
                         protocol::read_packet(&mut stream)?;
                         let ms = start.elapsed().as_millis() as u64;
-                        *state.latency_ms.lock().unwrap() = ms;
+                        if let Ok(mut g) = state.latency_ms.lock() {
+                            *g = ms;
+                        }
                         let _ = window.emit("latency-update", ms);
                         Ok::<_, std::io::Error>(())
                     })
                     .is_ok();
                 if !ping_ok {
-                    *state.latency_ms.lock().unwrap() = 999;
+                    if let Ok(mut g) = state.latency_ms.lock() {
+                        *g = 999;
+                    }
                     let _ = window.emit("latency-update", 999u64);
                 }
             }
-            *state.latency_ms.lock().unwrap() = 0;
+            if let Ok(mut g) = state.latency_ms.lock() {
+                *g = 0;
+            }
             let _ = window.emit("latency-update", 0u64);
         })
         .ok();
@@ -82,16 +90,36 @@ struct RelaySelection {
     id: String,
 }
 
-/// 选择并解析中继服务器
+/// 选择并解析中继服务器（延迟优先）
 fn select_relay(selected_relay: &str, window: &tauri::Window) -> Result<RelaySelection, String> {
     if selected_relay == "__auto__" || selected_relay.is_empty() {
-        window.emit("app-log", "[启动] 自动选择中继服务器...".to_string()).ok();
+        window.emit("app-log", "[启动] 自动选择中继服务器（延迟优先）...".to_string()).ok();
         let relays = central::get_relays().ok_or("网络错误，请检查网络连接")?;
         if relays.is_empty() {
             return Err("没有可用的中继服务器".to_string());
         }
-        let relay = &relays[0];
-        window.emit("app-log", format!("[启动] 选中中继: {} ({})", relay.name, relay.address)).ok();
+
+        // 对每个中继测延迟，选择最低延迟的
+        let mut measured: Vec<(usize, u64)> = Vec::new();
+        for (i, relay) in relays.iter().enumerate() {
+            if let Some(addr) = protocol::resolve_address(&relay.address) {
+                let start = Instant::now();
+                if std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok() {
+                    let ms = start.elapsed().as_millis() as u64;
+                    measured.push((i, ms));
+                }
+            }
+        }
+
+        let selected_idx = measured.iter()
+            .min_by_key(|(_, ms)| *ms)
+            .map(|(i, _)| *i)
+            .unwrap_or(0);
+
+        let relay = &relays[selected_idx];
+        window.emit("app-log", format!("[启动] 选中中继: {} ({}) 延迟: {}ms",
+            relay.name, relay.address,
+            measured.iter().find(|(i, _)| *i == selected_idx).map(|(_, ms)| *ms).unwrap_or(0))).ok();
         Ok(RelaySelection {
             addr: protocol::resolve_address(&relay.address).ok_or("网络连接失败")?,
             id: relay.id.clone(),
@@ -130,7 +158,9 @@ fn start_common_services(
     password: String,
 ) {
     latency_monitor(relay_addr, app_state, window);
-    *current_room.lock().unwrap() = Some((room_name, password));
+    if let Ok(mut room) = current_room.lock() {
+        *room = Some((room_name, password));
+    }
 }
 
 /// 启动房主工作线程
@@ -208,7 +238,7 @@ fn start_host_mode(
     central::create_room(&room_name, &password, &relay.id).ok_or("创建房间失败，可能房间名已存在")?;
     window.emit("app-log", format!("[启动] 房间已创建: {}", room_name)).ok();
 
-    central::join_room(&room_name, &player_name, "host", Some(relay.id.as_str()));
+    central::join_room(&room_name, &player_name, "host", &password, Some(relay.id.as_str()));
 
     spawn_host_worker(host_mode, mc_port, mc_motd, stop_signal.clone(), window.clone());
     start_common_services(relay.addr, app_state, window, current_room, room_name, password);
@@ -230,7 +260,7 @@ fn start_client_mode(
     window.emit("app-log", "成员模式: 连接到中继服务器...".to_string()).ok();
     let local_port = 25565u16;
 
-    central::join_room(&room_name, &player_name, "member", Some(relay.id.as_str()));
+    central::join_room(&room_name, &player_name, "member", &password, Some(relay.id.as_str()));
 
     spawn_client_worker(room_name.clone(), password.clone(), relay.addr, local_port, stop_signal.clone(), window.clone());
     start_common_services(relay.addr, app_state, window, current_room, room_name, password);
@@ -259,7 +289,9 @@ pub(crate) async fn start_online(
         let relay = select_relay(&selected_relay, &window)?;
 
         let stop_signal = Arc::new(AtomicBool::new(false));
-        *state.stop_signal.lock().unwrap() = Some(stop_signal.clone());
+        if let Ok(mut sig) = state.stop_signal.lock() {
+            *sig = Some(stop_signal.clone());
+        }
 
         let app_state = Arc::new(AppState {
             current_room: state.current_room.clone(),
@@ -288,17 +320,23 @@ pub(crate) async fn start_online(
 }
 
 fn stop_online_inner(state: &AppState) {
-    if let Some(sig) = state.stop_signal.lock().unwrap().take() {
-        sig.store(true, Ordering::Relaxed);
+    if let Ok(mut sig) = state.stop_signal.lock() {
+        if let Some(s) = sig.take() {
+            s.store(true, Ordering::Relaxed);
+        }
     }
     thread::sleep(Duration::from_millis(500));
     state.is_running.store(false, Ordering::Relaxed);
-    let room = state.current_room.lock().unwrap().clone();
+    let room = state.current_room.lock().ok().and_then(|g| g.clone());
     if let Some((ref room_name, _)) = room {
         central::delete_room(room_name);
     }
-    *state.current_room.lock().unwrap() = None;
-    *state.latency_ms.lock().unwrap() = 0;
+    if let Ok(mut room) = state.current_room.lock() {
+        *room = None;
+    }
+    if let Ok(mut lat) = state.latency_ms.lock() {
+        *lat = 0;
+    }
 }
 
 #[tauri::command]
@@ -335,6 +373,11 @@ pub(crate) fn close_window(_window: tauri::Window, state: tauri::State<'_, AppSt
 }
 
 #[tauri::command]
+pub(crate) fn drag_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub(crate) fn exit_app(state: tauri::State<'_, AppState>, adapter_manager: tauri::State<'_, Arc<Mutex<AdapterManager>>>, app: tauri::AppHandle) -> Result<String, String> {
     stop_online_inner(&state);
     if let Ok(manager) = adapter_manager.lock() {
@@ -365,6 +408,17 @@ pub(crate) fn set_tray_size(window: tauri::Window, width: f64, height: f64) {
 }
 
 #[tauri::command]
+pub(crate) fn resize_window(window: tauri::Window, width: f64, height: f64, min_width: Option<f64>, min_height: Option<f64>, center: bool) {
+    if let (Some(mw), Some(mh)) = (min_width, min_height) {
+        let _ = window.set_min_size(Some(tauri::LogicalSize::new(mw, mh)));
+    }
+    let _ = window.set_size(tauri::LogicalSize::new(width, height));
+    if center {
+        let _ = window.center();
+    }
+}
+
+#[tauri::command]
 pub(crate) async fn ping_relay(address: String) -> Result<u64, String> {
     let addr = protocol::resolve_address(&address).ok_or("地址解析失败")?;
     let start = Instant::now();
@@ -374,6 +428,32 @@ pub(crate) async fn ping_relay(address: String) -> Result<u64, String> {
     protocol::write_packet(&mut stream, &[0x32]).map_err(|_| "发送失败".to_string())?;
     protocol::read_packet(&mut stream).map_err(|_| "无响应".to_string())?;
     Ok(start.elapsed().as_millis() as u64)
+}
+
+#[derive(Serialize)]
+pub(crate) struct RoomCheckResult {
+    exists: bool,
+    room_type: String, // "mc_link", "revamp", or "none"
+}
+
+#[tauri::command]
+pub(crate) async fn check_room_full(room_name: String) -> Result<RoomCheckResult, String> {
+    // 并行检查 MC Link 房间和 revamp 房间
+    let (mc_link_result, revamp_result) = tokio::join!(
+        tokio::task::spawn_blocking({
+            let rn = room_name.clone();
+            move || central::get_room(&rn)
+        }),
+        crate::revamp::room_exists(&room_name)
+    );
+
+    if let Ok(Some(true)) = mc_link_result {
+        return Ok(RoomCheckResult { exists: true, room_type: "mc_link".to_string() });
+    }
+    if let Ok(true) = revamp_result {
+        return Ok(RoomCheckResult { exists: true, room_type: "revamp".to_string() });
+    }
+    Ok(RoomCheckResult { exists: false, room_type: "none".to_string() })
 }
 
 #[derive(Serialize)]
@@ -403,13 +483,10 @@ pub(crate) async fn get_ip_info(host: String) -> Result<IpInfo, String> {
 
 #[tauri::command]
 pub(crate) async fn download_adapter(window: tauri::Window, adapter_manager: tauri::State<'_, Arc<Mutex<AdapterManager>>>) -> Result<String, String> {
-    let exe_dir = std::env::current_exe()
-        .map_err(|e| format!("获取可执行文件路径失败: {}", e))?
-        .parent()
-        .ok_or("无法获取可执行文件目录")?
-        .to_path_buf();
-
-    let adapter_dir = exe_dir.join("Adapter").join("Terracotta");
+    let adapter_dir = {
+        let mgr = adapter_manager.lock().map_err(|e| format!("内部错误: {}", e))?;
+        mgr.adapter_dir.join("Terracotta")
+    };
     std::fs::create_dir_all(&adapter_dir)
         .map_err(|e| format!("创建目录失败: {}", e))?;
 
@@ -434,29 +511,34 @@ pub(crate) async fn download_adapter(window: tauri::Window, adapter_manager: tau
         return Err(format!("下载失败 (HTTP {})", response.status()));
     }
 
+    // 创建临时文件用于流式写入
+    let tmp_path = adapter_dir.join(format!("{}.tmp", filename));
+    let mut file = tokio::fs::File::create(&tmp_path)
+        .await
+        .map_err(|e| format!("创建临时文件失败: {}", e))?;
+
     let total = response.content_length().unwrap_or(0);
     let mut downloaded: u64 = 0;
-    let mut buffer = Vec::new();
     let mut stream = response.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("读取数据失败: {}", e))?;
         downloaded += chunk.len() as u64;
-        buffer.extend_from_slice(&chunk);
+        file.write_all(&chunk).await.map_err(|e| format!("写入文件失败: {}", e))?;
         if total > 0 {
             let pct = (downloaded as f64 / total as f64 * 100.0) as u8;
             let _ = window.emit("download-progress", pct);
         }
     }
 
-    if buffer.is_empty() {
-        return Err("下载失败: 文件为空".to_string());
-    }
+    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
+    drop(file);
 
-    std::fs::write(&archive_path, &buffer)
-        .map_err(|e| format!("写入文件失败: {}", e))?;
+    // 重命名临时文件为正式文件
+    std::fs::rename(&tmp_path, &archive_path)
+        .map_err(|e| format!("重命名文件失败: {}", e))?;
 
-    window.emit("app-log", format!("[下载] 下载完成 ({} bytes)，开始解压...", buffer.len())).ok();
+    window.emit("app-log", format!("[下载] 下载完成 ({} bytes)，开始解压...", downloaded)).ok();
 
     let file = std::fs::File::open(&archive_path)
         .map_err(|e| format!("打开下载文件失败: {}", e))?;
@@ -470,35 +552,40 @@ pub(crate) async fn download_adapter(window: tauri::Window, adapter_manager: tau
 
     window.emit("app-log", "[下载] 陶瓦联机已安装完成，正在启动...".to_string()).ok();
 
-    let manager = adapter_manager.lock().unwrap();
+    let manager = match adapter_manager.lock() {
+        Ok(m) => m,
+        Err(e) => return Err(format!("内部错误: {}", e)),
+    };
     manager.launch_terracotta_after_download();
 
     Ok("陶瓦联机已安装并启动".to_string())
 }
 
 #[tauri::command]
+pub(crate) fn adapter_startup_init(adapter_manager: tauri::State<'_, Arc<Mutex<AdapterManager>>>) -> Result<String, String> {
+    let manager = adapter_manager.lock().map_err(|e| format!("内部错误: {}", e))?;
+    manager.launch_all();
+    let status = manager.get_status();
+    if status.running {
+        Ok("适配器已就绪".to_string())
+    } else if status.installed {
+        Ok("适配器已安装，正在启动...".to_string())
+    } else {
+        Ok("适配器正在安装...".to_string())
+    }
+}
+
+#[tauri::command]
 pub(crate) fn get_adapter_status(adapter_manager: tauri::State<'_, Arc<Mutex<AdapterManager>>>) -> Result<crate::adapter::AdapterStatus, String> {
-    let manager = adapter_manager.lock().unwrap();
+    let manager = adapter_manager.lock().map_err(|e| format!("内部错误: {}", e))?;
     Ok(manager.get_status())
-}
-
-#[tauri::command]
-pub(crate) fn start_adapter(adapter_manager: tauri::State<'_, Arc<Mutex<AdapterManager>>>) -> Result<String, String> {
-    let manager = adapter_manager.lock().unwrap();
-    manager.start_terracotta()
-}
-
-#[tauri::command]
-pub(crate) fn stop_adapter(adapter_manager: tauri::State<'_, Arc<Mutex<AdapterManager>>>) -> Result<String, String> {
-    let manager = adapter_manager.lock().unwrap();
-    manager.stop_terracotta()
 }
 
 #[tauri::command]
 pub(crate) async fn get_terracotta_state(adapter_manager: tauri::State<'_, Arc<Mutex<AdapterManager>>>) -> Result<serde_json::Value, String> {
     let port = {
-        let mgr = adapter_manager.lock().unwrap();
-        let p = *mgr.terracotta_port.lock().unwrap();
+        let mgr = adapter_manager.lock().map_err(|e| format!("内部错误: {}", e))?;
+        let p = *mgr.terracotta_port.lock().map_err(|e| format!("内部错误: {}", e))?;
         p
     };
     match port {
@@ -521,7 +608,7 @@ pub(crate) async fn start_terracotta_host(
     player_name: String,
 ) -> Result<serde_json::Value, String> {
     let port = {
-        let mgr = adapter_manager.lock().unwrap();
+        let mgr = adapter_manager.lock().map_err(|e| format!("内部错误: {}", e))?;
         mgr.ensure_running()?
     };
     let client = TerracottaClient::new(port);
@@ -551,59 +638,242 @@ pub(crate) async fn start_terracotta_host(
     serde_json::to_value(&result).map_err(|e| format!("序列化失败: {}", e))
 }
 
-// ===== OAuth2 命令 =====
+// ===== 合并命令 =====
 
-#[tauri::command]
-pub(crate) fn get_oauth_user(oauth_state: tauri::State<'_, Arc<crate::oauth::OAuthState>>) -> Result<Option<crate::oauth::OAuthUser>, String> {
-    Ok(oauth_state.get_user())
+#[derive(Serialize)]
+pub(crate) struct PrepareAppData {
+    personalization: PersonalizationSettings,
+    default_effect: String,
+    relays: Vec<crate::central::RelayInfo>,
+    app_version: String,
+    tauri_version: String,
+    google_fonts_css: Option<String>,
+    bootstrap_icons_css: Option<String>,
+}
+
+async fn download_google_fonts_css() -> Option<String> {
+    let url = "https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap";
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build().ok()?;
+    let resp = client.get(url).send().await.ok()?;
+    if !resp.status().is_success() { return None; }
+    resp.text().await.ok()
+}
+
+async fn download_bootstrap_icons() -> Option<String> {
+    let bi_url = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.css";
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build().ok()?;
+
+    // 下载 CSS
+    let css_resp = client.get(bi_url).send().await.ok()?;
+    if !css_resp.status().is_success() { return None; }
+    let css = css_resp.text().await.ok()?;
+
+    // 提取 woff2 字体 URL
+    let marker = r#"url(""#;
+    let start = css.find(marker)?;
+    let from = start + marker.len();
+    let end = css[from..].find(r#"")"#)?;
+    let font_url = &css[from..from + end];
+
+    // 下载字体文件
+    let base = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/";
+    let full_url = if font_url.starts_with("http") {
+        font_url.to_string()
+    } else {
+        format!("{}{}", base, font_url.trim_start_matches("./"))
+    };
+    let font_resp = client.get(&full_url).send().await.ok()?;
+    if !font_resp.status().is_success() { return None; }
+    let font_bytes = font_resp.bytes().await.ok()?;
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&font_bytes);
+    let data_uri = format!("data:application/x-woff2;base64,{}", b64);
+
+    // 替换 CSS 中的字体 URL 为 data URI
+    let rewritten = css.replace(font_url, &data_uri);
+    Some(rewritten)
 }
 
 #[tauri::command]
-pub(crate) fn is_oauth_logged_in(oauth_state: tauri::State<'_, Arc<crate::oauth::OAuthState>>) -> bool {
-    oauth_state.is_logged_in()
-}
+pub(crate) async fn prepare_app(
+    data_dir: tauri::State<'_, DataDir>,
+) -> Result<PrepareAppData, String> {
+    let pers = load_personalization(&data_dir.0).unwrap_or_default();
+    let default_effect = get_default_effect();
+    let relays = crate::central::get_relays().unwrap_or_default();
+    let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let tauri_version = get_tauri_version();
 
-#[tauri::command]
-pub(crate) fn get_oauth_config(oauth_state: tauri::State<'_, Arc<crate::oauth::OAuthState>>) -> Result<Option<crate::oauth::OAuthProvider>, String> {
-    Ok(oauth_state.get_config())
-}
+    // 后端并行下载字体/图标资源
+    let (gfx_css, bi_css) = tokio::join!(
+        download_google_fonts_css(),
+        download_bootstrap_icons(),
+    );
 
-#[tauri::command]
-pub(crate) fn save_oauth_config(
-    oauth_state: tauri::State<'_, Arc<crate::oauth::OAuthState>>,
-    config: crate::oauth::OAuthProvider,
-) -> Result<(), String> {
-    oauth_state.save_config(config);
-    Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn oauth_login(
-    oauth_state: tauri::State<'_, Arc<crate::oauth::OAuthState>>,
-    window: tauri::Window,
-) -> Result<crate::oauth::OAuthUser, String> {
-    window.emit("app-log", "[OAuth] 正在启动登录流程...".to_string()).ok();
-    window.emit("app-log", "[OAuth] 将在浏览器中打开授权页面".to_string()).ok();
-
-    let state = oauth_state.inner().clone();
-    let result = tokio::task::spawn_blocking(move || {
-        state.login()
+    Ok(PrepareAppData {
+        personalization: pers,
+        default_effect,
+        relays,
+        app_version,
+        tauri_version,
+        google_fonts_css: gfx_css,
+        bootstrap_icons_css: bi_css,
     })
-    .await
-    .map_err(|e| format!("登录线程异常: {}", e))??;
+}
 
-    window.emit("app-log", format!("[OAuth] 登录成功: {}", result.name)).ok();
-    Ok(result)
+#[derive(Serialize)]
+pub(crate) struct InitAppData {
+    personalization: PersonalizationSettings,
+    default_effect: String,
+    relays: Vec<crate::central::RelayInfo>,
+    app_version: String,
+    tauri_version: String,
+}
+
+/// 仅加载配置（资源已缓存时使用，轻量快速）
+#[tauri::command]
+pub(crate) fn init_app(data_dir: tauri::State<'_, DataDir>) -> Result<InitAppData, String> {
+    let pers = load_personalization(&data_dir.0).unwrap_or_default();
+    let default_effect = get_default_effect();
+    let relays = crate::central::get_relays().unwrap_or_default();
+    let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let tauri_version = get_tauri_version();
+    Ok(InitAppData { personalization: pers, default_effect, relays, app_version, tauri_version })
+}
+
+// ===== MC Link revamp 命令 =====
+
+#[tauri::command]
+pub(crate) async fn revamp_ping() -> Result<bool, String> {
+    crate::revamp::ping_central().await
 }
 
 #[tauri::command]
-pub(crate) fn oauth_logout(
-    oauth_state: tauri::State<'_, Arc<crate::oauth::OAuthState>>,
+pub(crate) async fn revamp_get_nodes() -> Result<Vec<crate::revamp::RevampNode>, String> {
+    crate::revamp::get_nodes().await
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_get_rooms() -> Result<Vec<crate::revamp::RevampRoom>, String> {
+    crate::revamp::get_rooms().await
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_room_exists(room_id: String) -> Result<bool, String> {
+    crate::revamp::room_exists(&room_id).await
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_create_room(
+    room_id: String,
+    password: String,
+    node_ip: String,
+    node_port: String,
+    creator_name: String,
+) -> Result<serde_json::Value, String> {
+    crate::revamp::create_room(&room_id, &password, &node_ip, &node_port, &creator_name).await
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_join_room(
+    room_id: String,
+    password: String,
+    player_name: String,
+) -> Result<serde_json::Value, String> {
+    crate::revamp::join_room(&room_id, &password, &player_name).await
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_leave_room(
+    room_id: String,
+    player_name: String,
+) -> Result<serde_json::Value, String> {
+    crate::revamp::leave_room(&room_id, &player_name).await
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_get_version() -> Result<crate::revamp::RevampVersion, String> {
+    crate::revamp::get_version().await
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_register(username: String, password: String) -> Result<crate::revamp::AccountResult, String> {
+    crate::revamp::register_account(&username, &password).await
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_login(username: String, password: String) -> Result<crate::revamp::AccountResult, String> {
+    crate::revamp::login_account(&username, &password).await
+}
+
+// ===== Revamp 中继命令 =====
+
+#[tauri::command]
+pub(crate) async fn revamp_start_host(
+    state: tauri::State<'_, AppState>,
+    local_port: u16,
+    node_ip: String,
+    node_port: String,
+    room_id: String,
+    password: String,
+    player_name: String,
     window: tauri::Window,
-) -> Result<(), String> {
-    oauth_state.logout();
-    window.emit("app-log", "[OAuth] 已登出".to_string()).ok();
-    Ok(())
+) -> Result<String, String> {
+    if state.is_running.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+        return Err("联机功能已在运行中".to_string());
+    }
+
+    let stop_signal = Arc::new(AtomicBool::new(false));
+
+    match crate::revamp::create_room(&room_id, &password, &node_ip, &node_port, &player_name).await {
+        Ok(room) => {
+            if room.get("status").and_then(|s| s.as_str()) != Some("ok") {
+                state.is_running.store(false, Ordering::Relaxed);
+                return Err(format!(
+                    "创建房间失败: {}",
+                    room.get("message").and_then(|m| m.as_str()).unwrap_or("未知错误")
+                ));
+            }
+
+            if let Ok(mut sig) = state.stop_signal.lock() {
+                *sig = Some(stop_signal.clone());
+            }
+
+            let mut relay = crate::revamp_relay::RevampHostRelay::new();
+            match relay.start(local_port, &node_ip, &node_port, stop_signal) {
+                Ok(msg) => {
+                    if let Ok(mut room) = state.current_room.lock() {
+                        *room = Some((room_id.clone(), password.clone()));
+                    }
+                    window.emit("app-log", format!("[revamp] {}", msg)).ok();
+                    Ok(msg)
+                }
+                Err(e) => {
+                    // 中继启动失败，清理已创建的房间
+                    let _ = crate::revamp::leave_room(&room_id, &player_name).await;
+                    state.is_running.store(false, Ordering::Relaxed);
+                    Err(e)
+                }
+            }
+        }
+        Err(e) => {
+            state.is_running.store(false, Ordering::Relaxed);
+            Err(format!("创建房间失败: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn revamp_join_room_cmd(
+    room_id: String,
+    password: String,
+    player_name: String,
+) -> Result<serde_json::Value, String> {
+    crate::revamp::join_room(&room_id, &password, &player_name).await
 }
 
 #[tauri::command]
@@ -636,21 +906,16 @@ pub(crate) fn get_tauri_version() -> String {
     "2.x".to_string()
 }
 
-fn setting_dir() -> Result<std::path::PathBuf, String> {
-    let exe_dir = std::env::current_exe()
-        .map_err(|e| format!("获取可执行文件路径失败: {}", e))?
-        .parent()
-        .ok_or("无法获取可执行文件目录")?
-        .to_path_buf();
-    let dir = exe_dir.join("Setting");
+fn setting_dir(data_dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let dir = data_dir.join("Setting");
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建设置目录失败: {}", e))?;
     Ok(dir)
 }
 
 #[tauri::command]
-pub(crate) fn get_setting(section: String) -> Result<String, String> {
+pub(crate) fn get_setting(data_dir: tauri::State<'_, DataDir>, section: String) -> Result<String, String> {
     let section_file = section.replace(" ", "_").replace("/", "_").replace("\\", "_");
-    let path = setting_dir()?.join(format!("{}.yml", section_file));
+    let path = setting_dir(&data_dir.0)?.join(format!("{}.yml", section_file));
     if !path.exists() {
         return Ok(format!("# {}\n", section));
     }
@@ -658,10 +923,206 @@ pub(crate) fn get_setting(section: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub(crate) fn save_setting(section: String, content: String) -> Result<(), String> {
+pub(crate) fn save_setting(data_dir: tauri::State<'_, DataDir>, section: String, content: String) -> Result<(), String> {
     let section_file = section.replace(" ", "_").replace("/", "_").replace("\\", "_");
-    let path = setting_dir()?.join(format!("{}.yml", section_file));
+    let path = setting_dir(&data_dir.0)?.join(format!("{}.yml", section_file));
     std::fs::write(&path, &content).map_err(|e| format!("保存设置文件失败: {}", e))
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub(crate) struct PersonalizationSettings {
+    pub(crate) theme_color: String,
+    pub(crate) theme_mode: String,
+    pub(crate) animation_enabled: bool,
+    pub(crate) animation_speed: f64,
+    pub(crate) transparent_effect: String,
+    pub(crate) background_type: String,
+    pub(crate) background_value: String,
+    pub(crate) background_fit: String,
+    pub(crate) background_overlay: bool,
+    pub(crate) background_overlay_opacity: f64,
+    pub(crate) music_mode: String,
+    pub(crate) music_value: String,
+    pub(crate) homepage_mode: String,
+    pub(crate) homepage_value: String,
+}
+
+impl Default for PersonalizationSettings {
+    fn default() -> Self {
+        Self {
+            theme_color: "#0066cc".to_string(),
+            theme_mode: "system".to_string(),
+            animation_enabled: true,
+            animation_speed: 1.0,
+            transparent_effect: "none".to_string(),
+            background_type: "default".to_string(),
+            background_value: String::new(),
+            background_fit: "scale-to-fill".to_string(),
+            background_overlay: false,
+            background_overlay_opacity: 30.0,
+            music_mode: "none".to_string(),
+            music_value: String::new(),
+            homepage_mode: "default".to_string(),
+            homepage_value: String::new(),
+        }
+    }
+}
+
+fn personalization_path(data_dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let dir = setting_dir(data_dir)?;
+    Ok(dir.join("personalization.yml"))
+}
+
+fn load_personalization(data_dir: &std::path::Path) -> Result<PersonalizationSettings, String> {
+    let path = personalization_path(data_dir)?;
+    if !path.exists() {
+        return Ok(PersonalizationSettings::default());
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("读取个性化设置失败: {}", e))?;
+    serde_yaml::from_str(&content)
+        .map_err(|e| format!("解析个性化设置失败: {}", e))
+}
+
+#[tauri::command]
+pub(crate) fn get_personalization(data_dir: tauri::State<'_, DataDir>) -> Result<PersonalizationSettings, String> {
+    load_personalization(&data_dir.0)
+}
+
+#[tauri::command]
+pub(crate) fn get_default_effect() -> String {
+    #[cfg(target_os = "macos")]
+    { "hud_window".to_string() }
+    #[cfg(windows)]
+    {
+        // Windows 11+ = 10.0.22000, Windows 10 = 10.0.10240
+        // 简单起见：Win10 以上用 mica，否则用 acrylic
+        "mica".to_string()
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    { "none".to_string() }
+}
+
+#[tauri::command]
+pub(crate) fn save_personalization(data_dir: tauri::State<'_, DataDir>, settings: PersonalizationSettings) -> Result<(), String> {
+    let content = serde_yaml::to_string(&settings)
+        .map_err(|e| format!("序列化个性化设置失败: {}", e))?;
+    let path = personalization_path(&data_dir.0)?;
+    std::fs::write(&path, &content)
+        .map_err(|e| format!("保存个性化设置失败: {}", e))
+}
+
+#[derive(Serialize)]
+pub(crate) struct BackgroundFile {
+    name: String,
+    is_video: bool,
+}
+
+fn read_bg_files(bg_dir: &std::path::Path, files: &mut Vec<BackgroundFile>, seen: &mut std::collections::HashSet<String>) {
+    if !bg_dir.exists() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(bg_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let ext = ext.to_string_lossy().to_lowercase();
+                    let is_video = matches!(ext.as_str(), "mp4" | "webm" | "avi" | "mov" | "mkv" | "flv");
+                    let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg");
+                    if is_image || is_video {
+                        if let Some(name) = path.file_name() {
+                            let name = name.to_string_lossy().to_string();
+                            if seen.insert(name.clone()) {
+                                files.push(BackgroundFile { name, is_video });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn old_background_dir() -> Option<std::path::PathBuf> {
+    std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .map(|p| p.join("Background"))
+}
+
+#[tauri::command]
+pub(crate) fn get_background_files(data_dir: tauri::State<'_, DataDir>) -> Result<Vec<BackgroundFile>, String> {
+    let mut files = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    // Primary: data_dir/Background
+    let bg_dir = data_dir.0.join("Background");
+    read_bg_files(&bg_dir, &mut files, &mut seen);
+
+    // Fallback: old exe_dir/Background (backward compatibility)
+    if let Some(old_bg) = old_background_dir() {
+        if old_bg != bg_dir {
+            read_bg_files(&old_bg, &mut files, &mut seen);
+        }
+    }
+
+    Ok(files)
+}
+
+#[tauri::command]
+pub(crate) fn get_background_file_url(data_dir: tauri::State<'_, DataDir>, filename: String) -> Result<String, String> {
+    // Primary: data_dir/Background
+    let bg_dir = data_dir.0.join("Background");
+    let full_path = bg_dir.join(&filename);
+    if full_path.exists() {
+        return Ok(full_path.to_string_lossy().to_string());
+    }
+
+    // Fallback: old exe_dir/Background (backward compatibility)
+    if let Some(old_bg) = old_background_dir() {
+        let old_path = old_bg.join(&filename);
+        if old_path.exists() {
+            return Ok(old_path.to_string_lossy().to_string());
+        }
+    }
+
+    Err(format!("文件不存在: {}", filename))
+}
+
+#[tauri::command]
+pub(crate) fn set_window_effect(window: tauri::WebviewWindow, effect: String) -> Result<(), String> {
+    match effect.as_str() {
+        "transparent" => Ok(()),
+        "mica" => {
+            #[cfg(windows)]
+            {
+                crate::apply_mica_backdrop_typed(&window, 2);
+            }
+            Ok(())
+        }
+        "acrylic" => {
+            #[cfg(windows)]
+            {
+                crate::apply_mica_backdrop_typed(&window, 3);
+            }
+            Ok(())
+        }
+        "hud_window" => {
+            #[cfg(target_os = "macos")]
+            {
+                crate::apply_vibrancy_backdrop(&window);
+            }
+            Ok(())
+        }
+        _ => {
+            // "none" - reset to default backdrop
+            #[cfg(windows)]
+            {
+                crate::apply_mica_backdrop_typed(&window, 0);
+            }
+            Ok(())
+        }
+    }
 }
 
 #[tauri::command]
@@ -672,7 +1133,7 @@ pub(crate) async fn start_terracotta_guest(
     player_name: String,
 ) -> Result<serde_json::Value, String> {
     let port = {
-        let mgr = adapter_manager.lock().unwrap();
+        let mgr = adapter_manager.lock().map_err(|e| format!("内部错误: {}", e))?;
         mgr.ensure_running()?
     };
     let client = TerracottaClient::new(port);

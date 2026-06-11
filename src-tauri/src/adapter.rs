@@ -20,13 +20,8 @@ pub struct AdapterManager {
 }
 
 impl AdapterManager {
-    pub fn new() -> Self {
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| PathBuf::from("."));
-
-        let adapter_dir = exe_dir.join("Adapter");
+    pub fn new(data_dir: &std::path::Path) -> Self {
+        let adapter_dir = data_dir.join("Adapter");
 
         AdapterManager {
             running: Arc::new(AtomicBool::new(false)),
@@ -65,15 +60,15 @@ impl AdapterManager {
     }
 
     pub fn get_status(&self) -> AdapterStatus {
-        let port = *self.terracotta_port.lock().unwrap();
+        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(p) = port {
             if !Self::is_port_alive(p) {
-                *self.terracotta_port.lock().unwrap() = None;
+                *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()) = None;
             }
         }
 
         let mut status = self.read_status();
-        let port = *self.terracotta_port.lock().unwrap();
+        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
         status.running = port.is_some();
         status.port = port;
         self.write_status(&status);
@@ -82,12 +77,19 @@ impl AdapterManager {
 
     pub fn launch_all(&self) {
         self.running.store(true, Ordering::SeqCst);
-        if self.terracotta_port.lock().unwrap().is_some() {
+        if self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
             return;
         }
         let status = self.read_status();
         if status.installed {
             self.spawn_terracotta_process();
+            self.poll_terracotta_port();
+        } else {
+            println!("[适配器] 未安装，开始自动下载...");
+            match self.download_and_install_sync() {
+                Ok(msg) => println!("[适配器] {}", msg),
+                Err(e) => eprintln!("[适配器] 自动下载失败: {}", e),
+            }
         }
     }
 
@@ -101,13 +103,13 @@ impl AdapterManager {
         status.starting = true;
         self.write_status(&status);
 
-        if self.terracotta_port.lock().unwrap().is_none() {
+        if self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
             self.spawn_terracotta_process();
         }
 
         self.poll_terracotta_port();
 
-        let port = *self.terracotta_port.lock().unwrap();
+        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
         match port {
             Some(p) => {
                 let mut status = self.read_status();
@@ -169,7 +171,7 @@ impl AdapterManager {
                     if let Some(port) = json.get("port").and_then(|v| v.as_u64()) {
                         let port = port as u16;
                         if Self::is_port_alive(port) {
-                            *self.terracotta_port.lock().unwrap() = Some(port);
+                            *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()) = Some(port);
                             println!("[适配器] 陶瓦联机端口: {}", port);
                             let _ = std::fs::remove_file(&hmcl_file);
                             break;
@@ -182,7 +184,7 @@ impl AdapterManager {
     }
 
     pub fn stop_terracotta(&self) -> Result<String, String> {
-        let port = *self.terracotta_port.lock().unwrap();
+        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
         match port {
             Some(p) => {
                 let client = reqwest::blocking::Client::builder()
@@ -201,7 +203,7 @@ impl AdapterManager {
                     std::thread::sleep(Duration::from_millis(200));
                 }
 
-                *self.terracotta_port.lock().unwrap() = None;
+                *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()) = None;
 
                 let mut status = self.read_status();
                 status.running = false;
@@ -215,7 +217,7 @@ impl AdapterManager {
     }
 
     pub fn ensure_running(&self) -> Result<u16, String> {
-        let port = *self.terracotta_port.lock().unwrap();
+        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(p) = port {
             return Ok(p);
         }
@@ -228,7 +230,7 @@ impl AdapterManager {
         self.spawn_terracotta_process();
         self.poll_terracotta_port();
 
-        let port = *self.terracotta_port.lock().unwrap();
+        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
         match port {
             Some(p) => {
                 let mut s = self.read_status();
@@ -262,7 +264,7 @@ impl AdapterManager {
     pub fn shutdown_all(&self) {
         self.running.store(false, Ordering::SeqCst);
 
-        let port = *self.terracotta_port.lock().unwrap();
+        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(p) = port {
             let client = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(3))
@@ -271,7 +273,7 @@ impl AdapterManager {
                 let url = format!("http://127.0.0.1:{}/panic?peaceful=true", p);
                 let _ = client.get(&url).send();
             }
-            *self.terracotta_port.lock().unwrap() = None;
+            *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()) = None;
         }
 
         let mut status = self.read_status();
@@ -280,5 +282,71 @@ impl AdapterManager {
         status.port = None;
         self.write_status(&status);
         println!("[适配器] 所有适配器已关闭");
+    }
+
+    pub fn download_and_install_sync(&self) -> Result<String, String> {
+        let terracotta_dir = self.adapter_dir.join("Terracotta");
+        std::fs::create_dir_all(&terracotta_dir)
+            .map_err(|e| format!("创建目录失败: {}", e))?;
+
+        let url = "https://gitee.com/burningtnt/Terracotta/releases/download/v0.4.2/terracotta-0.4.2-windows-x86_64-pkg.tar.gz";
+        let filename = "terracotta-0.4.2-windows-x86_64-pkg.tar.gz";
+        let archive_path = terracotta_dir.join(filename);
+
+        println!("[适配器] 开始下载陶瓦联机...");
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(300))
+            .build()
+            .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+
+        let response = client.get(url)
+            .send()
+            .map_err(|e| format!("下载失败: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("下载失败 (HTTP {})", response.status()));
+        }
+
+        let tmp_path = terracotta_dir.join(format!("{}.tmp", filename));
+        let mut file = std::fs::File::create(&tmp_path)
+            .map_err(|e| format!("创建临时文件失败: {}", e))?;
+
+        let content = response.bytes()
+            .map_err(|e| format!("读取数据失败: {}", e))?;
+        std::io::Write::write_all(&mut file, &content)
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+        drop(file);
+
+        std::fs::rename(&tmp_path, &archive_path)
+            .map_err(|e| format!("重命名文件失败: {}", e))?;
+
+        println!("[适配器] 下载完成，开始解压...");
+        let file = std::fs::File::open(&archive_path)
+            .map_err(|e| format!("打开下载文件失败: {}", e))?;
+        let decoder = flate2::read::GzDecoder::new(file);
+        let mut archive = tar::Archive::new(decoder);
+        archive.unpack(&terracotta_dir)
+            .map_err(|e| format!("解压失败: {}", e))?;
+
+        std::fs::remove_file(&archive_path)
+            .map_err(|e| format!("删除安装包失败: {}", e))?;
+
+        println!("[适配器] 陶瓦联机已安装，正在启动...");
+        self.mark_installed();
+        self.spawn_terracotta_process();
+        self.poll_terracotta_port();
+
+        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        match port {
+            Some(p) => {
+                let mut s = self.read_status();
+                s.starting = false;
+                s.running = true;
+                s.port = Some(p);
+                self.write_status(&s);
+                Ok(format!("陶瓦联机已安装并启动 (端口: {})", p))
+            }
+            None => Err("陶瓦联机安装完成但启动超时".to_string())
+        }
     }
 }

@@ -118,7 +118,9 @@ impl TerracottaClient {
                         return Ok(state);
                     }
                 }
-                Err(e) => return Err(e),
+                Err(_) => {
+                    // 临时网络错误则继续轮询
+                }
             }
             tokio::time::sleep(Duration::from_millis(tick_ms)).await;
         }

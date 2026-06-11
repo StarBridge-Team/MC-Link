@@ -7,7 +7,7 @@ description = "MC Link 公共库 - 协议、加密、工具函数"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-aes = "0.8"
-cipher = "0.4"
+aes-gcm = "0.10"
 sha2 = "0.10"
 hex = "0.4"
+rand_core = { version = "0.6", features = ["getrandom"] }

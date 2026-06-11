@@ -28,14 +28,15 @@ pub fn handle_client(stream: &mut TcpStream, state: Arc<CentralState>, addr: std
     let addr_str = addr.to_string();
     // 统一锁顺序: relays → addr_to_id (与 handle_relay_register 保持一致)
     let relay_id = {
-        let _relays = state.relays.lock().unwrap();
-        state.addr_to_id.lock().unwrap().remove(&addr_str)
+        let _relays = state.relays.lock().unwrap_or_else(|e| e.into_inner());
+        state.addr_to_id.lock().unwrap_or_else(|e| e.into_inner()).remove(&addr_str)
     };
-    if let Some(relay_id) = relay_id {
-        state.relay_streams.lock().unwrap().remove(&relay_id);
-        if let Some(relay) = state.relays.lock().unwrap().remove(&relay_id) {
-            state.topology.lock().unwrap().remove_node(&relay_id);
-            reroute_affected_paths(&state, &relay_id);
+    if let Some(ref relay_id) = relay_id {
+        state.relay_streams.lock().unwrap_or_else(|e| e.into_inner()).remove(relay_id);
+        state.heartbeat_instants.lock().unwrap_or_else(|e| e.into_inner()).remove(relay_id);
+        if let Some(relay) = state.relays.lock().unwrap_or_else(|e| e.into_inner()).remove(relay_id) {
+            state.topology.lock().unwrap_or_else(|e| e.into_inner()).remove_node(relay_id);
+            reroute_affected_paths(&state, relay_id);
             log(LogLevel::Warn, &format!("[中继/断开] {} 已离线，触发重路由", relay.name));
         }
     }
@@ -60,6 +61,7 @@ fn handle_packet(stream: &mut TcpStream, state: &CentralState, src: std::net::So
         0x27 => handle_list_players(stream, state, payload),
         0x31 => handle_probe_report(state, payload),
         0x37 => handle_path_broken(state, payload),
+        0x38 => handle_traffic_report(state, payload),
         _ => log(LogLevel::Warn, &format!("未知命令: 0x{:02x}", cmd)),
     }
 }
@@ -69,7 +71,7 @@ fn handle_packet(stream: &mut TcpStream, state: &CentralState, src: std::net::So
 pub fn handle_latency_report(state: &CentralState, data: &[u8]) {
     if let Ok(req) = serde_json::from_slice::<LatencyReportReq>(data) {
         let key = format!("{}->{}", req.from_id, req.to_id);
-        let mut latencies = state.latencies.lock().unwrap();
+        let mut latencies = state.latencies.lock().unwrap_or_else(|e| e.into_inner());
         let entry = latencies.entry(key).or_insert_with(|| LatencyEntry {
             from_id: req.from_id.clone(), to_id: req.to_id.clone(), latency_ms: 0, samples: Vec::new(),
         });
@@ -88,7 +90,7 @@ pub fn handle_probe_report(state: &CentralState, data: &[u8]) {
             packet_loss: report.packet_loss,
             last_updated: now_secs(),
         };
-        state.topology.lock().unwrap().add_or_update_metric(&report.from_id, &report.to_id, metric);
+        state.topology.lock().unwrap_or_else(|e| e.into_inner()).add_or_update_metric(&report.from_id, &report.to_id, metric);
         log(LogLevel::Info, &format!("[探针/上报] {} -> {} 延迟={}ms 丢包={:.0}%",
             report.from_id, report.to_id, report.latency_ms, report.packet_loss * 100.0));
     }
@@ -106,9 +108,25 @@ pub fn handle_path_broken(state: &CentralState, data: &[u8]) {
     }
 }
 
+pub fn handle_traffic_report(state: &CentralState, data: &[u8]) {
+    if let Ok(report) = serde_json::from_slice::<TrafficReport>(data) {
+        let mut reports = state.traffic_reports.lock().unwrap_or_else(|e| e.into_inner());
+        let stats = reports.entry(report.relay_id.clone()).or_insert_with(|| TrafficStats {
+            bytes_sent_total: 0,
+            bytes_recv_total: 0,
+            last_report: 0,
+            current_connections: 0,
+        });
+        stats.bytes_sent_total = stats.bytes_sent_total.saturating_add(report.bytes_sent);
+        stats.bytes_recv_total = stats.bytes_recv_total.saturating_add(report.bytes_recv);
+        stats.last_report = now_secs();
+        stats.current_connections = report.connections;
+    }
+}
+
 pub fn handle_get_topology(stream: &mut TcpStream, state: &CentralState) {
-    let relays = state.relays.lock().unwrap();
-    let latencies = state.latencies.lock().unwrap();
+    let relays = state.relays.lock().unwrap_or_else(|e| e.into_inner());
+    let latencies = state.latencies.lock().unwrap_or_else(|e| e.into_inner());
 
     let relay_list: Vec<&RelayNode> = relays.values().collect();
     let mut latency_matrix: std::collections::HashMap<String, std::collections::HashMap<String, u64>> = std::collections::HashMap::new();
@@ -134,31 +152,43 @@ pub fn handle_get_topology(stream: &mut TcpStream, state: &CentralState) {
 pub fn cleanup_thread(state: Arc<CentralState>) {
     loop {
         thread::sleep(CLEANUP_INTERVAL);
-        let now = now_secs();
-        let timeout = HEARTBEAT_TIMEOUT.as_secs();
 
         let dead_ids = {
-            let mut relays = state.relays.lock().unwrap();
-            let ids: Vec<String> = relays.iter()
-                .filter(|(_, r)| now - r.last_seen > timeout)
-                .map(|(id, _)| id.clone())
+            let relays = state.relays.lock().unwrap_or_else(|e| e.into_inner());
+            let instants = state.heartbeat_instants.lock().unwrap_or_else(|e| e.into_inner());
+            let timeout = HEARTBEAT_TIMEOUT;
+            let ids: Vec<String> = relays.keys()
+                .filter(|id| {
+                    instants.get(*id)
+                        .map(|t| t.elapsed() > timeout)
+                        .unwrap_or(true)
+                })
+                .map(|id| id.clone())
                 .collect();
-
-            for id in &ids {
-                if let Some(relay) = relays.remove(id) {
-                    log(LogLevel::Warn, &format!("清理离线中继: {} (ID: {})", relay.name, id));
-                    state.topology.lock().unwrap().remove_node(id);
-                }
-            }
+            // 释放 instants 锁后再操作
             ids
         };
 
-        // 已释放 relays 锁，安全调用重路由
-        for id in &dead_ids {
-            reroute_affected_paths(&state, id);
+        if !dead_ids.is_empty() {
+            let mut relays = state.relays.lock().unwrap_or_else(|e| e.into_inner());
+            let mut instants = state.heartbeat_instants.lock().unwrap_or_else(|e| e.into_inner());
+            for id in &dead_ids {
+                if let Some(relay) = relays.remove(id) {
+                    instants.remove(id);
+                    log(LogLevel::Warn, &format!("清理离线中继: {} (ID: {})", relay.name, id));
+                    state.topology.lock().unwrap_or_else(|e| e.into_inner()).remove_node(id);
+                }
+            }
+            drop(relays);
+            drop(instants);
+
+            for id in &dead_ids {
+                reroute_affected_paths(&state, id);
+            }
         }
 
-        let mut rooms = state.rooms.lock().unwrap();
+        let mut rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
+        let now = now_secs();
         let before = rooms.len();
         rooms.retain(|_, room| now - room.created_at < 86400);
         let removed = before - rooms.len();
