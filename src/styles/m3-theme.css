@@ -1,0 +1,699 @@
+/* ============================================================
+ *  M3 (Material Design 3) 主题适配层
+ *  - 覆盖 Element Plus 主题变量（明暗双主题）
+ *  - 微调按钮 / 卡片 / 输入框 / 导航栏等核心组件至 M3 观感
+ *  - 提供 M3 形状 / 高程 / 动效 token 与若干 M3 组件类
+ *
+ *  作用域：仅在带 `.m3-theme` 的元素及其后代生效，因此既可全局启用
+ *  （给 <html> 添加 `.m3-theme`），也可局部用于某个页面 / 容器。
+ * ============================================================ */
+
+/* ---------- 1. M3 形状 / 高程 / 动效 token（与主题无关，始终可用） ---------- */
+.m3-theme {
+  --m3-shape-corner-none: 0px;
+  --m3-shape-corner-extra-small: 4px;
+  --m3-shape-corner-small: 8px;
+  --m3-shape-corner-medium: 12px;
+  --m3-shape-corner-large: 16px;
+  --m3-shape-corner-extra-large: 28px;
+  --m3-shape-corner-full: 9999px;
+
+  /* M3 高程（Elevation）阴影 */
+  --m3-elevation-0: none;
+  --m3-elevation-1: 0px 1px 2px rgba(0, 0, 0, 0.30), 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --m3-elevation-2: 0px 1px 2px rgba(0, 0, 0, 0.30), 0px 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --m3-elevation-3: 0px 1px 3px rgba(0, 0, 0, 0.30), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
+  --m3-elevation-4: 0px 2px 3px rgba(0, 0, 0, 0.30), 0px 6px 10px 4px rgba(0, 0, 0, 0.15);
+  --m3-elevation-5: 0px 4px 4px rgba(0, 0, 0, 0.30), 0px 8px 12px 6px rgba(0, 0, 0, 0.15);
+
+  /* 动效（沿用 design-system 的节奏） */
+  --m3-motion-fast: calc(0.1s * var(--anim-speed, 1));
+  --m3-motion-base: calc(0.15s * var(--anim-speed, 1));
+  --m3-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* 类型比例（M3 type scale 简化） */
+  --m3-font-display: 2.25rem;
+  --m3-font-headline: 1.5rem;
+  --m3-font-title: 1.0rem;
+  --m3-font-body: 0.875rem;
+  --m3-font-label: 0.75rem;
+}
+
+/* ---------- 2. 友好的“当前主题”角色变量（模式感知） ---------- */
+/* 浅色：直接取 -l 后缀（由 applyM3Scheme 写入） */
+:root.m3-theme,
+.m3-theme {
+  --m3-primary: var(--m3-primary-l);
+  --m3-on-primary: var(--m3-on-primary-l);
+  --m3-primary-container: var(--m3-primary-container-l);
+  --m3-on-primary-container: var(--m3-on-primary-container-l);
+  --m3-inverse-primary: var(--m3-inverse-primary-l);
+  --m3-secondary: var(--m3-secondary-l);
+  --m3-on-secondary: var(--m3-on-secondary-l);
+  --m3-secondary-container: var(--m3-secondary-container-l);
+  --m3-on-secondary-container: var(--m3-on-secondary-container-l);
+  --m3-tertiary: var(--m3-tertiary-l);
+  --m3-on-tertiary: var(--m3-on-tertiary-l);
+  --m3-tertiary-container: var(--m3-tertiary-container-l);
+  --m3-on-tertiary-container: var(--m3-on-tertiary-container-l);
+  --m3-error: var(--m3-error-l);
+  --m3-on-error: var(--m3-on-error-l);
+  --m3-error-container: var(--m3-error-container-l);
+  --m3-on-error-container: var(--m3-on-error-container-l);
+  --m3-background: var(--m3-background-l);
+  --m3-on-background: var(--m3-on-background-l);
+  --m3-surface: var(--m3-surface-l);
+  --m3-on-surface: var(--m3-on-surface-l);
+  --m3-surface-variant: var(--m3-surface-variant-l);
+  --m3-on-surface-variant: var(--m3-on-surface-variant-l);
+  --m3-outline: var(--m3-outline-l);
+  --m3-outline-variant: var(--m3-outline-variant-l);
+  --m3-inverse-surface: var(--m3-inverse-surface-l);
+  --m3-inverse-on-surface: var(--m3-inverse-on-surface-l);
+  --m3-surface-dim: var(--m3-surface-dim-l);
+  --m3-surface-bright: var(--m3-surface-bright-l);
+  --m3-surface-container-lowest: var(--m3-surface-container-lowest-l);
+  --m3-surface-container-low: var(--m3-surface-container-low-l);
+  --m3-surface-container: var(--m3-surface-container-l);
+  --m3-surface-container-high: var(--m3-surface-container-high-l);
+  --m3-surface-container-highest: var(--m3-surface-container-highest-l);
+  --m3-sem-success: var(--m3-sem-success-l);
+  --m3-sem-warning: var(--m3-sem-warning-l);
+  --m3-sem-error: var(--m3-sem-error-l);
+  --m3-sem-info: var(--m3-sem-info-l);
+  --m3-sem-success-container: var(--m3-sem-success-container-l);
+  --m3-sem-warning-container: var(--m3-sem-warning-container-l);
+  --m3-sem-error-container: var(--m3-sem-error-container-l);
+  --m3-sem-info-container: var(--m3-sem-info-container-l);
+}
+
+/* 深色：优先取 .dark 祖先（容器作用域）或自身 .dark（全局作用域）下的 -d 后缀 */
+:root.m3-theme.dark,
+.dark .m3-theme,
+.m3-theme.dark {
+  --m3-primary: var(--m3-primary-d);
+  --m3-on-primary: var(--m3-on-primary-d);
+  --m3-primary-container: var(--m3-primary-container-d);
+  --m3-on-primary-container: var(--m3-on-primary-container-d);
+  --m3-inverse-primary: var(--m3-inverse-primary-d);
+  --m3-secondary: var(--m3-secondary-d);
+  --m3-on-secondary: var(--m3-on-secondary-d);
+  --m3-secondary-container: var(--m3-secondary-container-d);
+  --m3-on-secondary-container: var(--m3-on-secondary-container-d);
+  --m3-tertiary: var(--m3-tertiary-d);
+  --m3-on-tertiary: var(--m3-on-tertiary-d);
+  --m3-tertiary-container: var(--m3-tertiary-container-d);
+  --m3-on-tertiary-container: var(--m3-on-tertiary-container-d);
+  --m3-error: var(--m3-error-d);
+  --m3-on-error: var(--m3-on-error-d);
+  --m3-error-container: var(--m3-error-container-d);
+  --m3-on-error-container: var(--m3-on-error-container-d);
+  --m3-background: var(--m3-background-d);
+  --m3-on-background: var(--m3-on-background-d);
+  --m3-surface: var(--m3-surface-d);
+  --m3-on-surface: var(--m3-on-surface-d);
+  --m3-surface-variant: var(--m3-surface-variant-d);
+  --m3-on-surface-variant: var(--m3-on-surface-variant-d);
+  --m3-outline: var(--m3-outline-d);
+  --m3-outline-variant: var(--m3-outline-variant-d);
+  --m3-inverse-surface: var(--m3-inverse-surface-d);
+  --m3-inverse-on-surface: var(--m3-inverse-on-surface-d);
+  --m3-surface-dim: var(--m3-surface-dim-d);
+  --m3-surface-bright: var(--m3-surface-bright-d);
+  --m3-surface-container-lowest: var(--m3-surface-container-lowest-d);
+  --m3-surface-container-low: var(--m3-surface-container-low-d);
+  --m3-surface-container: var(--m3-surface-container-d);
+  --m3-surface-container-high: var(--m3-surface-container-high-d);
+  --m3-surface-container-highest: var(--m3-surface-container-highest-d);
+  --m3-sem-success: var(--m3-sem-success-d);
+  --m3-sem-warning: var(--m3-sem-warning-d);
+  --m3-sem-error: var(--m3-sem-error-d);
+  --m3-sem-info: var(--m3-sem-info-d);
+  --m3-sem-success-container: var(--m3-sem-success-container-d);
+  --m3-sem-warning-container: var(--m3-sem-warning-container-d);
+  --m3-sem-error-container: var(--m3-sem-error-container-d);
+  --m3-sem-info-container: var(--m3-sem-info-container-d);
+}
+
+/* ---------- 3. 覆盖 Element Plus 主题变量（明暗双主题） ---------- */
+:root.m3-theme,
+.m3-theme {
+  --el-color-primary: var(--m3-primary);
+  --el-color-primary-light-3: color-mix(in srgb, var(--m3-primary) 12%, transparent);
+  --el-color-primary-light-5: color-mix(in srgb, var(--m3-primary) 8%, transparent);
+  --el-color-primary-light-7: color-mix(in srgb, var(--m3-primary) 5%, transparent);
+  --el-color-primary-light-8: color-mix(in srgb, var(--m3-primary) 4%, transparent);
+  --el-color-primary-light-9: color-mix(in srgb, var(--m3-primary) 2%, transparent);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--m3-primary) 88%, black);
+
+  --el-color-success: var(--m3-sem-success);
+  --el-color-success-light-3: color-mix(in srgb, var(--m3-sem-success) 12%, transparent);
+  --el-color-success-light-9: color-mix(in srgb, var(--m3-sem-success) 2%, transparent);
+  --el-color-success-dark-2: color-mix(in srgb, var(--m3-sem-success) 88%, black);
+
+  --el-color-warning: var(--m3-sem-warning);
+  --el-color-warning-light-3: color-mix(in srgb, var(--m3-sem-warning) 12%, transparent);
+  --el-color-warning-light-9: color-mix(in srgb, var(--m3-sem-warning) 2%, transparent);
+  --el-color-warning-dark-2: color-mix(in srgb, var(--m3-sem-warning) 88%, black);
+
+  --el-color-danger: var(--m3-sem-error);
+  --el-color-error: var(--m3-sem-error);
+  --el-color-danger-light-3: color-mix(in srgb, var(--m3-sem-error) 12%, transparent);
+  --el-color-danger-light-9: color-mix(in srgb, var(--m3-sem-error) 2%, transparent);
+  --el-color-danger-dark-2: color-mix(in srgb, var(--m3-sem-error) 88%, black);
+
+  --el-color-info: var(--m3-sem-info);
+  --el-color-info-light-3: color-mix(in srgb, var(--m3-sem-info) 12%, transparent);
+  --el-color-info-light-9: color-mix(in srgb, var(--m3-sem-info) 2%, transparent);
+  --el-color-info-dark-2: color-mix(in srgb, var(--m3-sem-info) 88%, black);
+
+  --el-bg-color: var(--m3-surface);
+  --el-bg-color-page: var(--m3-background);
+  --el-bg-color-overlay: var(--m3-surface-container-high);
+
+  --el-fill-color-blank: var(--m3-surface);
+  --el-fill-color: var(--m3-surface-container);
+  --el-fill-color-light: var(--m3-surface-container-low);
+  --el-fill-color-lighter: var(--m3-surface-container-lowest);
+  --el-fill-color-dark: var(--m3-surface-container-high);
+  --el-fill-color-darker: var(--m3-surface-container-highest);
+
+  --el-text-color-primary: var(--m3-on-surface);
+  --el-text-color-regular: var(--m3-on-surface);
+  --el-text-color-secondary: var(--m3-on-surface-variant);
+  --el-text-color-placeholder: color-mix(in srgb, var(--m3-on-surface-variant) 70%, transparent);
+  --el-text-color-disabled: color-mix(in srgb, var(--m3-on-surface) 38%, transparent);
+
+  --el-border-color: var(--m3-outline-variant);
+  --el-border-color-light: var(--m3-outline-variant);
+  --el-border-color-lighter: color-mix(in srgb, var(--m3-outline-variant) 60%, transparent);
+  --el-border-color-dark: var(--m3-outline);
+  --el-border-color-extra-light: color-mix(in srgb, var(--m3-outline-variant) 40%, transparent);
+
+  --el-border-radius-base: var(--m3-shape-corner-medium);
+  --el-border-radius-small: var(--m3-shape-corner-small);
+  --el-border-radius-round: var(--m3-shape-corner-full);
+  --el-font-size-base: 14px;
+}
+
+/* ---------- 4. 组件微调：按钮（M3 Filled / Tonal / Outlined / Text） ---------- */
+.m3-theme .el-button {
+  border-radius: var(--m3-shape-corner-full);
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  height: 40px;
+  padding: 0 24px;
+  --el-button-border-radius: var(--m3-shape-corner-full);
+  transition: box-shadow var(--m3-motion-base) var(--m3-ease),
+    background-color var(--m3-motion-base) var(--m3-ease),
+    transform var(--m3-motion-fast) var(--m3-ease);
+}
+.m3-theme .el-button:active:not(.is-disabled) {
+  transform: scale(0.97);
+}
+.m3-theme .el-button--small {
+  height: 32px;
+  padding: 0 16px;
+}
+.m3-theme .el-button--large {
+  height: 48px;
+  padding: 0 32px;
+}
+
+/* Filled（默认 primary） */
+.m3-theme .el-button--primary {
+  background-color: var(--m3-primary);
+  color: var(--m3-on-primary);
+  border: none;
+  box-shadow: var(--m3-elevation-0);
+}
+.m3-theme .el-button--primary:hover {
+  box-shadow: var(--m3-elevation-1);
+}
+.m3-theme .el-button--primary:active {
+  box-shadow: var(--m3-elevation-0);
+}
+
+/* Tonal：使用 secondary-container */
+.m3-theme .el-button--default {
+  background-color: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+  border: none;
+}
+.m3-theme .el-button--default:hover {
+  box-shadow: var(--m3-elevation-1);
+}
+
+/* Outlined */
+.m3-theme .el-button.is-plain,
+.m3-theme .el-button--primary.is-plain {
+  background-color: transparent;
+  border: 1px solid var(--m3-outline);
+  color: var(--m3-primary);
+}
+.m3-theme .el-button--primary.is-plain {
+  color: var(--m3-primary);
+  background-color: transparent;
+}
+.m3-theme .el-button.is-plain:hover {
+  background-color: var(--el-color-primary-light-9);
+}
+
+/* Text / Link */
+.m3-theme .el-button--text,
+.m3-theme .el-button.is-link {
+  color: var(--m3-primary);
+  background-color: transparent;
+  border: none;
+  padding: 0 12px;
+}
+.m3-theme .el-button--text:hover,
+.m3-theme .el-button.is-link:hover {
+  background-color: var(--el-color-primary-light-9);
+}
+
+/* ---------- 5. 卡片（M3 elevated / filled card） ---------- */
+.m3-theme .el-card {
+  border: none;
+  border-radius: var(--m3-shape-corner-large);
+  background-color: var(--m3-surface-container-low);
+  box-shadow: var(--m3-elevation-1);
+  color: var(--m3-on-surface);
+}
+.m3-theme .el-card.is-always-shadow,
+.m3-theme .el-card.is-hover-shadow:focus,
+.m3-theme .el-card.is-hover-shadow:hover {
+  box-shadow: var(--m3-elevation-2);
+}
+.m3-theme .el-card__body {
+  padding: 16px;
+}
+.m3-theme .el-card__header {
+  border-bottom: 1px solid var(--m3-outline-variant);
+  padding: 16px;
+  font-weight: 600;
+}
+
+/* ---------- 6. 输入框（M3 filled text field） ---------- */
+.m3-theme .el-input__wrapper,
+.m3-theme .el-textarea__inner {
+  border-radius: var(--m3-shape-corner-extra-small);
+  background-color: var(--m3-surface-container-highest);
+  box-shadow: none;
+  border: 1px solid var(--m3-outline);
+  padding: 0 12px;
+  transition: border-color var(--m3-motion-base) var(--m3-ease),
+    box-shadow var(--m3-motion-base) var(--m3-ease);
+}
+.m3-theme .el-input__wrapper:hover,
+.m3-theme .el-textarea__inner:hover {
+  background-color: var(--m3-surface-container-highest);
+}
+.m3-theme .el-input__wrapper.is-focus,
+.m3-theme .el-textarea__inner:focus {
+  border-color: var(--m3-primary);
+  box-shadow: inset 0 -1px 0 0 var(--m3-primary);
+}
+.m3-theme .el-input__wrapper .el-input__inner,
+.m3-theme .el-textarea__inner {
+  color: var(--m3-on-surface);
+}
+.m3-theme .el-input__wrapper .el-input__inner::placeholder,
+.m3-theme .el-textarea__inner::placeholder {
+  color: var(--el-text-color-placeholder);
+}
+.m3-theme .el-input-group__prepend,
+.m3-theme .el-input-group__append {
+  border-radius: var(--m3-shape-corner-extra-small) 0 0 var(--m3-shape-corner-extra-small);
+  background-color: var(--m3-surface-container-high);
+  border: 1px solid var(--m3-outline);
+  color: var(--m3-on-surface-variant);
+}
+
+/* ---------- 7. 导航菜单（M3 Navigation Rail / Drawer 风格） ---------- */
+.m3-theme .el-menu,
+.m3-theme .el-menu--vertical {
+  border-right: none;
+  background-color: transparent;
+}
+.m3-theme .el-menu-item,
+.m3-theme .el-sub-menu__title {
+  border-radius: var(--m3-shape-corner-full);
+  margin: 4px 8px;
+  height: 48px;
+  color: var(--m3-on-surface-variant);
+  transition: background-color var(--m3-motion-base) var(--m3-ease),
+    color var(--m3-motion-base) var(--m3-ease);
+}
+.m3-theme .el-menu-item:hover,
+.m3-theme .el-sub-menu__title:hover {
+  background-color: color-mix(in srgb, var(--m3-on-surface) 8%, transparent);
+}
+.m3-theme .el-menu-item.is-active {
+  background-color: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+}
+.m3-theme .el-menu-item.is-active::before {
+  display: none;
+}
+
+/* ---------- 8. 标签 / 分段 / 开关 / 滑块 ---------- */
+.m3-theme .el-tag {
+  border-radius: var(--m3-shape-corner-small);
+  border: none;
+}
+.m3-theme .el-tag--primary {
+  background-color: var(--m3-primary-container);
+  color: var(--m3-on-primary-container);
+}
+.m3-theme .el-switch.is-checked .el-switch__core {
+  background-color: var(--m3-primary);
+  border-color: var(--m3-primary);
+}
+.m3-theme .el-switch__core {
+  border-radius: var(--m3-shape-corner-full);
+}
+.m3-theme .el-slider__bar {
+  background-color: var(--m3-primary);
+}
+.m3-theme .el-slider__button {
+  border-color: var(--m3-primary);
+}
+.m3-theme .el-radio.is-checked .el-radio__inner,
+.m3-theme .el-checkbox.is-checked .el-checkbox__inner {
+  background-color: var(--m3-primary);
+  border-color: var(--m3-primary);
+}
+.m3-theme .el-segmented {
+  --el-segmented-bg-color: var(--m3-surface-container);
+  --el-segmented-item-selected-bg-color: var(--m3-secondary-container);
+  --el-segmented-item-selected-color: var(--m3-on-secondary-container);
+  border-radius: var(--m3-shape-corner-full);
+}
+
+/* ---------- 9. 对话框 / 提示 / 进度条 ---------- */
+.m3-theme .el-dialog {
+  border-radius: var(--m3-shape-corner-extra-large);
+  background-color: var(--m3-surface-container-high);
+  color: var(--m3-on-surface);
+  box-shadow: var(--m3-elevation-3);
+}
+.m3-theme .el-overlay-dialog .el-dialog__header {
+  color: var(--m3-on-surface);
+}
+.m3-theme .el-message,
+.m3-theme .el-notification,
+.m3-theme .el-tooltip__popper {
+  border-radius: var(--m3-shape-corner-small);
+  background-color: var(--m3-inverse-surface);
+  color: var(--m3-inverse-on-surface);
+  border: none;
+  box-shadow: var(--m3-elevation-3);
+}
+.m3-theme .el-progress-bar__inner {
+  background-color: var(--m3-primary);
+  border-radius: var(--m3-shape-corner-full);
+}
+
+/* ============================================================
+ *  M3 专属组件类（供 showcase 与业务页使用）
+ * ============================================================ */
+/* 浮动操作按钮 FAB */
+.m3-fab {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--m3-shape-corner-full);
+  background-color: var(--m3-primary-container);
+  color: var(--m3-on-primary-container);
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--m3-elevation-3);
+  transition: box-shadow var(--m3-motion-base) var(--m3-ease),
+    transform var(--m3-motion-fast) var(--m3-ease);
+}
+.m3-fab:hover { box-shadow: var(--m3-elevation-4); }
+.m3-fab:active { transform: scale(0.95); }
+
+/* 芯片 Chip */
+.m3-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--m3-shape-corner-full);
+  background-color: var(--m3-surface-container-high);
+  color: var(--m3-on-surface-variant);
+  border: 1px solid var(--m3-outline-variant);
+  font-size: var(--m3-font-label);
+  cursor: pointer;
+  transition: background-color var(--m3-motion-base) var(--m3-ease);
+}
+.m3-chip--assist {
+  background-color: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+  border-color: transparent;
+}
+.m3-chip.is-active {
+  background-color: var(--m3-primary);
+  color: var(--m3-on-primary);
+  border-color: transparent;
+}
+
+/* 顶部应用栏 Top App Bar */
+.m3-top-app-bar {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background-color: var(--m3-surface-container);
+  color: var(--m3-on-surface);
+  border-radius: var(--m3-shape-corner-large);
+}
+
+/* 导航栏 Navigation Rail / Bar 容器 */
+.m3-nav-rail {
+  width: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  background-color: var(--m3-surface-container);
+  border-radius: var(--m3-shape-corner-large);
+}
+.m3-nav-item {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--m3-shape-corner-full);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: var(--m3-on-surface-variant);
+  cursor: pointer;
+  font-size: 11px;
+  transition: background-color var(--m3-motion-base) var(--m3-ease),
+    color var(--m3-motion-base) var(--m3-ease);
+}
+.m3-nav-item:hover { background-color: color-mix(in srgb, var(--m3-on-surface) 8%, transparent); }
+.m3-nav-item.is-active {
+  background-color: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+}
+
+/* 状态层（M3 state layer 替代理） */
+.m3-state-layer {
+  position: relative;
+  overflow: hidden;
+}
+.m3-state-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: currentColor;
+  opacity: 0;
+  transition: opacity var(--m3-motion-base) var(--m3-ease);
+  pointer-events: none;
+}
+.m3-state-layer:hover::after { opacity: 0.08; }
+.m3-state-layer:active::after { opacity: 0.12; }
+
+/* 通用 M3 表面工具类 */
+.m3-surface { background-color: var(--m3-surface); color: var(--m3-on-surface); }
+.m3-surface-container { background-color: var(--m3-surface-container); color: var(--m3-on-surface); }
+.m3-surface-variant { background-color: var(--m3-surface-variant); color: var(--m3-on-surface-variant); }
+.m3-text-primary { color: var(--m3-on-surface); }
+.m3-text-secondary { color: var(--m3-on-surface-variant); }
+.m3-elevation-1 { box-shadow: var(--m3-elevation-1); }
+.m3-elevation-2 { box-shadow: var(--m3-elevation-2); }
+.m3-elevation-3 { box-shadow: var(--m3-elevation-3); }
+
+/* ============================================================
+ *  更多 Element Plus 组件的 M3 风格微调
+ * ============================================================ */
+/* 浮层：下拉 / 选择 / 气泡 / 日期面板 */
+.m3-theme .el-popper.is-light,
+.m3-theme .el-dropdown__popper,
+.m3-theme .el-select__popper,
+.m3-theme .el-picker__popper {
+  border-radius: var(--m3-shape-corner-medium) !important;
+  border: none !important;
+  background-color: var(--m3-surface-container) !important;
+  color: var(--m3-on-surface);
+  box-shadow: var(--m3-elevation-2) !important;
+}
+.m3-theme .el-dropdown-menu { background-color: transparent; padding: 6px; }
+.m3-theme .el-dropdown-menu__item {
+  border-radius: var(--m3-shape-corner-full);
+  color: var(--m3-on-surface);
+}
+.m3-theme .el-dropdown-menu__item:not(.is-disabled):hover {
+  background-color: color-mix(in srgb, var(--m3-on-surface) 8%, transparent);
+  color: var(--m3-on-surface);
+}
+.m3-theme .el-select-dropdown__item {
+  border-radius: var(--m3-shape-corner-full);
+  margin: 2px 6px;
+  color: var(--m3-on-surface);
+}
+.m3-theme .el-select-dropdown__item.is-selected {
+  background-color: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+  font-weight: 600;
+}
+.m3-theme .el-select-dropdown__item.is-hovering {
+  background-color: color-mix(in srgb, var(--m3-on-surface) 8%, transparent);
+}
+
+/* 表格 */
+.m3-theme .el-table {
+  --el-table-border-color: var(--m3-outline-variant);
+  --el-table-header-bg-color: var(--m3-surface-container);
+  --el-table-row-hover-bg-color: color-mix(in srgb, var(--m3-on-surface) 6%, transparent);
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  background-color: transparent;
+  color: var(--m3-on-surface);
+  border-radius: var(--m3-shape-corner-medium);
+}
+.m3-theme .el-table th.el-table__cell {
+  background-color: var(--m3-surface-container);
+  color: var(--m3-on-surface-variant);
+  font-weight: 600;
+}
+.m3-theme .el-table td.el-table__cell,
+.m3-theme .el-table th.el-table__cell.is-leaf {
+  border-bottom: 1px solid var(--m3-outline-variant);
+}
+
+/* 分页 */
+.m3-theme .el-pagination button,
+.m3-theme .el-pager li {
+  border-radius: var(--m3-shape-corner-full);
+  background: transparent;
+  color: var(--m3-on-surface-variant);
+}
+.m3-theme .el-pager li.is-active {
+  background-color: var(--m3-primary);
+  color: var(--m3-on-primary);
+}
+
+/* 抽屉 / 标签页 */
+.m3-theme .el-drawer {
+  background-color: var(--m3-surface-container-low);
+  color: var(--m3-on-surface);
+}
+.m3-theme .el-tabs__item { color: var(--m3-on-surface-variant); }
+.m3-theme .el-tabs__item.is-active { color: var(--m3-primary); }
+.m3-theme .el-tabs__active-bar {
+  background-color: var(--m3-primary);
+  border-radius: var(--m3-shape-corner-full);
+}
+.m3-theme .el-tabs__nav-wrap::after { background-color: var(--m3-outline-variant); }
+
+/* 步骤条 / 面包屑 / 折叠面板 */
+.m3-theme .el-step__head.is-process,
+.m3-theme .el-step__head.is-finish {
+  color: var(--m3-primary);
+  border-color: var(--m3-primary);
+}
+.m3-theme .el-step__title.is-process,
+.m3-theme .el-step__title.is-finish { color: var(--m3-on-surface); }
+.m3-theme .el-breadcrumb__inner,
+.m3-theme .el-breadcrumb__inner a { color: var(--m3-on-surface-variant); }
+.m3-theme .el-collapse,
+.m3-theme .el-collapse-item__header,
+.m3-theme .el-collapse-item__wrap {
+  border-color: var(--m3-outline-variant);
+  background-color: transparent;
+  color: var(--m3-on-surface);
+}
+
+/* 徽章 / 头像 / 分割线 */
+.m3-theme .el-badge__content {
+  border-radius: var(--m3-shape-corner-full);
+  border: none;
+}
+.m3-theme .el-avatar {
+  background-color: var(--m3-primary-container);
+  color: var(--m3-on-primary-container);
+}
+.m3-theme .el-divider { border-color: var(--m3-outline-variant); }
+.m3-theme .el-divider__text {
+  background-color: var(--m3-surface);
+  color: var(--m3-on-surface-variant);
+}
+
+/* 描述列表 / 时间线 / 骨架屏 */
+.m3-theme .el-descriptions__label { color: var(--m3-on-surface-variant); }
+.m3-theme .el-descriptions__content { color: var(--m3-on-surface); }
+.m3-theme .el-timeline-item__node { background-color: var(--m3-primary); }
+.m3-theme .el-timeline-item__tail { border-left-color: var(--m3-outline-variant); }
+.m3-theme .el-skeleton__item {
+  background: linear-gradient(
+    90deg,
+    var(--m3-surface-container-high) 25%,
+    var(--m3-surface-container-highest) 37%,
+    var(--m3-surface-container-high) 63%
+  );
+}
+
+/* 提示条 / 消息框 */
+.m3-theme .el-alert {
+  border-radius: var(--m3-shape-corner-medium);
+  padding: 12px 16px;
+}
+.m3-theme .el-alert--success { background-color: var(--m3-sem-success-container); }
+.m3-theme .el-alert--warning { background-color: var(--m3-sem-warning-container); }
+.m3-theme .el-alert--error { background-color: var(--m3-sem-error-container); }
+.m3-theme .el-alert--info { background-color: var(--m3-sem-info-container); }
+.m3-theme .el-message-box {
+  border-radius: var(--m3-shape-corner-extra-large);
+  background-color: var(--m3-surface-container-high);
+  color: var(--m3-on-surface);
+  border: none;
+}
+
+/* 日期选择 / 上传 */
+.m3-theme .el-picker-panel {
+  background-color: var(--m3-surface-container);
+  color: var(--m3-on-surface);
+  border-radius: var(--m3-shape-corner-medium);
+}
+.m3-theme .el-date-table td.available:hover,
+.m3-theme .el-picker-panel__icon-btn:hover { color: var(--m3-primary); }
+.m3-theme .el-date-table td.current:not(.disabled) .el-date-table-cell__text {
+  background-color: var(--m3-primary);
+  color: var(--m3-on-primary);
+}
+.m3-theme .el-upload-dragger {
+  border-radius: var(--m3-shape-corner-large);
+  border: 1px dashed var(--m3-outline);
+  background-color: var(--m3-surface-container-low);
+}

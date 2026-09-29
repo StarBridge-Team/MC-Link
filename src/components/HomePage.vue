@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import Dialog from "./common/Dialog.vue";
-import Input from "./ui/Input.vue";
+import { computed, inject } from "vue";
 
-const props = defineProps<{
+defineProps<{
   showToast: (msg: string) => void;
   playerName: string;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
   nameChange: [name: string];
 }>();
+
+const navigateTo = inject<(icon: string, text?: string) => void>('navigateTo')!;
 
 const greeting = computed(() => {
   const h = new Date().getHours();
@@ -20,35 +20,23 @@ const greeting = computed(() => {
   return "晚上好";
 });
 
-const showAccountDialog = ref(false);
-const editingName = ref("");
-const showPlayerListDialog = ref(false);
-const playerList = ref<{ name: string; role: string }[]>([]);
-
-function openAccountDialog() {
-  editingName.value = props.playerName;
-  showAccountDialog.value = true;
+function openAccount() {
+  navigateTo('setting', 'personalization');
 }
 
-function saveAccount() {
-  const name = editingName.value.trim();
-  if (!name) {
-    props.showToast("名字不能为空");
-    return;
-  }
-  localStorage.setItem("player_name", name);
-  emit("nameChange", name);
-  showAccountDialog.value = false;
-  props.showToast(`已设置名字: ${name}`);
-}
+const hints = [
+  { icon: "bi-hdd-stack", role: "房主", text: "请先在 Minecraft 中开启局域网联机，然后前往", em: "联机", tail: "页面创建房间" },
+  { icon: "bi-person-plus", role: "成员", text: "前往", em: "联机", tail: "页面，输入房主分享的房间名和密码即可加入" },
+  { icon: "bi-plug", role: "适配器", text: "在", em: "适配器", tail: "页面下载陶瓦联机以获得更多联机方式" },
+];
 </script>
 
 <template>
   <div class="home-root">
     <div class="greeting-header">
-      <div class="greeting-avatar" @click="openAccountDialog">
+      <el-avatar :size="48" class="greeting-avatar" @click="openAccount">
         <i class="bi bi-person-circle"></i>
-      </div>
+      </el-avatar>
       <div class="greeting-text">
         <span>{{ greeting }}</span>，
         <span class="greeting-name">{{ playerName }}</span>，
@@ -57,53 +45,19 @@ function saveAccount() {
     </div>
 
     <div class="home-hint">
-      <div class="hint-section">
-        <div class="hint-icon"><i class="bi bi-hdd-stack"></i></div>
+      <el-card
+        v-for="(h, i) in hints"
+        :key="i"
+        class="hint-card"
+        shadow="never"
+        :body-style="{ padding: 'var(--sp-4) var(--sp-5)', display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-4)' }"
+      >
+        <div class="hint-icon"><i :class="['bi', h.icon]"></i></div>
         <div class="hint-content">
-          <strong>房主</strong>：请先在 Minecraft 中开启局域网联机，然后前往<em>联机</em>页面创建房间
+          <strong>{{ h.role }}</strong>：{{ h.text }}<em>{{ h.em }}</em>{{ h.tail }}
         </div>
-      </div>
-      <div class="hint-section">
-        <div class="hint-icon"><i class="bi bi-person-plus"></i></div>
-        <div class="hint-content">
-          <strong>成员</strong>：前往<em>联机</em>页面，输入房主分享的房间名和密码即可加入
-        </div>
-      </div>
-      <div class="hint-section">
-        <div class="hint-icon"><i class="bi bi-plug"></i></div>
-        <div class="hint-content">
-          <strong>适配器</strong>：在<em>适配器</em>页面下载陶瓦联机以获得更多联机方式
-        </div>
-      </div>
+      </el-card>
     </div>
-
-    <Dialog :show="showAccountDialog" title="账号" small @close="showAccountDialog = false">
-      <label class="dialog-label">你的名字</label>
-      <Input type="text" v-model="editingName" placeholder="输入你的名字" maxlength="16" @keyup.enter="saveAccount" />
-      <p class="dialog-desc">此名字会展示给其他玩家，仅 MC Link 联机时可见</p>
-      <template #actions>
-        <Button @click="showAccountDialog = false">取消</Button>
-        <Button variant="primary" @click="saveAccount">保存</Button>
-      </template>
-    </Dialog>
-
-    <Dialog :show="showPlayerListDialog" title="队伍" small @close="showPlayerListDialog = false">
-      <div v-if="playerList.length === 0" class="empty-list">暂无在线玩家</div>
-      <div v-else class="player-list">
-        <div v-for="(p, i) in playerList" :key="i" class="player-item">
-          <div class="player-avatar">
-            <i class="bi bi-person-fill"></i>
-          </div>
-          <div class="player-info">
-            <span class="player-name">{{ p.name }}</span>
-            <span class="player-role">{{ p.role === "host" ? "房主" : "成员" }}</span>
-          </div>
-        </div>
-      </div>
-      <template #actions>
-        <Button @click="showPlayerListDialog = false">关闭</Button>
-      </template>
-    </Dialog>
   </div>
 </template>
 
@@ -112,29 +66,22 @@ function saveAccount() {
   height: 100%;
   display: flex;
   flex-direction: column;
+  gap: var(--sp-5);
 }
 
 .greeting-header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 0 0 16px;
-  margin-bottom: 4px;
+  gap: var(--sp-4);
+  padding: 0 0 var(--sp-5);
 }
 
 .greeting-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
   background: var(--accent-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26px;
-  color: #fff;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s ease;
+  font-size: 26px;
+  color: #fff;
 }
 
 .greeting-avatar:hover {
@@ -142,133 +89,57 @@ function saveAccount() {
 }
 
 .greeting-text {
-  font-size: 16px;
-  font-weight: 500;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-medium);
   color: var(--text-primary);
-  line-height: 1.4;
+  line-height: var(--lh-snug);
 }
 
 .greeting-name {
   color: var(--accent-primary);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .home-hint {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 
-.hint-section {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 10px;
+.hint-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
+  border-radius: var(--r-lg);
 }
 
 .hint-icon {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: var(--accent-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: var(--fs-xl);
   color: #fff;
   flex-shrink: 0;
   margin-top: 2px;
 }
 
 .hint-content {
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
   color: var(--text-primary);
 }
 
 .hint-content strong {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .hint-content em {
   font-style: normal;
   color: var(--accent-primary);
-  font-weight: 500;
-}
-
-/* Dialog scoped styles for content */
-.dialog-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.dialog-desc {
-  font-size: 11.5px;
-  color: var(--text-muted);
-  margin: 8px 0 0;
-  line-height: 1.4;
-}
-
-.player-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.player-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-}
-
-.player-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  color: #fff;
-  flex-shrink: 0;
-}
-
-.player-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.player-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.player-role {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.empty-list {
-  text-align: center;
-  color: var(--text-muted);
-  padding: 20px 0;
-  font-size: 14px;
+  font-weight: var(--fw-medium);
 }
 </style>

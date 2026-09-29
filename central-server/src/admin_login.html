@@ -5,59 +5,81 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>登录 — MC Link 管理面板</title>
 <style>
-  :root { --bg: #0f0f13; --card: #1a1b23; --border: #2a2b35; --text: #c8c9d0; --text-dim: #888; --accent: #4c9aff; }
+  :root {
+    --bg: #0f0f13;
+    --card-bg: rgba(26, 27, 35, .85);
+    --card-border: rgba(42, 43, 53, .6);
+    --text: #c8c9d0;
+    --text-dim: #888;
+    --accent: #4c9aff;
+    --input-bg: rgba(15, 15, 19, .6);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #e8eaed;
+      --card-bg: rgba(255, 255, 255, .88);
+      --card-border: rgba(0, 0, 0, .1);
+      --text: #1a1b23;
+      --text-dim: #666;
+      --accent: #4c9aff;
+      --input-bg: rgba(0, 0, 0, .04);
+    }
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-  .login-box { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 40px; width: 420px; max-width: 100%; }
-  .login-box h2 { text-align: center; margin-bottom: 4px; font-size: 22px; color: #fff; }
-  .login-box .sub { text-align: center; color: var(--text-dim); font-size: 14px; margin-bottom: 28px; }
-  /* OAuth 按钮 */
-  .oauth-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; margin-bottom: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 15px; cursor: pointer; transition: .15s; text-decoration: none; }
-  .oauth-btn:hover { border-color: var(--accent); background: rgba(76,154,255,.06); }
-  .oauth-btn .icon { font-size: 20px; }
-  .oauth-btn .provider-name { font-weight: 600; }
-  /* 分隔线 */
-  .divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: var(--text-dim); font-size: 12px; }
-  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-  /* Token 表单 */
-  .token-row { display: flex; gap: 8px; margin-top: 4px; }
-  .token-row input { flex: 1; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; font-family: monospace; transition: .15s; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+  }
+  .mask {
+    width: 460px;
+    min-height: 100vh;
+    padding: 40px 36px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: var(--card-bg);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-right: 1px solid var(--card-border);
+    flex-shrink: 0;
+  }
+  .mask h2 { font-size: 22px; color: var(--text); margin-bottom: 4px; }
+  .mask .sub { color: var(--text-dim); font-size: 14px; margin-bottom: 28px; }
+  .bg-area { flex: 1; min-height: 100vh; }
+  .token-row { display: flex; gap: 8px; }
+  .token-row input {
+    flex: 1; padding: 10px 14px;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px; font-family: monospace;
+    transition: .15s;
+  }
   .token-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(76,154,255,.15); }
-  .token-row button { padding: 10px 20px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: .2s; white-space: nowrap; }
+  .token-row button {
+    padding: 10px 20px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: .2s; white-space: nowrap;
+  }
   .token-row button:hover { opacity: .85; }
   .token-row button:disabled { opacity: .4; cursor: not-allowed; }
   .error-msg { color: #ff6b6b; font-size: 13px; text-align: center; margin-top: 12px; display: none; }
   .hint { color: var(--text-dim); font-size: 12px; text-align: center; margin-top: 16px; }
   .hint code { background: rgba(255,255,255,.05); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
-  /* loading */
-  .oauth-btn.loading { opacity: .5; pointer-events: none; }
 </style>
 </head>
 <body>
-<div class="login-box">
+<div class="mask">
   <h2>MC Link 管理面板</h2>
-  <div class="sub">选择登录方式</div>
+  <div class="sub">输入管理 Token 登录</div>
 
-  <a class="oauth-btn" href="/auth/github/login" id="btn-github">
-    <span class="icon">🔷</span>
-    <span>使用 <span class="provider-name">GitHub</span> 登录</span>
-  </a>
-  <a class="oauth-btn" href="/auth/microsoft/login" id="btn-microsoft">
-    <span class="icon">🪟</span>
-    <span>使用 <span class="provider-name">Microsoft</span> 登录</span>
-  </a>
-  <a class="oauth-btn" href="/auth/littleskin/login" id="btn-littleskin">
-    <span class="icon">💜</span>
-    <span>使用 <span class="provider-name">LittleSkin</span> 登录</span>
-  </a>
-  <a class="oauth-btn" href="/auth/msl/login" id="btn-msl">
-    <span class="icon">🔶</span>
-    <span>使用 <span class="provider-name">MSL 用户中心</span> 登录</span>
-  </a>
-
-  <div class="divider">或</div>
-
-  <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:6px;">Token 登录</label>
+  <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:6px;">Token</label>
   <div class="token-row">
     <input type="password" id="tokenInput" placeholder="输入管理 Token..." autocomplete="off" onkeydown="if(event.key==='Enter')tokenLogin()">
     <button id="tokenLoginBtn" onclick="tokenLogin()">登录</button>
@@ -65,6 +87,7 @@
   <div class="error-msg" id="errorMsg">Token 无效，请重试</div>
   <div class="hint">Token 保存在服务器 <code>token.json</code> 中</div>
 </div>
+<div class="bg-area"></div>
 
 <script>
 async function tokenLogin() {
@@ -80,8 +103,7 @@ async function tokenLogin() {
     const d = await r.json();
     if (d.code === 0) {
       localStorage.setItem('mc_link_admin_token', token);
-      document.cookie = 'mc_link_token=' + token + '; path=/; max-age=604800; SameSite=Lax';
-      window.location.href = '/admin';
+      window.location.href = '/admin?token=' + encodeURIComponent(token);
     } else {
       err.style.display = 'block';
     }

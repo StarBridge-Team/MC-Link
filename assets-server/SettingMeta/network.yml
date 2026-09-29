@@ -1,0 +1,54 @@
+section: network
+title: 网络设置
+icon: bi-wifi
+description: 配置客户端网络中继与带宽参数
+fields:
+  - key: max_bandwidth_mbps
+    label: MC Link / Revamp 联机限速
+    description: 限制玩家开启 MC Link 或 Revamp 联机时的传输速率，避免占满上行带宽
+    type: number
+    default: "10"
+    unit: Mbps
+    min: 1
+    max: 1000
+    step: 1
+    auto_save: true
+    group: 联机速率限制
+
+  - key: shared_bandwidth_mbps
+    label: 客户端 IPv6 中继共享带宽
+    description: 限制客户端作为 IPv6 中继节点为他人转发数据的速率。设为 0 表示听从中央服务器配置
+    type: number
+    default: "5"
+    unit: Mbps
+    min: 0
+    max: 10000
+    step: 1
+    auto_save: true
+    group: 共享带宽速率限制
+
+  - key: client_relay_enabled
+    label: 启用客户端中继
+    description: 拥有公网 IPv6 时作为轻量中继节点，为中转网络贡献带宽
+    type: switch
+    default: "true"
+    auto_save: true
+    group: 客户端 IPv6 中继
+
+  - key: client_relay_mode
+    label: 运行模式
+    description: 中继节点的可见性与中转策略
+    type: chips
+    default: idle
+    auto_save: true
+    group: 客户端 IPv6 中继
+    options:
+      - value: idle
+        label: 闲置
+        description: 不在列表显示，可作为第一跳
+      - value: private
+        label: 私人
+        description: 不在列表显示，不可中转
+      - value: normal
+        label: 普通
+        description: 显示在列表中，正常中转

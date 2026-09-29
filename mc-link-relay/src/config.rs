@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use serde::{Deserialize, Serialize};
 
 use mc_link_common::log::{log, LogLevel};
-use mc_link_common::utils::exe_dir;
+use mc_link_common::utils::{exe_dir, resolve_address_srv};
 
 // ===== 常量 =====
 
@@ -40,6 +40,9 @@ pub struct Config {
     pub private_mode: bool,
     #[serde(default = "default_transit_mode")]
     pub transit_mode: bool,
+    /// Illusion 内网穿透令牌（空字符串 = 不启用 Illusion）
+    #[serde(default)]
+    pub illusion_token: Option<String>,
 }
 
 fn default_relay_name() -> Option<String> {
@@ -86,6 +89,7 @@ impl Default for Config {
             relay_name: None,
             private_mode: true,
             transit_mode: true,
+            illusion_token: None,
         }
     }
 }
@@ -151,37 +155,18 @@ pub fn local_ip() -> String {
 }
 
 pub fn resolve_server(addr_str: &str) -> SocketAddr {
-    if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+    // 先尝试 SRV 解析（支持不带端口的域名，查询 _mclink._tcp.{domain}）
+    if let Some(addr) = resolve_address_srv(addr_str, DEFAULT_RELAY_PORT) {
+        log(
+            LogLevel::Info,
+            &format!("服务器地址解析成功: {} -> {}", addr_str, addr),
+        );
         return addr;
     }
-    let parts: Vec<&str> = addr_str.rsplitn(2, ':').collect();
-    if parts.len() != 2 {
-        log(
-            LogLevel::Error,
-            &format!("服务器地址格式错误: {}", addr_str),
-        );
-        return FALLBACK_CENTRAL_SERVER.parse().unwrap();
-    }
-    let port = match parts[0].parse::<u16>() {
-        Ok(p) => p,
-        Err(_) => {
-            log(LogLevel::Error, &format!("端口解析失败: {}", parts[0]));
-            return FALLBACK_CENTRAL_SERVER.parse().unwrap();
-        }
-    };
-    let hostname = parts[1];
-    match std::net::ToSocketAddrs::to_socket_addrs(&(hostname, port)) {
-        Ok(mut addrs) => {
-            if let Some(addr) = addrs.next() {
-                log(
-                    LogLevel::Info,
-                    &format!("DNS解析成功: {} -> {}", hostname, addr),
-                );
-                return addr;
-            }
-        }
-        Err(e) => log(LogLevel::Error, &format!("DNS解析失败: {} ({})", hostname, e)),
-    }
+    log(
+        LogLevel::Error,
+        &format!("服务器地址解析失败: {}", addr_str),
+    );
     FALLBACK_CENTRAL_SERVER.parse().unwrap()
 }
 

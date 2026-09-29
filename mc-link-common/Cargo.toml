@@ -11,3 +11,8 @@ aes-gcm = "0.10"
 sha2 = "0.10"
 hex = "0.4"
 rand_core = { version = "0.6", features = ["getrandom"] }
+tokio = { version = "1", features = ["io-util", "net"], optional = true }
+
+[features]
+default = []
+async = ["tokio"]

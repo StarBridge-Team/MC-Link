@@ -35,3 +35,17 @@ dist-ssr
 *.sln
 *.sw?
 mc-link-relay/config.yml.example
+
+# 陈旧的依赖目录（当时的 node_modules 副本，勿入库）
+node_modules_stale/
+node_modules_stale2/
+
+# 一次性/事故产物（归档包、类型检查输出）
+*.tar
+tsc_err.txt
+tsc_out.txt
+"tsc_out.txt; Write-Host STDOUT"
+
+# assets-server 生成物：Assets 由 scripts/sync-assets.mjs 同步，Pages 由 vite.pages.config.ts 构建
+assets-server/Assets/
+assets-server/Pages/

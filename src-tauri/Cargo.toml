@@ -1,6 +1,6 @@
 [package]
 name = "mc-link"
-version = "0.3.5"
+version = "0.4.0"
 description = "MC Link - 我的世界联机工具"
 authors = ["Cugo,棱镜Prism工作室"]
 edition = "2021"
@@ -13,7 +13,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-mc-link-common = { path = "../mc-link-common" }
+mc-link-common = { path = "../mc-link-common", features = ["async"] }
+# 联机核心：折跃门 P2P NAT 穿透库（跨目录 path 依赖）
+# 注意：wgp-core 在其原工作区使用 workspace 继承版本，这里需显式指定 version 以脱离原 workspace 解析。
+# 路径：src-tauri(此处) -> ../mc-link -> ../Tauri -> ../Code -> ../../Rust/mc-link-core/wgp-core
+wgp-core = { path = "../../../Rust/mc-link-core/wgp-core", version = "0.1.0" }
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
@@ -24,10 +28,27 @@ rand = "0.8"
 uuid = { version = "1.0", features = ["v4"] }
 raw-window-handle = "0.6"
 uapi-sdk-rust = "0.1.15"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync"] }
+tracing = "0.1"
 reqwest = { version = "0.12", features = ["blocking", "stream"] }
 futures-util = "0.3"
 tar = "0.4"
 flate2 = "1"
 base64 = "0.22"
 rand_core = { version = "0.6", features = ["std"] }
+local-ip-address = "0.5"
+tokio-util = "0.7"
+hex = "0.4"
+sha2 = "0.10"
+aes = "0.8"
+cbc = "0.1"
+cipher = "0.4"
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = "2"
+
+# M3 (Material Design 3) 动态配色引擎：从种子颜色生成色调调色板、明暗主题映射与颜色角色分配
+# 成熟稳定的 Rust crate 实现：https://crates.io/crates/material-colors
+material-colors = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"

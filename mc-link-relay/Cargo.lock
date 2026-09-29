@@ -326,11 +326,12 @@ dependencies = [
 
 [[package]]
 name = "mc-link-relay"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "hex",
  "local-ip-address",
  "mc-link-common",
+ "once_cell",
  "rand",
  "serde",
  "serde_json",

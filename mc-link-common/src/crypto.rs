@@ -27,11 +27,13 @@ fn derive_key(password: &str) -> [u8; 32] {
 /// - AEAD 自动附加 16 字节认证标签到密文末尾，防篡改
 pub fn encrypt(data: &[u8], password: &str) -> Vec<u8> {
     let key = derive_key(password);
-    let cipher = Aes256Gcm::new_from_slice(&key).expect("有效密钥");
+    // Aes256Gcm::new_from_slice 只在 key 长度不为 32 时失败，derive_key 保证返回 32 字节
+    let cipher = Aes256Gcm::new_from_slice(&key).unwrap_or_else(|_| panic!("密钥长度无效: {}", key.len()));
     let mut nonce_bytes = [0u8; NONCE_SIZE];
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, data).expect("加密失败");
+    // AES-GCM 加密仅在极度异常情况下失败（如底层库 bug）
+    let ciphertext = cipher.encrypt(nonce, data).unwrap_or_else(|_| panic!("AES-GCM 加密失败"));
 
     let mut result = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
     result.extend_from_slice(&nonce_bytes);
@@ -48,7 +50,8 @@ pub fn decrypt(data: &[u8], password: &str) -> Option<Vec<u8>> {
         return None;
     }
     let key = derive_key(password);
-    let cipher = Aes256Gcm::new_from_slice(&key).expect("有效密钥");
+    // derive_key 保证返回 32 字节，new_from_slice 不会失败
+    let cipher = Aes256Gcm::new_from_slice(&key).ok()?;
     let (nonce_bytes, ciphertext) = data.split_at(NONCE_SIZE);
     let nonce = Nonce::from_slice(nonce_bytes);
     cipher.decrypt(nonce, ciphertext).ok()

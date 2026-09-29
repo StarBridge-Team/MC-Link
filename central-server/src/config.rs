@@ -6,12 +6,13 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::apnic::ApnicConfig;
 use mc_link_common::log::{log, LogLevel};
 
 const DEFAULT_LISTEN_ADDR: &str = "0.0.0.0";
 const DEFAULT_LISTEN_PORT: u16 = 8878;
 const DEFAULT_EXTERNAL_PORT: u16 = 8878;
-const DEFAULT_WEB_ADMIN_PORT: u16 = 8879;
+const DEFAULT_WEB_ADMIN_PORT: u16 = 3456;
 const DEFAULT_WEB_ADMIN_BIND: &str = "0.0.0.0";
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -21,6 +22,35 @@ pub struct OAuthProviderConfig {
     #[serde(default)]
     pub client_secret: String,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SmtpConfig {
+    #[serde(default)]
+    pub host: String,
+    #[serde(default = "default_smtp_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub from_address: String,
+}
+
+fn default_smtp_port() -> u16 { 587 }
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ClientRelayConfig {
+    /// 客户端中继最大带宽（bps），默认 5 Mbps
+    #[serde(default = "default_client_relay_bandwidth")]
+    pub max_bandwidth_bps: u64,
+    /// 客户端中继最大连接数
+    #[serde(default = "default_client_relay_connections")]
+    pub max_connections: u32,
+}
+
+fn default_client_relay_bandwidth() -> u64 { 5_000_000 }
+fn default_client_relay_connections() -> u32 { 8 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -40,6 +70,15 @@ pub struct Config {
     /// OAuth 提供商配置
     #[serde(default)]
     pub oauth: HashMap<String, OAuthProviderConfig>,
+    /// SMTP 邮箱验证码配置
+    #[serde(default)]
+    pub smtp: Option<SmtpConfig>,
+    /// 客户端中继限速配置
+    #[serde(default)]
+    pub client_relay: ClientRelayConfig,
+    /// APNIC 亚太地区 IP 白名单
+    #[serde(default)]
+    pub apnic: ApnicConfig,
 }
 
 fn default_listen_addr() -> String { DEFAULT_LISTEN_ADDR.to_string() }
@@ -58,6 +97,12 @@ impl Default for Config {
             web_admin_bind: DEFAULT_WEB_ADMIN_BIND.to_string(),
             account_api_url: String::new(),
             oauth: HashMap::new(),
+            smtp: None,
+            client_relay: ClientRelayConfig {
+                max_bandwidth_bps: default_client_relay_bandwidth(),
+                max_connections: default_client_relay_connections(),
+            },
+            apnic: ApnicConfig::default(),
         }
     }
 }

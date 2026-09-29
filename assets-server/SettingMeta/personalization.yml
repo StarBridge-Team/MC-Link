@@ -1,0 +1,197 @@
+section: personalization
+title: 个性化设置
+icon: bi-palette
+description: 自定义界面外观、主题、背景与动效
+fields:
+  - key: theme_color
+    label: 主题色
+    description: 应用强调色，影响按钮、链接、激活状态等
+    type: text
+    default: "#0066cc"
+    auto_save: true
+    group: 主题
+
+  - key: theme_mode
+    label: 主题模式
+    description: 跟随系统自动切换浅色/深色，或强制固定
+    type: chips
+    default: system
+    auto_save: true
+    group: 主题
+    options:
+      - value: system
+        label: 跟随系统
+        description: 根据系统设置自动切换
+      - value: light
+        label: 浅色
+        description: 强制浅色模式
+      - value: dark
+        label: 深色
+        description: 强制深色模式
+
+  - key: animation_enabled
+    label: 启用动画
+    description: 关闭后所有过渡与动画时长降为 0
+    type: switch
+    default: "true"
+    auto_save: true
+    group: 动效
+
+  - key: animation_speed
+    label: 动画速度倍率
+    description: 调整全局动画播放速度，1.0 为标准速度
+    type: slider
+    default: "1.0"
+    min: 0.1
+    max: 3.0
+    step: 0.1
+    auto_save: true
+    group: 动效
+
+  - key: transparent_effect
+    label: 窗口透明效果
+    description: Windows 11 Mica / Windows 10 亚克力 / macOS HUD 等原生窗口效果
+    type: select
+    default: mica
+    auto_save: true
+    group: 窗口效果
+    options:
+      - value: none
+        label: 无
+        description: 不应用任何原生效果
+      - value: transparent
+        label: 透明
+        description: 简单透明
+      - value: mica
+        label: Mica (Windows 11)
+        description: Windows 11 云母材质
+      - value: acrylic
+        label: 亚克力 (Windows 10)
+        description: Windows 10 亚克力模糊
+      - value: hud_window
+        label: HUD Window (macOS)
+        description: macOS HUD 风格窗口
+
+  - key: background_type
+    label: 背景类型
+    description: 默认透明 / 纯色 / 图片 / 视频
+    type: chips
+    default: default
+    auto_save: true
+    group: 背景
+    options:
+      - value: default
+        label: 默认
+        description: 透明背景
+      - value: solid
+        label: 纯色
+        description: 自定义纯色背景
+      - value: image
+        label: 图片
+        description: 本地图片作为背景
+      - value: video
+        label: 视频
+        description: 本地视频作为背景
+
+  - key: background_value
+    label: 背景值
+    description: 背景类型为 image/video 时为文件名，solid 时为颜色值
+    type: text
+    default: ""
+    auto_save: true
+    group: 背景
+
+  - key: background_fit
+    label: 背景填充方式
+    description: 控制图片/视频在窗口中的填充模式
+    type: select
+    default: scale-to-fill
+    auto_save: true
+    group: 背景
+    options:
+      - value: scale-to-fill
+        label: 拉伸填充
+        description: 拉伸以完全填充窗口
+      - value: aspect-fit
+        label: 等比适应
+        description: 等比缩放并完整显示
+      - value: aspect-fill
+        label: 等比填充
+        description: 等比缩放并裁剪填充
+      - value: width-fix
+        label: 宽度固定
+        description: 宽度固定，高度自适应
+      - value: height-fix
+        label: 高度固定
+        description: 高度固定，宽度自适应
+
+  - key: background_overlay
+    label: 启用背景遮罩
+    description: 在背景之上叠加半透明遮罩，提升文字可读性
+    type: switch
+    default: "false"
+    auto_save: true
+    group: 背景
+
+  - key: background_overlay_opacity
+    label: 遮罩不透明度
+    description: 0 为完全透明，100 为完全不透明
+    type: slider
+    default: "30"
+    min: 0
+    max: 100
+    step: 1
+    auto_save: true
+    group: 背景
+
+  - key: music_mode
+    label: 背景音乐模式
+    description: none 表示不播放，file 表示播放本地文件，url 表示播放网络音频
+    type: select
+    default: none
+    auto_save: true
+    group: 背景音乐
+    options:
+      - value: none
+        label: 无
+        description: 不播放背景音乐
+      - value: file
+        label: 本地文件
+        description: 播放本地音频文件
+      - value: url
+        label: 网络地址
+        description: 播放网络音频流
+
+  - key: music_value
+    label: 背景音乐值
+    description: 模式为 file 时为文件名，url 时为音频 URL
+    type: text
+    default: ""
+    auto_save: true
+    group: 背景音乐
+
+  - key: homepage_mode
+    label: 主页模式
+    description: 主页展示内容来源
+    type: chips
+    default: default
+    auto_save: true
+    group: 主页
+    options:
+      - value: default
+        label: 默认
+        description: 默认主页
+      - value: blank
+        label: 空白
+        description: 空白主页
+      - value: webpage
+        label: 网页
+        description: 嵌入指定网页
+
+  - key: homepage_value
+    label: 主页地址
+    description: homepage_mode 为 webpage 时加载的 URL
+    type: text
+    default: ""
+    auto_save: true
+    group: 主页

@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
+use crate::utils::lock_or_recover;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AdapterStatus {
@@ -60,15 +61,15 @@ impl AdapterManager {
     }
 
     pub fn get_status(&self) -> AdapterStatus {
-        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        let port = *lock_or_recover(&self.terracotta_port, "terracotta_port");
         if let Some(p) = port {
             if !Self::is_port_alive(p) {
-                *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                *lock_or_recover(&self.terracotta_port, "terracotta_port") = None;
             }
         }
 
         let mut status = self.read_status();
-        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        let port = *lock_or_recover(&self.terracotta_port, "terracotta_port");
         status.running = port.is_some();
         status.port = port;
         self.write_status(&status);
@@ -77,7 +78,7 @@ impl AdapterManager {
 
     pub fn launch_all(&self) {
         self.running.store(true, Ordering::SeqCst);
-        if self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+        if lock_or_recover(&self.terracotta_port, "terracotta_port").is_some() {
             return;
         }
         let status = self.read_status();
@@ -85,11 +86,7 @@ impl AdapterManager {
             self.spawn_terracotta_process();
             self.poll_terracotta_port();
         } else {
-            println!("[适配器] 未安装，开始自动下载...");
-            match self.download_and_install_sync() {
-                Ok(msg) => println!("[适配器] {}", msg),
-                Err(e) => eprintln!("[适配器] 自动下载失败: {}", e),
-            }
+            println!("[适配器] 未安装，跳过阻塞下载（将由前端触发下载）");
         }
     }
 
@@ -103,13 +100,13 @@ impl AdapterManager {
         status.starting = true;
         self.write_status(&status);
 
-        if self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
+        if lock_or_recover(&self.terracotta_port, "terracotta_port").is_none() {
             self.spawn_terracotta_process();
         }
 
         self.poll_terracotta_port();
 
-        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        let port = *lock_or_recover(&self.terracotta_port, "terracotta_port");
         match port {
             Some(p) => {
                 let mut status = self.read_status();
@@ -171,7 +168,7 @@ impl AdapterManager {
                     if let Some(port) = json.get("port").and_then(|v| v.as_u64()) {
                         let port = port as u16;
                         if Self::is_port_alive(port) {
-                            *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()) = Some(port);
+                            *lock_or_recover(&self.terracotta_port, "terracotta_port") = Some(port);
                             println!("[适配器] 陶瓦联机端口: {}", port);
                             let _ = std::fs::remove_file(&hmcl_file);
                             break;
@@ -184,7 +181,7 @@ impl AdapterManager {
     }
 
     pub fn stop_terracotta(&self) -> Result<String, String> {
-        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        let port = *lock_or_recover(&self.terracotta_port, "terracotta_port");
         match port {
             Some(p) => {
                 let client = reqwest::blocking::Client::builder()
@@ -203,7 +200,7 @@ impl AdapterManager {
                     std::thread::sleep(Duration::from_millis(200));
                 }
 
-                *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                *lock_or_recover(&self.terracotta_port, "terracotta_port") = None;
 
                 let mut status = self.read_status();
                 status.running = false;
@@ -217,7 +214,7 @@ impl AdapterManager {
     }
 
     pub fn ensure_running(&self) -> Result<u16, String> {
-        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        let port = *lock_or_recover(&self.terracotta_port, "terracotta_port");
         if let Some(p) = port {
             return Ok(p);
         }
@@ -230,7 +227,7 @@ impl AdapterManager {
         self.spawn_terracotta_process();
         self.poll_terracotta_port();
 
-        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        let port = *lock_or_recover(&self.terracotta_port, "terracotta_port");
         match port {
             Some(p) => {
                 let mut s = self.read_status();
@@ -264,7 +261,7 @@ impl AdapterManager {
     pub fn shutdown_all(&self) {
         self.running.store(false, Ordering::SeqCst);
 
-        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        let port = *lock_or_recover(&self.terracotta_port, "terracotta_port");
         if let Some(p) = port {
             let client = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(3))
@@ -273,7 +270,7 @@ impl AdapterManager {
                 let url = format!("http://127.0.0.1:{}/panic?peaceful=true", p);
                 let _ = client.get(&url).send();
             }
-            *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *lock_or_recover(&self.terracotta_port, "terracotta_port") = None;
         }
 
         let mut status = self.read_status();
@@ -336,7 +333,7 @@ impl AdapterManager {
         self.spawn_terracotta_process();
         self.poll_terracotta_port();
 
-        let port = *self.terracotta_port.lock().unwrap_or_else(|e| e.into_inner());
+        let port = *lock_or_recover(&self.terracotta_port, "terracotta_port");
         match port {
             Some(p) => {
                 let mut s = self.read_status();

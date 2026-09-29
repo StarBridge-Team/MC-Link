@@ -1,0 +1,18 @@
+# MC Link 资产服务器配置示例
+# 复制为 config.yml 后修改
+
+# 监听地址
+bind: "0.0.0.0"
+
+# 监听端口
+port: 8090
+
+# 资产根目录（包含 Assets/ Pages/ Updates/ SettingMeta/ 子目录）
+# 留空或 "." 表示可执行文件当前工作目录
+root_dir: "."
+
+# 跨域允许来源（* 表示任意，留空表示同源）
+cors_origin: "*"
+
+# 是否打印访问日志
+access_log: true

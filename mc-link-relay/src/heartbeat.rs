@@ -6,16 +6,23 @@ use mc_link_common::log::{log, LogLevel};
 use crate::protocol::{read_packet, write_packet};
 use crate::RelayState;
 
+/// 尝试获取本机公网 IPv6 地址
+fn local_ipv6() -> Option<String> {
+    local_ip_address::local_ipv6().ok().map(|ip| ip.to_string())
+}
+
 /// 向中央服务器发送注册请求
 pub fn send_register(stream: &mut TcpStream, state: &RelayState) {
     let address = state
         .report_address
         .clone()
         .unwrap_or_else(|| format!("{}:{}", local_ip(), state.relay_port));
+    let address_v6 = local_ipv6().map(|ip| format!("{}:{}", ip, state.relay_port));
     let req = serde_json::json!({
         "id": state.relay_id.clone(),
         "name": state.relay_name.lock().unwrap_or_else(|e| e.into_inner()).clone(),
         "address": address,
+        "address_v6": address_v6,
         "private": state.private_mode,
         "transit": state.transit_mode,
         "udp_port": state.udp_port,

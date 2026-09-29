@@ -12,63 +12,57 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="icon-sidebar">
-    <div class="sidebar-top">
-      <div
-        v-for="item in iconItems"
-        :key="item.id"
-        :class="['sidebar-icon-item', { active: activeIcon === item.id }]"
-        :title="item.title"
-        @click="emit('iconChange', item.id)"
-      >
-        <i :class="['bi', item.icon]"></i>
-      </div>
-    </div>
-  </div>
+  <el-menu
+    class="icon-sidebar"
+    :default-active="activeIcon"
+    :collapse="true"
+    @select="(idx: string) => emit('iconChange', idx)"
+  >
+    <el-menu-item
+      v-for="item in iconItems"
+      :key="item.id"
+      :index="item.id"
+      :title="item.title"
+    >
+      <i :class="['bi', item.icon]"></i>
+    </el-menu-item>
+  </el-menu>
 </template>
 
 <style scoped>
 .icon-sidebar {
   width: 60px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 0;
+  border-right: none;
+  background: transparent;
+  padding: var(--sp-3) 0;
   -webkit-app-region: no-drag;
+  flex-shrink: 0;
 }
 
-.sidebar-top {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.sidebar-icon-item {
+.icon-sidebar :deep(.el-menu-item) {
   width: 40px;
   height: 40px;
+  margin: 0 auto var(--sp-3);
+  border-radius: var(--r-md);
+  padding: 0 !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 18px;
-  color: rgba(255, 255, 255, 0.45);
-  position: relative;
+  font-size: var(--fs-2xl);
+  color: var(--text-muted);
 }
 
-.sidebar-icon-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
+.icon-sidebar :deep(.el-menu-item:hover) {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
-.sidebar-icon-item.active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+.icon-sidebar :deep(.el-menu-item.is-active) {
+  background: var(--bg-soft-hover);
+  color: var(--text-primary);
 }
 
-.sidebar-icon-item.active::before {
+.icon-sidebar :deep(.el-menu-item.is-active)::before {
   content: '';
   position: absolute;
   left: -10px;
@@ -80,31 +74,7 @@ const emit = defineEmits<{
   border-radius: 0 3px 3px 0;
 }
 
-@media (prefers-color-scheme: light) {
-  .sidebar-icon-item {
-    color: rgba(0, 0, 0, 0.4);
-  }
-  .sidebar-icon-item:hover {
-    background: rgba(0, 0, 0, 0.06);
-    color: rgba(0, 0, 0, 0.75);
-  }
-  .sidebar-icon-item.active {
-    background: rgba(0, 0, 0, 0.08);
-    color: #000;
-  }
-}
-
-[data-theme="light"] .sidebar-icon-item {
-  color: rgba(0, 0, 0, 0.4);
-}
-
-[data-theme="light"] .sidebar-icon-item:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: rgba(0, 0, 0, 0.75);
-}
-
-[data-theme="light"] .sidebar-icon-item.active {
-  background: rgba(0, 0, 0, 0.08);
-  color: #000;
+.icon-sidebar :deep(.el-menu-item .bi) {
+  font-size: var(--fs-2xl);
 }
 </style>

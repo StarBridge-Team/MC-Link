@@ -1,201 +1,88 @@
-mod host;
-mod client;
-mod protocol;
-mod lan;
-mod central;
 mod state;
 mod adapter;
+mod utils;
 mod terracotta_client;
-mod revamp;
-mod revamp_relay;
-#[macro_use]
+mod account;
 mod commands;
 use commands::*;
 mod tray;
+mod assets;
+mod asset_server;
+mod datadir;
+mod cache;
+mod effect;
+mod page;
+mod update;
+mod config;
+mod mgr;
+mod downloader;
+mod deep_link;
+mod setting_meta;
+mod m3;
+use m3::commands::*;
 
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::Manager;
+use tauri_plugin_deep_link::DeepLinkExt;
 use state::AppState;
-use state::DataDir;
+use datadir::resolve_data_dir;
 use adapter::AdapterManager;
+use mgr::AppMgr;
 
 fn launch_adapters(app: &tauri::App, data_dir: &std::path::Path) {
     let manager = AdapterManager::new(data_dir);
     app.manage(Arc::new(Mutex::new(manager)));
 }
 
-/// 仅在 Windows 11 和 macOS 上启用窗口毛玻璃效果
-fn setup_window_effects(app: &tauri::App) {
-    #[cfg(target_os = "windows")]
-    {
-        if is_windows_11() {
-            if let Some(window) = app.get_webview_window("main") {
-                apply_mica_backdrop(&window);
-            }
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(window) = app.get_webview_window("main") {
-            apply_vibrancy_backdrop(&window);
-        }
-    }
-}
-
-#[cfg(windows)]
-fn is_windows_11() -> bool {
-    #[repr(C)]
-    struct OsVersionInfo {
-        os_version_info_size: u32,
-        major_version: u32,
-        minor_version: u32,
-        build_number: u32,
-        platform_id: u32,
-        csd_version: [u16; 128],
-    }
-    #[link(name = "ntdll")]
-    extern "system" {
-        fn RtlGetVersion(lpVersionInformation: *mut OsVersionInfo) -> i32;
-    }
-    let mut info = OsVersionInfo {
-        os_version_info_size: std::mem::size_of::<OsVersionInfo>() as u32,
-        major_version: 0,
-        minor_version: 0,
-        build_number: 0,
-        platform_id: 0,
-        csd_version: [0; 128],
-    };
-    let ret = unsafe { RtlGetVersion(&mut info) };
-    if ret >= 0 {
-        // Windows 11 build number >= 22000
-        info.build_number >= 22000
-    } else {
-        false
-    }
-}
-
-#[cfg(windows)]
-fn apply_mica_backdrop(window: &tauri::WebviewWindow) {
-    apply_mica_backdrop_typed(window, 2);
-}
-
-#[cfg(windows)]
-pub(crate) fn apply_mica_backdrop_typed(window: &tauri::WebviewWindow, backdrop_type: u32) {
-    use raw_window_handle::HasWindowHandle;
-    if let Ok(handle) = window.window_handle() {
-        if let raw_window_handle::RawWindowHandle::Win32(win32) = handle.as_raw() {
-            let hwnd = win32.hwnd.get() as *mut std::ffi::c_void;
-            unsafe {
-                #[link(name = "dwmapi")]
-                extern "system" {
-                    fn DwmSetWindowAttribute(
-                        hwnd: *mut std::ffi::c_void,
-                        dwAttribute: u32,
-                        pvAttribute: *const std::ffi::c_void,
-                        cbAttribute: u32,
-                    ) -> i32;
-                }
-                // DWMSBT_MAINWINDOW (Mica) = 2，比 Acrylic 更轻量且适配深色模式
-                DwmSetWindowAttribute(hwnd, 38, &backdrop_type as *const _ as *const _, 4);
-            }
-            // 触发窗口重绘使 DWM 属性变更生效
-            unsafe {
-                #[link(name = "user32")]
-                extern "system" {
-                    fn SetWindowPos(
-                        hwnd: *mut std::ffi::c_void,
-                        hwndInsertAfter: *mut std::ffi::c_void,
-                        x: i32,
-                        y: i32,
-                        cx: i32,
-                        cy: i32,
-                        uFlags: u32,
-                    ) -> i32;
-                }
-                const SWP_NOMOVE: u32 = 0x0002;
-                const SWP_NOSIZE: u32 = 0x0001;
-                const SWP_FRAMECHANGED: u32 = 0x0020;
-                SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
-            }
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn apply_vibrancy_backdrop(window: &tauri::WebviewWindow) {
-    use raw_window_handle::HasWindowHandle;
-    if let Ok(handle) = window.window_handle() {
-        if let raw_window_handle::RawWindowHandle::AppKit(ns) = handle.as_raw() {
-            let ns_view = ns.ns_view.as_ptr();
-            if !ns_view.is_null() {
-                unsafe {
-                    // 使用 objc 运行时创建 NSVisualEffectView 并添加到窗口
-                    // 导入 objc 运行时函数
-                    #[link(name = "objc")]
-                    extern "system" {
-                        fn sel_registerName(name: *const std::ffi::c_char) -> *mut std::ffi::c_void;
-                        fn objc_msgSend(obj: *mut std::ffi::c_void, sel: *mut std::ffi::c_void, ...) -> *mut std::ffi::c_void;
-                        fn objc_getClass(name: *const std::ffi::c_char) -> *mut std::ffi::c_void;
-                    }
-                    use std::ffi::CString;
-
-                    // 创建 NSVisualEffectView
-                    let cls_name = CString::new("NSVisualEffectView").unwrap();
-                    let cls = objc_getClass(cls_name.as_ptr());
-
-                    let alloc_sel = sel_registerName(CString::new("alloc").unwrap().as_ptr());
-                    let init_sel = sel_registerName(CString::new("initWithFrame:").unwrap().as_ptr());
-                    let set_autoresizing_mask_sel = sel_registerName(CString::new("setAutoresizingMask:").unwrap().as_ptr());
-                    let set_state_sel = sel_registerName(CString::new("setState:").unwrap().as_ptr());
-                    let set_material_sel = sel_registerName(CString::new("setMaterial:").unwrap().as_ptr());
-                    let view_add_subview_sel = sel_registerName(CString::new("addSubview:positioned:relativeTo:").unwrap().as_ptr());
-
-                    // NSVisualEffectView 的 state 和 material 常量
-                    // NSVisualEffectStateActive = 1, NSVisualEffectMaterialHUDWindow = 7
-                    let effect_view = objc_msgSend(cls, alloc_sel);
-                    // CGRectMake(0, 0, width, height) - use infinite bounds to fill window
-                    let rect_sel = sel_registerName(CString::new("CGRectMake").unwrap().as_ptr());
-                    let effect_view = objc_msgSend(effect_view, init_sel, 0.0f64, 0.0f64, 1.0f64, 1.0f64);
-
-                    // setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable = 18
-                    objc_msgSend(effect_view, set_autoresizing_mask_sel, 18usize);
-
-                    // setState: NSVisualEffectStateActive = 1
-                    objc_msgSend(effect_view, set_state_sel, 1usize);
-
-                    // setMaterial: NSVisualEffectMaterialHUDWindow = 7
-                    objc_msgSend(effect_view, set_material_sel, 7usize);
-
-                    // 添加到 NSView 的最底层
-                    objc_msgSend(ns_view, view_add_subview_sel, effect_view, -1i32, std::ptr::null_mut::<std::ffi::c_void>());
-                }
-            }
-        }
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState {
-            current_room: Arc::new(Mutex::new(None)),
-            is_running: Arc::new(AtomicBool::new(false)),
-            latency_ms: Arc::new(Mutex::new(0)),
-            stop_signal: Arc::new(Mutex::new(None)),
-        })
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .manage(AppState)
         .setup(|app| {
-            let data_dir = app.path()
-                .app_data_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let data_dir = resolve_data_dir(app);
             std::fs::create_dir_all(&data_dir).ok();
-            app.manage(DataDir(data_dir.clone()));
+
+            let mgr = Arc::new(AppMgr::new(data_dir.clone())?);
+            app.manage(mgr.clone());
+
+            // P2P 连接管理器（基于 wgp-core）
+            app.manage(Arc::new(mgr::connection::ConnectionManager::new()));
+
+            if let Err(e) = config::check::check_config_version(&data_dir) {
+                eprintln!("[配置检查] {}", e);
+            }
 
             tray::setup_tray(app.handle())?;
             launch_adapters(app, &data_dir);
-            setup_window_effects(app);
+            effect::setup_window_effects(app);
+
+            // 注册 mclink:// 深度链接
+            let result = deep_link::register_scheme();
+            if !result.success {
+                eprintln!("[深度链接] {}", result.message);
+            }
+
+            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+            {
+                if let Err(e) = app.deep_link().register_all() {
+                    eprintln!("[深度链接] 插件注册失败: {}", e);
+                }
+            }
+
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                deep_link::handle_deep_link(&handle, &event.urls());
+            });
 
             #[cfg(desktop)]
             {
@@ -242,11 +129,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_relays,
-            scan_lan_servers,
-            get_latency,
-            start_online,
-            stop_online,
             minimize_window,
             maximize_window,
             close_window,
@@ -256,7 +138,6 @@ pub fn run() {
             show_main_window,
             set_tray_size,
             resize_window,
-            ping_relay,
             get_ip_info,
             download_adapter,
             adapter_startup_init,
@@ -266,31 +147,39 @@ pub fn run() {
             start_terracotta_guest,
             get_app_version,
             get_tauri_version,
-            get_players,
-            check_room_exists,
             get_setting,
             save_setting,
             get_personalization,
             save_personalization,
             get_default_effect,
             set_window_effect,
+            set_window_dark_mode,
             get_background_files,
             get_background_file_url,
-            revamp_ping,
-            revamp_get_nodes,
-            revamp_get_rooms,
-            revamp_room_exists,
-            revamp_create_room,
-            revamp_join_room,
-            revamp_leave_room,
-            revamp_get_version,
-            revamp_register,
-            revamp_login,
-            revamp_start_host,
-            revamp_join_room_cmd,
+            account_login,
+            account_verify,
+            account_ping,
+            desktop_login_init,
+            desktop_login_poll,
+            account_get_me,
+            account_get_avatar,
             init_app,
             prepare_app,
-            check_room_full,
+            get_asset_url,
+            get_assets_server_url,
+            get_page_manifest,
+            get_page_content,
+            clear_page_cache_command,
+            check_update_command,
+            download_update_command,
+            clear_update_cache_command,
+            get_setting_meta,
+            get_setting_manifest,
+            clear_setting_meta_cache_command,
+            start_p2p_connection,
+            stop_p2p_connection,
+            get_p2p_status,
+            generate_m3_scheme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

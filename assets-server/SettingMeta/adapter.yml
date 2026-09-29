@@ -1,0 +1,21 @@
+section: adapter
+title: 适配器设置
+icon: bi-plugin
+description: 配置联机适配器自动启动与路径
+fields:
+  - key: auto_start
+    label: 自动启动适配器
+    description: 客户端启动时自动拉起联机适配器进程
+    type: switch
+    default: "false"
+    auto_save: true
+    group: 启动
+
+  - key: adapter_path
+    label: 适配器可执行文件路径
+    description: 留空则使用内置适配器；指定路径将优先使用外部适配器
+    type: text
+    default: ""
+    placeholder: 例如 /opt/mc-link/adapter
+    auto_save: true
+    group: 路径

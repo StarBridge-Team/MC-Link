@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
-import { cn } from '../lib/utils';
+import { ref, watch, onMounted, computed } from 'vue';
+import type { SettingSection } from '../lib/api/types';
 
 interface TextSidebarProps {
   activeIcon: string;
   activeText: string;
+  settingItems?: SettingSection[];
 }
 
 const props = defineProps<TextSidebarProps>();
@@ -13,140 +14,110 @@ const emit = defineEmits<{
 }>();
 
 const showSidebarAnimation = ref(false);
-const previousIcon = ref('');
 
 onMounted(() => {
-  previousIcon.value = props.activeIcon;
   showSidebarAnimation.value = true;
 });
 
 watch(() => props.activeIcon, (newIcon, oldIcon) => {
   if (newIcon !== oldIcon) {
-    previousIcon.value = newIcon;
     showSidebarAnimation.value = true;
     setTimeout(() => {
       showSidebarAnimation.value = false;
     }, 300);
   }
 });
+
+const connectItems = [
+  { id: 'join', icon: '', label: '加入房间' },
+  { id: 'create', icon: '', label: '创建房间' },
+];
+
+/** 服务端清单未到位时的兜底 */
+const FALLBACK_SETTING_ITEMS: SettingSection[] = [
+  { id: 'personalization', label: '个性化', icon: 'bi-palette' },
+  { id: 'about', label: '关于', icon: 'bi-info-circle' },
+];
+
+const settingItems = computed(() => props.settingItems ?? FALLBACK_SETTING_ITEMS);
 </script>
 
 <template>
-  <!-- 联机侧边栏 -->
-  <div v-if="activeIcon === 'connect'" class="text-sidebar" :class="{ 'animate-in': showSidebarAnimation }">
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'join' })"
-      @click="emit('textChange', 'join')"
+  <el-menu
+    v-if="activeIcon === 'connect'"
+    class="text-sidebar"
+    :class="{ 'animate-in': showSidebarAnimation }"
+    :default-active="activeText"
+    @select="(idx: string) => emit('textChange', idx)"
+  >
+    <el-menu-item
+      v-for="(item, i) in connectItems"
+      :key="item.id"
+      :index="item.id"
+      :style="{ animationDelay: i * 0.05 + 's' }"
+      class="text-item"
     >
-      加入房间
-    </div>
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'create' })"
-      @click="emit('textChange', 'create')"
-    >
-      创建房间
-    </div>
-  </div>
-  
-  <!-- 中继服务器侧边栏 -->
-  <div v-if="activeIcon === 'relay'" class="text-sidebar" :class="{ 'animate-in': showSidebarAnimation }">
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'server' })"
-      @click="emit('textChange', 'server')"
-    >
-      服务器设置
-    </div>
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'logs' })"
-      @click="emit('textChange', 'logs')"
-    >
-      运行日志
-    </div>
-  </div>
+      {{ item.label }}
+    </el-menu-item>
+  </el-menu>
 
-  <!-- 设置侧边栏 -->
-  <div v-if="activeIcon === 'setting'" class="text-sidebar" :class="{ 'animate-in': showSidebarAnimation }">
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'account' })"
-      @click="emit('textChange', 'account')"
+  <el-menu
+    v-if="activeIcon === 'setting'"
+    class="text-sidebar"
+    :class="{ 'animate-in': showSidebarAnimation }"
+    :default-active="activeText"
+    @select="(idx: string) => emit('textChange', idx)"
+  >
+    <el-menu-item
+      v-for="(item, i) in settingItems"
+      :key="item.id"
+      :index="item.id"
+      :style="{ animationDelay: i * 0.05 + 's' }"
+      class="text-item"
     >
-      <i class="bi bi-person-circle"></i>
-      账号
-    </div>
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'network' })"
-      @click="emit('textChange', 'network')"
-    >
-      <i class="bi bi-wifi"></i>
-      网络
-    </div>
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'personalization' })"
-      @click="emit('textChange', 'personalization')"
-    >
-      <i class="bi bi-palette"></i>
-      个性化
-    </div>
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'adapter' })"
-      @click="emit('textChange', 'adapter')"
-    >
-      <i class="bi bi-plug"></i>
-      适配器
-    </div>
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'connector' })"
-      @click="emit('textChange', 'connector')"
-    >
-      <i class="bi bi-hdd-network"></i>
-      联机器
-    </div>
-    <div
-      :class="cn('sidebar-text-item text-item', { active: activeText === 'about' })"
-      @click="emit('textChange', 'about')"
-    >
-      <i class="bi bi-info-circle"></i>
-      关于
-    </div>
-  </div>
+      <i v-if="item.icon" :class="['bi', item.icon]"></i>
+      <span>{{ item.label }}</span>
+    </el-menu-item>
+  </el-menu>
 </template>
 
 <style scoped>
 .text-sidebar {
   width: 180px;
-  padding: 15px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  padding: var(--sp-4) var(--sp-3);
+  border-right: none;
+  background: transparent;
+  gap: var(--sp-1);
   -webkit-app-region: no-drag;
-  transition: all calc(0.3s * var(--anim-speed, 1)) ease;
+  transition: all var(--motion-slow) var(--ease);
+  flex-shrink: 0;
 }
 
-.sidebar-text-item {
+.text-sidebar :deep(.el-menu-item) {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all calc(0.2s * var(--anim-speed, 1)) ease;
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.55);
+  gap: var(--sp-3);
+  height: auto;
+  line-height: 1.4;
+  padding: var(--sp-3) var(--sp-4) !important;
+  border-radius: var(--r-md);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
   position: relative;
 }
 
-.sidebar-text-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
+.text-sidebar :deep(.el-menu-item:hover) {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
-.sidebar-text-item.active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+.text-sidebar :deep(.el-menu-item.is-active) {
+  background: var(--bg-soft-hover);
+  color: var(--text-primary);
 }
 
-.sidebar-text-item.active::before {
+.text-sidebar :deep(.el-menu-item.is-active)::before {
   content: '';
   position: absolute;
   left: -10px;
@@ -158,52 +129,16 @@ watch(() => props.activeIcon, (newIcon, oldIcon) => {
   border-radius: 0 3px 3px 0;
 }
 
-.sidebar-text-item i {
-  font-size: 16px;
+.text-sidebar :deep(.el-menu-item .bi) {
+  font-size: var(--fs-xl);
   width: 20px;
   text-align: center;
 }
 
-@media (prefers-color-scheme: light) {
-  .sidebar-text-item {
-    color: rgba(0, 0, 0, 0.45);
-  }
-  .sidebar-text-item:hover {
-    background: rgba(0, 0, 0, 0.06);
-    color: rgba(0, 0, 0, 0.75);
-  }
-  .sidebar-text-item.active {
-    background: rgba(0, 0, 0, 0.08);
-    color: #000;
-  }
-}
-
-[data-theme="light"] .sidebar-text-item {
-  color: rgba(0, 0, 0, 0.45);
-}
-
-[data-theme="light"] .sidebar-text-item:hover {
-  background: rgba(0, 0, 0, 0.06);
-  color: rgba(0, 0, 0, 0.75);
-}
-
-[data-theme="light"] .sidebar-text-item.active {
-  background: rgba(0, 0, 0, 0.08);
-  color: #000;
-}
-
-/* 浮现动画 */
 .text-item {
   opacity: 0;
-  animation: itemEnter calc(0.4s * var(--anim-speed, 1)) ease-out forwards;
+  animation: itemEnter calc(0.4s * var(--anim-speed, 1)) var(--ease-out) forwards;
 }
-
-.text-item:nth-child(1) { animation-delay: calc(0s * var(--anim-speed, 1)); }
-.text-item:nth-child(2) { animation-delay: calc(0.05s * var(--anim-speed, 1)); }
-.text-item:nth-child(3) { animation-delay: calc(0.1s * var(--anim-speed, 1)); }
-.text-item:nth-child(4) { animation-delay: calc(0.15s * var(--anim-speed, 1)); }
-.text-item:nth-child(5) { animation-delay: calc(0.2s * var(--anim-speed, 1)); }
-.text-item:nth-child(6) { animation-delay: calc(0.25s * var(--anim-speed, 1)); }
 
 @keyframes itemEnter {
   0% {

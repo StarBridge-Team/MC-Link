@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { registerAccount, loginAccount } from "../../lib/revamp";
-import Input from "../ui/Input.vue";
-import Button from "../ui/Button.vue";
-import Card from "../ui/Card.vue";
-import Spinner from "../ui/Spinner.vue";
+import { ref, onUnmounted } from "vue";
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { desktopLoginInit, desktopLoginPoll, accountGetMe, accountGetAvatar, accountVerify } from "../../lib/api/account";
+
+const APP_ID = "dsk_b6b41d3dba4b9b3bf5ee3678c50890ae";
 
 const props = defineProps<{
   showToast: (msg: string) => void;
@@ -15,272 +14,316 @@ const emit = defineEmits<{
   'name-change': [val: string];
 }>();
 
-const revampServer = "43.248.79.27:14117";
-const revampUsername = ref("");
-const revampPassword = ref("");
-const revampToken = ref(localStorage.getItem("revamp_token") || "");
-const revampLoggedIn = ref(!!localStorage.getItem("revamp_token"));
-const revampLoading = ref(false);
-const revampActionText = ref("");
+const TOKEN_KEY = "mc_link_account_token";
+const USERNAME_KEY = "mc_link_account_username";
+const AVATAR_KEY = "mc_link_account_avatar";
 
-const savedRevampUser = localStorage.getItem("revamp_username") || "";
-if (savedRevampUser) revampUsername.value = savedRevampUser;
+const savedToken = ref(localStorage.getItem(TOKEN_KEY) || "");
+const savedUsername = ref(localStorage.getItem(USERNAME_KEY) || "");
+const savedAvatar = ref(localStorage.getItem(AVATAR_KEY) || "");
+const isLoggedIn = ref(!!savedToken.value && !!savedUsername.value);
 
-function onNameInput(val: string | number) {
+const isLoggingIn = ref(false);
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+if (isLoggedIn.value) {
+  syncPlayerName();
+}
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer);
+});
+
+function syncPlayerName() {
+  const name = savedUsername.value;
+  if (name) {
+    localStorage.setItem("player_name", name);
+    emit('name-change', name);
+  }
+}
+
+function onNameInput(val: string) {
   const str = String(val);
   localStorage.setItem("player_name", str);
   emit('name-change', str);
 }
 
-async function revampRegister() {
-  if (!revampUsername.value || !revampPassword.value) {
-    props.showToast("请输入用户名和密码");
-    return;
-  }
-  revampLoading.value = true;
-  revampActionText.value = "注册中...";
+async function handleLogin() {
+  if (isLoggingIn.value) return;
+  isLoggingIn.value = true;
+  props.showToast("正在启动桌面登录...");
+
   try {
-    const data = await registerAccount(revampUsername.value, revampPassword.value);
-    if (data.status === "ok" || data.status === "success") {
-      props.showToast("注册成功，请登录");
-    } else {
-      props.showToast("注册失败: " + (data.message || "未知错误"));
+    // 1. 初始化桌面登录
+    const init = await desktopLoginInit(APP_ID);
+    if (init.code !== 0 || !init.session) {
+      props.showToast(`登录初始化失败: ${init.error || '未知错误'}`);
+      isLoggingIn.value = false;
+      return;
     }
+
+    const session = init.session;
+    props.showToast("请在浏览器中完成登录授权");
+
+    // 2. 打开浏览器授权页
+    const loginUrl = `http://localhost:3000/login?app_id=${APP_ID}&session=${session}`;
+    openUrl(loginUrl);
+
+    // 3. 轮询等待授权结果
+    pollTimer = setInterval(async () => {
+      try {
+        const poll = await desktopLoginPoll(APP_ID, session);
+        if (poll.code === 0 && poll.status === "authorized" && poll.token) {
+          clearInterval(pollTimer!);
+          pollTimer = null;
+
+          // 获取用户信息
+          let username = "user";
+          let avatar = "";
+          try {
+            const me = await accountGetMe(poll.token);
+            if (me.code === 0 && me.user) {
+              username = me.user.username || username;
+              // 通过后端代理获取头像（避免跨域）
+              if (me.user.avatar) {
+                try {
+                  avatar = await accountGetAvatar(poll.token, me.user.avatar);
+                } catch (e: any) {
+                  props.showToast(`头像加载失败: ${typeof e === 'string' ? e : e.message || '未知错误'}`);
+                  avatar = "";
+                }
+              }
+            } else {
+              props.showToast(`获取用户信息失败: ${me.error || '未知错误'}`);
+            }
+          } catch (e: any) {
+            props.showToast(`获取用户信息出错: ${typeof e === 'string' ? e : e.message || '未知错误'}`);
+          }
+
+          localStorage.setItem(TOKEN_KEY, poll.token);
+          localStorage.setItem(USERNAME_KEY, username);
+          localStorage.setItem(AVATAR_KEY, avatar);
+          savedToken.value = poll.token;
+          savedUsername.value = username;
+          savedAvatar.value = avatar;
+          isLoggedIn.value = true;
+          isLoggingIn.value = false;
+          syncPlayerName();
+          props.showToast(`登录成功，欢迎 ${username}`);
+        } else if (poll.code !== 0) {
+          clearInterval(pollTimer!);
+          pollTimer = null;
+          isLoggingIn.value = false;
+          props.showToast(`登录失败: ${poll.error}`);
+        }
+        // status === "pending" 则继续轮询
+      } catch (e: any) {
+        // 网络错误时静默重试
+      }
+    }, 2000);
   } catch (e: any) {
-    props.showToast("注册失败: " + e);
-  } finally {
-    revampLoading.value = false;
-    revampActionText.value = "";
+    isLoggingIn.value = false;
+    props.showToast(`登录失败: ${typeof e === 'string' ? e : e.toString()}`);
   }
 }
 
-async function revampLogin() {
-  if (!revampUsername.value || !revampPassword.value) {
-    props.showToast("请输入用户名和密码");
-    return;
+function handleLogout() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
   }
-  revampLoading.value = true;
-  revampActionText.value = "登录中...";
-  try {
-    const data = await loginAccount(revampUsername.value, revampPassword.value);
-    if (data.status === "ok" || data.status === "success") {
-      revampToken.value = data.token;
-      revampLoggedIn.value = true;
-      localStorage.setItem("revamp_token", data.token);
-      localStorage.setItem("revamp_username", revampUsername.value);
-      props.showToast("登录成功");
-    } else {
-      props.showToast("登录失败: " + (data.message || "用户名或密码错误"));
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USERNAME_KEY);
+  localStorage.removeItem(AVATAR_KEY);
+  savedToken.value = "";
+  savedUsername.value = "";
+  savedAvatar.value = "";
+  isLoggedIn.value = false;
+  isLoggingIn.value = false;
+  props.showToast("已退出登录");
+}
+
+async function checkLoginStatus() {
+  const tok = localStorage.getItem(TOKEN_KEY);
+  const usr = localStorage.getItem(USERNAME_KEY);
+  if (tok && usr) {
+    try {
+      const data = await accountVerify(tok);
+      if (data.status === "success") {
+        savedToken.value = tok;
+        savedUsername.value = usr;
+        isLoggedIn.value = true;
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USERNAME_KEY);
+      }
+    } catch {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USERNAME_KEY);
     }
-  } catch (e: any) {
-    props.showToast("登录失败: " + e);
-  } finally {
-    revampLoading.value = false;
-    revampActionText.value = "";
   }
 }
 
-function revampLogout() {
-  revampToken.value = "";
-  revampLoggedIn.value = false;
-  localStorage.removeItem("revamp_token");
-  props.showToast("已登出");
+function handleRegister() {
+  openUrl(`http://localhost:3000/login`);
 }
+
+defineExpose({ checkLoginStatus });
 </script>
 
 <template>
-  <div class="personalization-page">
-    <Card>
-      <div class="pers-card-title">玩家信息</div>
-      <div class="pers-row">
-        <span>玩家名</span>
-        <Input :model-value="playerName" placeholder="输入玩家名" maxlength="16" @input="onNameInput" />
-      </div>
-    </Card>
+  <div class="account-page">
+    <el-card v-if="!isLoggedIn" class="account-card" shadow="never">
+      <div class="section-title">玩家信息</div>
+      <el-form-item label="玩家名" class="account-field">
+        <el-input
+          :model-value="playerName"
+          placeholder="输入玩家名"
+          maxlength="16"
+          @update:model-value="onNameInput"
+        />
+      </el-form-item>
+    </el-card>
 
-    <Card style="margin-top: 16px; position: relative;">
-      <div class="pers-card-title">
-        MC Link revamp 适配器账号
-        <span class="revamp-badge">适配器</span>
-      </div>
-      <div class="revamp-server-info">
-        <i class="bi bi-server"></i>
-        服务器: <code>{{ revampServer }}</code>
-      </div>
-      <div class="pers-row">
-        <span>状态</span>
-        <span :class="revampLoggedIn ? 'revamp-status-online' : 'revamp-status-offline'">
-          <i :class="revampLoggedIn ? 'bi bi-check-circle-fill' : 'bi bi-x-circle-fill'"></i>
-          {{ revampLoggedIn ? '已登录' : '未登录' }}
-        </span>
+    <el-card class="account-card" shadow="never">
+      <div class="section-title">MC Link 账号</div>
+
+      <div v-if="isLoggedIn" class="logged-in">
+        <div class="login-info">
+          <div class="login-icon">
+            <img v-if="savedAvatar" :src="savedAvatar" class="login-avatar" />
+            <i v-else class="bi bi-person-check-fill"></i>
+          </div>
+          <div class="login-detail">
+            <div class="login-username">{{ savedUsername }}</div>
+            <div class="login-status">已登录 · 流畅联机</div>
+          </div>
+        </div>
+        <el-button @click="handleLogout">退出登录</el-button>
       </div>
 
-      <div v-if="revampLoading" class="revamp-loading-overlay">
-        <Spinner :size="36" />
-        <span>{{ revampActionText }}</span>
+      <div v-else class="login-form">
+        <el-alert
+          type="info"
+          :closable="false"
+          class="login-tip"
+        >
+          <template #title>
+            <span class="tip-text">
+              <i class="bi bi-info-circle"></i>
+              登录后可获得更流畅的联机体验，还可使用 MC Link Revamp
+            </span>
+          </template>
+        </el-alert>
+        <div class="login-actions">
+          <el-button type="primary" :loading="isLoggingIn" @click="handleLogin">
+            {{ isLoggingIn ? '请在浏览器中授权...' : '扫码登录' }}
+          </el-button>
+          <el-button @click="handleRegister">注册</el-button>
+        </div>
       </div>
-
-      <template v-if="!revampLoggedIn">
-        <div class="pers-row">
-          <span>用户名</span>
-          <Input
-            v-model="revampUsername"
-            placeholder="输入用户名"
-            maxlength="32"
-          />
-        </div>
-        <div class="pers-row">
-          <span>密码</span>
-          <Input
-            type="password"
-            v-model="revampPassword"
-            placeholder="输入密码"
-            @keyup.enter="revampLogin"
-          />
-        </div>
-        <div class="revamp-actions">
-          <Button variant="primary" :disabled="revampLoading" @click="revampRegister">
-            <i class="bi bi-person-plus"></i>
-            注册
-          </Button>
-          <Button variant="primary" :disabled="revampLoading" @click="revampLogin">
-            <i class="bi bi-box-arrow-in-right"></i>
-            登录
-          </Button>
-        </div>
-      </template>
-      <template v-else>
-        <div class="pers-row">
-          <span>已登录用户</span>
-          <span class="revamp-user">{{ revampUsername }}</span>
-        </div>
-        <div class="revamp-actions">
-          <Button @click="revampLogout">
-            <i class="bi bi-box-arrow-right"></i>
-            登出
-          </Button>
-        </div>
-      </template>
-    </Card>
+    </el-card>
   </div>
 </template>
 
 <style scoped>
-.personalization-page {
+.account-page {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sp-5);
   overflow-y: auto;
+  min-height: 0;
 }
 
-.pers-card {
-  background: var(--bg-card, rgba(255,255,255,0.06));
-  border: 1px solid var(--border-color, rgba(255,255,255,0.08));
-  border-radius: 12px;
-  padding: 20px 24px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+.account-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--r-lg);
 }
 
-.pers-card-title {
-  font-size: 15px;
-  font-weight: 600;
+.account-card :deep(.el-card__body) {
+  padding: var(--sp-5);
+}
+
+.section-title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
   color: var(--text-primary);
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-3);
 }
 
-.pers-row {
+.account-field {
+  margin-bottom: 0;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.login-tip {
+  background: var(--bg-soft);
+  border: 1px solid var(--border-color);
+}
+
+.tip-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.login-actions {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.logged-in {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0;
-  font-size: 14px;
-  color: var(--text-primary);
+  gap: var(--sp-3);
 }
-
-.pers-row + .pers-row {
-  border-top: 1px solid var(--border-color);
-}
-
-.revamp-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--accent-primary);
-  color: #fff;
-  vertical-align: middle;
-  margin-left: 8px;
-}
-
-.revamp-server-info {
+.login-info {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  padding: 6px 0;
+  gap: var(--sp-4);
+  min-width: 0;
 }
-
-.revamp-server-info code {
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  background: rgba(255,255,255,0.06);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.revamp-status-online {
-  color: #10b981;
-  font-size: 14px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.revamp-status-offline {
-  color: var(--text-muted);
-  font-size: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.revamp-user {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-}
-
-.revamp-actions {
+.login-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--status-success-bg);
+  color: var(--status-success);
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
-}
-
-.revamp-loading-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  z-index: 10;
-  backdrop-filter: blur(2px);
+  font-size: var(--fs-2xl);
+  flex-shrink: 0;
+  overflow: hidden;
 }
-
-.revamp-loading-overlay span {
-  font-size: 14px;
-  color: #fff;
-  font-weight: 500;
+.login-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.login-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.login-username {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+.login-status {
+  font-size: var(--fs-sm);
+  color: var(--status-success);
 }
 </style>

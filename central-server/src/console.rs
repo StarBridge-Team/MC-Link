@@ -65,13 +65,13 @@ pub fn start_console(state: Arc<CentralState>, restart_fn: impl Fn() -> bool + S
                     println!();
                 }
                 "t" => {
-                    let topo = state.topology.lock().unwrap_or_else(|e| e.into_inner());
+                    let topo = state.topology_manager.read().unwrap_or_else(|e| e.into_inner());
                     println!("\n拓扑:");
-                    for edge in topo.edges.values() {
+                    for edge in topo.ipv4.edges.values() {
                         println!("  {} <-> {} 延迟={}ms 丢包={:.0}%",
                             edge.node_a, edge.node_b, edge.latency_ms, edge.packet_loss * 100.0);
                     }
-                    if topo.edges.is_empty() {
+                    if topo.ipv4.edges.is_empty() {
                         println!("  (空 - 等待探针数据)");
                     }
                     println!();

@@ -1,0 +1,24 @@
+section: connector
+title: 联机器设置
+icon: bi-ethernet
+description: 配置联机端口与局域网扫描
+fields:
+  - key: default_port
+    label: 默认联机端口
+    description: 创建联机房间时使用的默认 TCP 端口
+    type: number
+    default: "25565"
+    unit: ""
+    min: 1
+    max: 65535
+    step: 1
+    auto_save: true
+    group: 端口
+
+  - key: lan_scan_enabled
+    label: 启用局域网扫描
+    description: 自动扫描本机局域网内开放的 Minecraft 服务器
+    type: switch
+    default: "true"
+    auto_save: true
+    group: 局域网

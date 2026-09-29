@@ -1,0 +1,15 @@
+[package]
+name = "mc-link-assets"
+version = "0.1.0"
+edition = "2021"
+authors = ["棱镜Prism工作室"]
+description = "MC Link 资产服务器 - 字体/图标/页面/更新包/元配置 静态文件服务"
+
+[dependencies]
+tiny_http = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+mime_guess = "2.0"
+log = "0.4"
+env_logger = "0.11"

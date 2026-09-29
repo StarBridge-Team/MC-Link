@@ -1,0 +1,13 @@
+section: account
+title: 账号设置
+icon: bi-person-circle
+description: 玩家名等本地账号配置（云端账号请使用登录按钮）
+fields:
+  - key: player_name
+    label: 玩家名
+    description: 单机模式下的玩家显示名称，最多 16 个字符
+    type: text
+    default: ""
+    placeholder: 输入玩家名
+    auto_save: true
+    group: 玩家信息

@@ -11,13 +11,11 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 /// OAuth 提供商标识
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Provider {
     GitHub,
-    Microsoft,
     LittleSkin,
     MslCenter,
 }
@@ -26,7 +24,6 @@ impl Provider {
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "github" => Some(Self::GitHub),
-            "microsoft" => Some(Self::Microsoft),
             "littleskin" => Some(Self::LittleSkin),
             "msl" | "mslcenter" => Some(Self::MslCenter),
             _ => None,
@@ -36,7 +33,6 @@ impl Provider {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::GitHub => "github",
-            Self::Microsoft => "microsoft",
             Self::LittleSkin => "littleskin",
             Self::MslCenter => "msl",
         }
@@ -45,18 +41,8 @@ impl Provider {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::GitHub => "GitHub",
-            Self::Microsoft => "Microsoft",
             Self::LittleSkin => "LittleSkin",
             Self::MslCenter => "MSL 用户中心",
-        }
-    }
-
-    pub fn icon(&self) -> &'static str {
-        match self {
-            Self::GitHub => "🔷",
-            Self::Microsoft => "🪟",
-            Self::LittleSkin => "💜",
-            Self::MslCenter => "🔶",
         }
     }
 
@@ -64,7 +50,6 @@ impl Provider {
     pub fn auth_url(&self) -> &'static str {
         match self {
             Self::GitHub => "https://github.com/login/oauth/authorize",
-            Self::Microsoft => "https://login.live.com/oauth20_authorize.srf",
             Self::LittleSkin => "https://little.skin/api/oauth/authorize",
             Self::MslCenter => "", // 需配置
         }
@@ -74,7 +59,6 @@ impl Provider {
     pub fn token_url(&self) -> &'static str {
         match self {
             Self::GitHub => "https://github.com/login/oauth/access_token",
-            Self::Microsoft => "https://login.live.com/oauth20_token.srf",
             Self::LittleSkin => "https://little.skin/api/oauth/token",
             Self::MslCenter => "",
         }
@@ -84,7 +68,6 @@ impl Provider {
     pub fn userinfo_url(&self) -> &'static str {
         match self {
             Self::GitHub => "https://api.github.com/user",
-            Self::Microsoft => "https://apis.live.net/v5.0/me",
             Self::LittleSkin => "https://little.skin/api/oauth/user",
             Self::MslCenter => "",
         }
@@ -93,9 +76,8 @@ impl Provider {
     /// scope 列表
     pub fn scopes(&self) -> &'static str {
         match self {
-            Self::GitHub => "read:user user:email",
-            Self::Microsoft => "wl.signin wl.emails",
-            Self::LittleSkin => "read",
+            Self::GitHub => "read:user openid email",
+            Self::LittleSkin => "",
             Self::MslCenter => "",
         }
     }
@@ -115,6 +97,7 @@ pub struct OAuthUser {
 struct PendingAuth {
     state: String,
     provider: Provider,
+    redirect_uri: String,
     created_at: std::time::Instant,
 }
 
@@ -143,7 +126,7 @@ impl OAuthState {
     }
 
     /// 生成一个 CSRF state 并存储，返回 (state, 跳转URL)
-    pub fn start_login(&self, provider: Provider, redirect_base: &str) -> Result<(String, String), String> {
+    pub fn start_login(&self, provider: Provider, redirect_base: &str, client_redirect_uri: &str) -> Result<(String, String), String> {
         let client_id = self.client_ids.get(&provider)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| format!("{} 尚未配置 Client ID", provider.display_name()))?;
@@ -155,7 +138,12 @@ impl OAuthState {
         let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         let now = std::time::Instant::now();
         pending.retain(|p| now.duration_since(p.created_at) < Duration::from_secs(300));
-        pending.push(PendingAuth { state: state.clone(), provider, created_at: now });
+        pending.push(PendingAuth {
+            state: state.clone(),
+            provider,
+            redirect_uri: client_redirect_uri.to_string(),
+            created_at: now,
+        });
 
         let auth_url = format!(
             "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}",
@@ -169,11 +157,14 @@ impl OAuthState {
         Ok((state, auth_url))
     }
 
-    /// 验证 state 并返回对应 Provider
-    pub fn verify_state(&self, state: &str) -> Option<Provider> {
+    /// 验证 state 并返回对应 Provider 和 client_redirect_uri
+    pub fn verify_state(&self, state: &str) -> Option<(Provider, String)> {
         let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         let idx = pending.iter().position(|p| p.state == state);
-        idx.map(|i| pending.swap_remove(i).provider)
+        idx.map(|i| {
+            let p = pending.swap_remove(i);
+            (p.provider, p.redirect_uri)
+        })
     }
 
     /// 用授权码交换 Token，获取用户信息
@@ -192,13 +183,6 @@ impl OAuthState {
         get_user_info(provider, &access_token)
     }
 
-    /// 密码哈希（用于账号 API）
-    pub fn hash_password(password: &str) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(password.as_bytes());
-        let result = hasher.finalize();
-        result.iter().map(|b| format!("{:02x}", b)).collect()
-    }
 }
 
 /// 用授权码交换 access_token
@@ -274,16 +258,6 @@ fn get_user_info(provider: Provider, access_token: &str) -> Result<OAuthUser, St
                 email: body.get("email").and_then(|v| v.as_str()).map(String::from),
             })
         }
-        Provider::Microsoft => {
-            let id = body.get("id").and_then(|v| v.as_str()).unwrap_or_default();
-            Ok(OAuthUser {
-                provider: "microsoft".to_string(),
-                provider_id: id.to_string(),
-                name: body.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string(),
-                avatar_url: None,
-                email: body.get("emails").and_then(|v| v.get("preferred")).and_then(|v| v.as_str()).map(String::from),
-            })
-        }
         Provider::LittleSkin => {
             let id = body.get("sub").or_else(|| body.get("id")).and_then(|v| v.as_str()).unwrap_or_default();
             Ok(OAuthUser {
@@ -311,7 +285,7 @@ fn get_user_info(provider: Provider, access_token: &str) -> Result<OAuthUser, St
     }
 }
 
-fn urlencode(s: &str) -> String {
+pub(crate) fn urlencode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for byte in s.bytes() {
         match byte {

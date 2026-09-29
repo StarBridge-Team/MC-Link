@@ -1,0 +1,6 @@
+{
+  "sections": [
+    { "id": "personalization", "label": "个性化", "icon": "bi-palette" },
+    { "id": "about", "label": "关于", "icon": "bi-info-circle" }
+  ]
+}

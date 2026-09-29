@@ -3,11 +3,27 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub use crate::protocol::{PathAssignment, RoomRoute};
+pub use crate::protocol::{PathAssignment, RoomRoute, PathHop};
 
 use mc_link_common::log::{log, LogLevel};
+use mc_link_common::utils::lock_or_recover;
 use crate::protocol::{hex_to_path_id, write_packet, TunnelFrameHeader};
 use crate::RelayState;
+
+/// 从 PathHop 中获取首选地址（有 IPv6 且本地支持时优先）
+fn hop_preferred_address(hop: &PathHop) -> SocketAddr {
+    // 尝试 IPv6 地址
+    if let Some(ref v6) = hop.address_v6 {
+        if let Ok(addr) = v6.parse::<SocketAddr>() {
+            return addr;
+        }
+    }
+    // 回退到 IPv4 地址
+    hop.address.parse::<SocketAddr>().unwrap_or_else(|_| {
+        // 这不应发生，若解析失败仍尝试 v4 地址
+        "127.0.0.1:0".parse().unwrap()
+    })
+}
 
 /// 向中央服务器上报路径断裂（快速触发重路由）
 pub fn report_path_broken(state: &RelayState, path_id: &str, broken_relay_id: &str) {
@@ -54,7 +70,7 @@ pub fn handle_tunnel_frame(state: &RelayState, src: SocketAddr, data: &[u8]) {
 
     let path_id_str = hex::encode(header.path_id);
     let path = {
-        let table = state.path_table.lock().unwrap_or_else(|e| e.into_inner());
+        let table = lock_or_recover(&state.path_table, "[路径] path_table_get");
         match table.get(&path_id_str) {
             Some(p) => p.clone(),
             None => {
@@ -95,23 +111,14 @@ pub fn handle_tunnel_frame(state: &RelayState, src: SocketAddr, data: &[u8]) {
             cur_pos - 1
         };
         let next_hop = &path.hops[next_idx];
-        let next_addr: SocketAddr = match next_hop.address.parse() {
-            Ok(a) => a,
-            Err(e) => {
-                log(
-                    LogLevel::Error,
-                    &format!("[隧道] 下一跳地址无效: {} ({})", next_hop.address, e),
-                );
-                return;
-            }
-        };
+        let next_addr = hop_preferred_address(next_hop);
 
         header.hop_index = next_idx as u8;
         let mut packet = vec![0x34];
         packet.extend_from_slice(&header.encode());
         packet.extend_from_slice(payload);
 
-        let mut peers = state.peer_connections.lock().unwrap_or_else(|e| e.into_inner());
+        let mut peers = lock_or_recover(&state.peer_connections, "[隧道] peer_connections_peek");
         if let Some(stream_arc) = peers.get(&next_hop.address) {
             if let Ok(mut s) = stream_arc.lock() {
                 if write_packet(&mut s, &packet).is_ok() {
@@ -126,10 +133,7 @@ pub fn handle_tunnel_frame(state: &RelayState, src: SocketAddr, data: &[u8]) {
             Ok(mut stream) => {
                 if write_packet(&mut stream, &packet).is_ok() {
                     if let Ok(clone) = stream.try_clone() {
-                        state
-                            .peer_connections
-                            .lock()
-                            .unwrap()
+                        lock_or_recover(&state.peer_connections, "[隧道] peer_connections_insert")
                             .insert(next_hop.address.clone(), Arc::new(std::sync::Mutex::new(clone)));
                     }
                 }
@@ -152,7 +156,7 @@ pub fn handle_tunnel_frame(state: &RelayState, src: SocketAddr, data: &[u8]) {
         if payload.is_empty() {
             return;
         }
-        let clients = state.clients.lock().unwrap_or_else(|e| e.into_inner());
+        let clients = lock_or_recover(&state.clients, "[隧道] clients_forward");
         for (addr, stream_arc) in clients.iter() {
             if let Ok(mut s) = stream_arc.lock() {
                 if write_packet(&mut s, payload).is_ok() {
@@ -198,7 +202,7 @@ pub fn handle_room_route(state: &RelayState, data: &[u8]) {
     match serde_json::from_slice::<RoomRoute>(packet_data) {
         Ok(route) => {
             if route.direction == "reverse" {
-                let mut rev = state.reverse_route_map.lock().unwrap_or_else(|e| e.into_inner());
+                let mut rev = lock_or_recover(&state.reverse_route_map, "[路由] reverse_route_map_insert");
                 rev.entry(route.room_name.clone()).or_default().push(route.clone());
                 log(
                     LogLevel::Info,
@@ -209,7 +213,7 @@ pub fn handle_room_route(state: &RelayState, data: &[u8]) {
                     ),
                 );
             } else {
-                let mut fwd = state.room_route_map.lock().unwrap_or_else(|e| e.into_inner());
+                let mut fwd = lock_or_recover(&state.room_route_map, "[路由] room_route_map");
                 fwd.insert(route.room_name.clone(), route.clone());
                 log(
                     LogLevel::Info,
@@ -242,10 +246,7 @@ pub fn send_tunnel_direct(
         return false;
     }
     let next_hop = &path.hops[next_idx];
-    let next_addr: SocketAddr = match next_hop.address.parse() {
-        Ok(a) => a,
-        Err(_) => return false,
-    };
+    let next_addr = hop_preferred_address(next_hop);
 
     let path_id_bytes = match hex_to_path_id(&path.path_id) {
         Some(b) => b,
@@ -270,7 +271,7 @@ pub fn send_tunnel_direct(
     // 统计发送字节
     state.traffic_bytes_sent.fetch_add(out.len() as u64, Ordering::Relaxed);
 
-    let mut peers = state.peer_connections.lock().unwrap_or_else(|e| e.into_inner());
+    let mut peers = lock_or_recover(&state.peer_connections, "[发送] peer_connections_peek");
     if let Some(stream_arc) = peers.get(&next_hop.address) {
         if let Ok(mut s) = stream_arc.lock() {
             if write_packet(&mut s, &out).is_ok() {
@@ -308,13 +309,13 @@ pub fn send_tunnel_direct(
 
 /// 通过隧道将数据包发送到目标中继（多跳发包）
 pub fn tunnel_packet_to_relay(state: &RelayState, packet: &[u8], room: &str) -> bool {
-    let route = match state.room_route_map.lock().unwrap_or_else(|e| e.into_inner()).get(room) {
+    let route = match lock_or_recover(&state.room_route_map, "[隧道] room_route_map_get").get(room) {
         Some(r) => r.clone(),
         None => return false,
     };
 
     let full_path = {
-        let table = state.path_table.lock().unwrap_or_else(|e| e.into_inner());
+        let table = lock_or_recover(&state.path_table, "[隧道] path_table_packet");
         match table.get(&route.path_id) {
             Some(p) => p.clone(),
             None => return false,
@@ -348,7 +349,7 @@ pub fn tunnel_packet_to_relay(state: &RelayState, packet: &[u8], room: &str) -> 
 /// 通过隧道将数据包转发到远程成员（多跳发包到其它中继）
 pub fn tunnel_to_remote_members(state: &RelayState, packet: &[u8], room: &str) {
     let routes = {
-        let rev = state.reverse_route_map.lock().unwrap_or_else(|e| e.into_inner());
+        let rev = lock_or_recover(&state.reverse_route_map, "[隧道] reverse_route_map_get");
         rev.get(room).cloned()
     };
     let routes = match routes {
@@ -358,7 +359,7 @@ pub fn tunnel_to_remote_members(state: &RelayState, packet: &[u8], room: &str) {
 
     for route in &routes {
         let full_path = {
-            let table = state.path_table.lock().unwrap_or_else(|e| e.into_inner());
+            let table = lock_or_recover(&state.path_table, "[隧道] path_table_member");
             table.get(&route.path_id).cloned()
         };
         let full_path = match full_path {
@@ -417,7 +418,7 @@ fn handle_reverse_tunnel_payload(state: &RelayState, payload: &[u8], path: &Path
     let command = &decrypted[0..4];
 
     if command == b"REGC" {
-        let rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
+        let rooms = lock_or_recover(&state.rooms, "[隧道] rooms_reverse");
         if !rooms.contains_key(&room) {
             return;
         }
@@ -455,34 +456,85 @@ fn handle_reverse_tunnel_payload(state: &RelayState, payload: &[u8], path: &Path
         join_pkt.extend_from_slice(&join_enc);
 
         let host_addr = {
-            state
-                .rooms
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
+            lock_or_recover(&state.rooms, "[隧道] rooms_MEMBER_JOIN")
                 .get(&room)
                 .map(|r| r.host_addr)
         };
         if let Some(addr) = host_addr {
-            if let Some(stream_arc) = state.clients.lock().unwrap_or_else(|e| e.into_inner()).get(&addr.to_string()) {
-                let mut s = stream_arc.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(stream_arc) = lock_or_recover(&state.clients, "[隧道] clients_MEMBER_JOIN").get(&addr.to_string()) {
+                let mut s = lock_or_recover(stream_arc, "[隧道] host_stream_MEMBER_JOIN");
                 crate::protocol::write_packet(&mut s, &join_pkt).ok();
             }
         }
     } else if command == b"DATA" {
         // DATA 直送房主（回包给MC Link房主客户端）
         let host_addr = {
-            state
-                .rooms
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
+            lock_or_recover(&state.rooms, "[隧道] rooms_DATA")
                 .get(&room)
                 .map(|r| r.host_addr)
         };
         if let Some(addr) = host_addr {
-            if let Some(stream_arc) = state.clients.lock().unwrap_or_else(|e| e.into_inner()).get(&addr.to_string()) {
-                let mut s = stream_arc.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(stream_arc) = lock_or_recover(&state.clients, "[隧道] clients_DATA").get(&addr.to_string()) {
+                let mut s = lock_or_recover(stream_arc, "[隧道] host_stream_DATA");
                 crate::protocol::write_packet(&mut s, payload).ok();
             }
         }
+    } else if command == b"MC_READY" {
+        // MC_READY 直送房主（通知房主成员就绪）
+        let host_addr = {
+            lock_or_recover(&state.rooms, "[隧道] rooms_MC_READY")
+                .get(&room)
+                .map(|r| r.host_addr)
+        };
+        if let Some(addr) = host_addr {
+            if let Some(stream_arc) = lock_or_recover(&state.clients, "[隧道] clients_MC_READY").get(&addr.to_string()) {
+                let mut s = lock_or_recover(stream_arc, "[隧道] host_stream_MC_READY");
+                crate::protocol::write_packet(&mut s, payload).ok();
+                log(
+                    LogLevel::Info,
+                    &format!("[隧道/MC_READY] 转发到房主: {}", room),
+                );
+            }
+        }
+    }
+}
+
+// ===== 中央服务器指令处理 =====
+
+/// 处理中央服务器下发的指令（如 0x39 限速）
+pub fn handle_central_command(state: &RelayState, data: &[u8]) {
+    if data.is_empty() {
+        return;
+    }
+    let cmd = data[0];
+    let payload = &data[1..];
+
+    match cmd {
+        0x39 => {
+            handle_speed_limit(state, payload);
+        }
+        _ => {
+            log(LogLevel::Info, &format!("[中央/指令] 未知指令: 0x{:02x}", cmd));
+        }
+    }
+}
+
+/// 处理限速指令 (0x39)
+fn handle_speed_limit(state: &RelayState, data: &[u8]) {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct SpeedLimitPayload {
+        room_name: String,
+        limit_bps: u64,
+    }
+
+    if let Ok(payload) = serde_json::from_slice::<SpeedLimitPayload>(data) {
+        let mut limits = lock_or_recover(&state.room_speed_limits, "[限速] room_speed_limits");
+        limits.insert(payload.room_name.clone(), payload.limit_bps);
+        log(
+            LogLevel::Info,
+            &format!("[限速] 房间 {} 限速 {} bps", payload.room_name, payload.limit_bps),
+        );
     }
 }

@@ -8,6 +8,51 @@ use mc_link_common::utils::now_secs;
 use crate::types::*;
 use crate::path::assign_room_path;
 
+/// 限速常量（bps）
+const SPEED_LIMIT_UNAUTH: u64 = 2_000_000;  // 2 Mbps
+const SPEED_LIMIT_AUTH: u64 = 8_000_000;    // 8 Mbps
+
+/// 判断房间是否走陶瓦联机（不限制）
+fn is_terracotta_room(room_name: &str) -> bool {
+    room_name.starts_with("U/")
+}
+
+/// 发送限速指令 (0x39) 给中继
+fn send_speed_limit(stream: &mut TcpStream, room_name: &str, limit_bps: u64) {
+    let payload = serde_json::json!({
+        "room_name": room_name,
+        "limit_bps": limit_bps,
+    });
+    let mut pkt = vec![0x39];
+    pkt.extend_from_slice(payload.to_string().as_bytes());
+    write_packet(stream, &pkt).ok();
+}
+
+/// 验证 token 并返回限速值 (bps)
+fn validate_token_and_get_limit(token: Option<&str>, room_name: &str) -> u64 {
+    if is_terracotta_room(room_name) {
+        return 0; // 不限速
+    }
+    match token {
+        Some(t) if !t.is_empty() => {
+            match crate::account_api::verify(t) {
+                Ok(resp) => {
+                    log(LogLevel::Info, &format!("Token 验证成功: {}", resp.username));
+                    SPEED_LIMIT_AUTH
+                }
+                Err(e) => {
+                    log(LogLevel::Warn, &format!("Token 验证失败 ({}), 降级为未登录限速", e));
+                    SPEED_LIMIT_UNAUTH
+                }
+            }
+        }
+        _ => {
+            log(LogLevel::Info, "未提供 token, 使用未登录限速");
+            SPEED_LIMIT_UNAUTH
+        }
+    }
+}
+
 pub fn handle_create_room(stream: &mut TcpStream, state: &CentralState, src: std::net::SocketAddr, data: &[u8]) {
     if let Ok(req) = serde_json::from_slice::<CreateRoomReq>(data) {
         let mut rooms = state.rooms.lock().unwrap_or_else(|e| e.into_inner());
@@ -15,6 +60,11 @@ pub fn handle_create_room(stream: &mut TcpStream, state: &CentralState, src: std
             write_packet(stream, &[0x21, 0x01]).ok();
             return;
         }
+
+        // 验证 token 并确定限速
+        let speed_limit = validate_token_and_get_limit(req.token.as_deref(), &req.room_name);
+        let is_auth = speed_limit >= SPEED_LIMIT_AUTH;
+        state.room_auth.lock().unwrap_or_else(|e| e.into_inner()).insert(req.room_name.clone(), is_auth);
 
         let room = RoomInfo {
             name: req.room_name.clone(),
@@ -24,10 +74,29 @@ pub fn handle_create_room(stream: &mut TcpStream, state: &CentralState, src: std
         };
 
         rooms.insert(req.room_name.clone(), room.clone());
-        log(LogLevel::Info, &format!("房间创建: {} (来自 {}, 中继: {})", req.room_name, src, room.host_relay_id));
+        log(LogLevel::Info, &format!(
+            "房间创建: {} (来自 {}, 中继: {}, 认证: {}, 限速: {} bps)",
+            req.room_name, src, room.host_relay_id, is_auth, speed_limit
+        ));
 
+        // 向中继发送限速指令
+        if let Some(stream_arc) = state.relay_streams.lock().unwrap_or_else(|e| e.into_inner()).get(&room.host_relay_id) {
+            if let Ok(mut s) = stream_arc.lock() {
+                send_speed_limit(&mut s, &req.room_name, speed_limit);
+            }
+        }
+
+        // 响应中包含限速信息
         let mut response = vec![0x21, 0x00];
-        if let Ok(json) = serde_json::to_string(&room) {
+        let resp_data = serde_json::json!({
+            "name": room.name,
+            "password_hash": room.password_hash,
+            "host_relay_id": room.host_relay_id,
+            "created_at": room.created_at,
+            "speed_limit_bps": speed_limit,
+            "is_authenticated": is_auth,
+        });
+        if let Ok(json) = serde_json::to_string(&resp_data) {
             response.extend_from_slice(json.as_bytes());
         }
         write_packet(stream, &response).ok();
@@ -62,7 +131,7 @@ pub fn handle_get_room(stream: &mut TcpStream, state: &CentralState, src: std::n
                 .unwrap_or_else(|| room.host_relay_id.clone())
         });
 
-        assign_room_path(state, &req.room_name, &room.host_relay_id, &client_relay_id);
+        assign_room_path(state, &req.room_name, &room.host_relay_id, &client_relay_id, req.has_ipv6);
 
         let path = {
             let room_paths = state.room_paths.lock().unwrap_or_else(|e| e.into_inner());
@@ -85,6 +154,12 @@ pub fn handle_get_room(stream: &mut TcpStream, state: &CentralState, src: std::n
             state.active_paths.lock().unwrap_or_else(|e| e.into_inner()).get(&path_id).cloned()
         };
 
+        // 获取限速信息
+        let speed_limit = state.room_auth.lock().unwrap_or_else(|e| e.into_inner()).get(&req.room_name)
+            .map(|&auth| if auth { SPEED_LIMIT_AUTH } else { SPEED_LIMIT_UNAUTH })
+            .unwrap_or(if is_terracotta_room(&req.room_name) { 0 } else { SPEED_LIMIT_UNAUTH });
+        let is_auth = speed_limit >= SPEED_LIMIT_AUTH;
+
         let response_data = serde_json::to_string(&serde_json::json!({
             "exists": true,
             "room": room,
@@ -92,7 +167,9 @@ pub fn handle_get_room(stream: &mut TcpStream, state: &CentralState, src: std::n
                 "path_id": p.path_id,
                 "hops": p.hops,
                 "total_latency_ms": p.total_latency_ms,
-            }))
+            })),
+            "speed_limit_bps": speed_limit,
+            "is_authenticated": is_auth,
         })).unwrap_or_default();
 
         let mut response = vec![0x23];
@@ -159,7 +236,7 @@ pub fn handle_join_room(stream: &mut TcpStream, state: &CentralState, _src: std:
 
         if req.role == "member" {
             if let Some(client_relay) = relay_id {
-                assign_room_path(state, &room_name, &host_relay_id, &client_relay);
+                assign_room_path(state, &room_name, &host_relay_id, &client_relay, req.has_ipv6);
             }
         }
 

@@ -3,11 +3,13 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fs;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
 use mc_link_common::log::{log, LogLevel};
+pub use mc_link_common::types::{PathHop, RoomInfo, PlayerInfo};
 
 pub const RELAYS_FILE: &str = "relays.json";
 
@@ -18,11 +20,16 @@ pub struct RelayNode {
     pub id: String,
     pub name: String,
     pub address: String,
+    #[serde(default)]
+    pub address_v6: Option<String>,
     pub last_seen: u64,
     #[serde(default)]
     pub private: bool,
     #[serde(default = "default_true")]
     pub transit: bool,
+    /// 闲置模式：不在列表显示，但可作第一跳（与 private 互斥）
+    #[serde(default)]
+    pub idle: bool,
     #[serde(default)]
     pub service_type: String,
     #[serde(default)]
@@ -38,10 +45,35 @@ pub struct LinkMetric {
     pub last_updated: u64,
 }
 
+/// 客户端中继容量
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PathHop {
-    pub node_id: String,
-    pub address: String,
+pub struct ClientCaps {
+    #[serde(default)]
+    pub max_connections: u32,
+    #[serde(default)]
+    pub max_bandwidth_bps: u64,
+}
+
+/// 客户端中继限速配置（由中央服务器管理员配置）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientRelayLimits {
+    pub max_bandwidth_bps: u64,
+    pub max_connections: u32,
+}
+
+impl Default for ClientRelayLimits {
+    fn default() -> Self {
+        Self { max_bandwidth_bps: 5_000_000, max_connections: 8 }
+    }
+}
+
+impl From<crate::config::ClientRelayConfig> for ClientRelayLimits {
+    fn from(c: crate::config::ClientRelayConfig) -> Self {
+        Self {
+            max_bandwidth_bps: c.max_bandwidth_bps,
+            max_connections: c.max_connections,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,21 +82,6 @@ pub struct PathResult {
     pub hops: Vec<PathHop>,
     pub total_latency_ms: u64,
     pub score: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RoomInfo {
-    pub name: String,
-    pub password_hash: String,
-    pub host_relay_id: String,
-    pub created_at: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlayerInfo {
-    pub name: String,
-    pub role: String,
-    pub joined_at: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,12 +114,30 @@ pub struct TrafficStats {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatsSnapshot {
     pub timestamp: u64,
+    // 中继
     pub relay_count: usize,
     pub online_relay_count: usize,
+    pub client_relay_count: usize,
+    pub online_client_relay_count: usize,
+    // 房间
     pub room_count: usize,
     pub player_count: usize,
+    pub player_roles: HashMap<String, usize>,
+    // 路径
     pub path_count: usize,
+    // 流量（字节）
     pub total_traffic_bytes: u64,
+    pub traffic_in: u64,
+    pub traffic_out: u64,
+    // 拓扑
+    pub topology_ipv4_nodes: usize,
+    pub topology_mixed_nodes: usize,
+    // 当前连接数
+    pub active_connections: usize,
+    // 房间认证
+    pub room_auth_count: usize,
+    // 运行时间（秒）
+    pub uptime_secs: u64,
 }
 
 // ===== 拓扑图 =====
@@ -139,6 +174,21 @@ impl TopologyGraph {
     }
 }
 
+/// 拓扑管理器 — 统一管理纯 IPv4 和混合两张拓扑表
+/// 读操作远多于写操作，故使用 RwLock
+pub struct TopologyManager {
+    /// 纯 IPv4 拓扑
+    pub ipv4: TopologyGraph,
+    /// 混合拓扑：官方中继 + 有 IPv6 的客户端中继
+    pub mixed: TopologyGraph,
+}
+
+impl TopologyManager {
+    pub fn new() -> Self {
+        Self { ipv4: TopologyGraph::new(), mixed: TopologyGraph::new() }
+    }
+}
+
 // ===== 中央服务器共享状态 =====
 
 pub struct CentralState {
@@ -146,7 +196,8 @@ pub struct CentralState {
     pub rooms: Mutex<HashMap<String, RoomInfo>>,
     pub players: Mutex<HashMap<String, Vec<PlayerInfo>>>,
     pub latencies: Mutex<HashMap<String, LatencyEntry>>,
-    pub topology: Mutex<TopologyGraph>,
+    /// 拓扑管理器（RwLock 读写分离）
+    pub topology_manager: RwLock<TopologyManager>,
     pub active_paths: Mutex<HashMap<String, PathResult>>,
     pub room_paths: Mutex<HashMap<String, String>>,
     pub addr_to_id: Mutex<HashMap<String, String>>,
@@ -156,6 +207,14 @@ pub struct CentralState {
     pub running: Arc<Mutex<bool>>,
     pub traffic_reports: Mutex<HashMap<String, TrafficStats>>,
     pub stats_history: Mutex<VecDeque<StatsSnapshot>>,
+    /// 房间认证状态: room_name → is_authenticated
+    pub room_auth: Mutex<HashMap<String, bool>>,
+    /// 待处理的重路由请求（断线 debounce + 批量处理）
+    pub pending_reroute: Mutex<Vec<String>>,
+    /// 客户端中继限速配置（由中央服务器管理员设定）
+    pub client_relay_limits: Mutex<ClientRelayLimits>,
+    /// 服务器启动时间（用于统计运行时长）
+    pub server_start_time: Instant,
 }
 
 fn default_true() -> bool { true }
@@ -167,7 +226,7 @@ impl CentralState {
             rooms: Mutex::new(HashMap::new()),
             players: Mutex::new(HashMap::new()),
             latencies: Mutex::new(HashMap::new()),
-            topology: Mutex::new(TopologyGraph::new()),
+            topology_manager: RwLock::new(TopologyManager::new()),
             active_paths: Mutex::new(HashMap::new()),
             room_paths: Mutex::new(HashMap::new()),
             addr_to_id: Mutex::new(HashMap::new()),
@@ -176,6 +235,10 @@ impl CentralState {
             running: Arc::new(Mutex::new(true)),
             traffic_reports: Mutex::new(HashMap::new()),
             stats_history: Mutex::new(VecDeque::new()),
+            room_auth: Mutex::new(HashMap::new()),
+            pending_reroute: Mutex::new(Vec::new()),
+            client_relay_limits: Mutex::new(ClientRelayLimits::default()),
+            server_start_time: Instant::now(),
         }
     }
 
@@ -210,13 +273,21 @@ pub struct RelayRegisterReq {
     pub name: String,
     pub address: String,
     #[serde(default)]
+    pub address_v6: Option<String>,
+    #[serde(default)]
     pub private: bool,
     #[serde(default = "default_true")]
     pub transit: bool,
+    /// 闲置模式：不在列表显示，但可作第一跳
+    #[serde(default)]
+    pub idle: bool,
     #[serde(default)]
     pub service_type: String,
     #[serde(default)]
     pub udp_port: u16,
+    /// 客户端中继容量（仅 client-relay 使用）
+    #[serde(default)]
+    pub client_caps: Option<ClientCaps>,
 }
 
 #[derive(Deserialize)]
@@ -240,6 +311,12 @@ pub struct ProbeReport {
 }
 
 #[derive(Deserialize)]
+pub struct RelayModeSwitch {
+    pub id: String,
+    pub mode: String, // "idle" | "private" | "normal"
+}
+
+#[derive(Deserialize)]
 pub struct PathBrokenReport {
     pub relay_id: String,
     pub path_id: String,
@@ -251,12 +328,18 @@ pub struct CreateRoomReq {
     pub room_name: String,
     pub password: String,
     pub relay_id: String,
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub has_ipv6: bool,
 }
 
 #[derive(Deserialize)]
 pub struct GetRoomReq {
     pub room_name: String,
     pub client_relay_id: Option<String>,
+    #[serde(default)]
+    pub has_ipv6: bool,
 }
 
 #[derive(Deserialize)]
@@ -271,6 +354,8 @@ pub struct JoinRoomReq {
     pub role: String,
     pub password: Option<String>,
     pub relay_id: Option<String>,
+    #[serde(default)]
+    pub has_ipv6: bool,
 }
 
 impl Default for TopologyGraph {

@@ -1,9 +1,10 @@
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 use mc_link_common::log::{log, LogLevel};
-use mc_link_common::utils::now_secs;
+use mc_link_common::utils::{now_secs, lock_or_recover};
 use crate::config::is_bandwidth_allowed;
 use crate::protocol::{decrypt, encrypt, is_custom_protocol, read_packet, write_packet};
 use crate::relay::{tunnel_packet_to_relay, tunnel_to_remote_members};
@@ -37,6 +38,9 @@ pub fn handle_client(
     }
 
     state.traffic_connections.fetch_add(1, Ordering::Relaxed);
+
+    // 设置读超时，防止慢速攻击或死连接永久阻塞线程
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(300)));
 
     // 带宽限制跟踪
     let mut total_bytes_sent: u64 = 0;
@@ -230,6 +234,11 @@ fn handle_custom_data(
         }
     };
 
+    // 房间级限速检查
+    if !check_room_speed(state, room, data.len()) {
+        return;
+    }
+
     let mut packet = Vec::new();
     packet.push(room_len as u8);
     packet.extend_from_slice(&data[1..1 + room_len]);
@@ -278,6 +287,12 @@ fn handle_data(state: &RelayState, src: SocketAddr, data: &[u8]) {
     }
     let room_name = String::from_utf8_lossy(&data[4..4 + room_name_len]);
     let actual_data = &data[4 + room_name_len..];
+
+    // 房间级限速检查
+    if !check_room_speed(state, &room_name, data.len()) {
+        return;
+    }
+
     let host_addr = {
         let rooms = match state.rooms.lock() {
             Ok(r) => r,
@@ -380,4 +395,35 @@ fn handle_test_packet(state: &RelayState, src: SocketAddr, data: &[u8]) {
             }
         }
     }
+}
+
+// ===== 房间级限速 =====
+
+/// 检查房间限速，若超限则返回 false 表示丢弃此包
+fn check_room_speed(state: &RelayState, room: &str, bytes: usize) -> bool {
+    let limit_bps = {
+        let limits = lock_or_recover(&state.room_speed_limits, "[限速] room_speed_limits");
+        limits.get(room).copied().unwrap_or(0)
+    };
+    if limit_bps == 0 {
+        return true; // 不限速
+    }
+
+    let now = now_secs();
+    let mut tracker = lock_or_recover(&state.room_byte_tracker, "[限速] room_byte_tracker");
+    let entry = tracker.entry(room.to_string()).or_insert((0, now));
+
+    if now != entry.1 {
+        // 新的一秒，重置计数器
+        *entry = (bytes as u64, now);
+        return true;
+    }
+
+    entry.0 += bytes as u64;
+    if (entry.0 * 8) as f64 / 1_000_000.0 > (limit_bps as f64) / 1_000_000.0 {
+        // 超限，丢弃此包
+        log(LogLevel::Info, &format!("[限速] 房间 {} 数据包丢弃 (限速 {} bps)", room, limit_bps));
+        return false;
+    }
+    true
 }

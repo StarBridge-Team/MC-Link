@@ -124,7 +124,7 @@ function fmtTime(ts) {
   return d.toLocaleTimeString();
 }
 
-async function getToken() { return localStorage.getItem('mc_link_admin_token'); }
+function getToken() { return localStorage.getItem('mc_link_admin_token'); }
 
 function authHeaders() {
   const t = getToken();

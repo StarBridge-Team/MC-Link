@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from "vue";
-import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { applyPersStyle, resolveBgFile, loadPersSettings, savePersSettings, getDefaultPers } from "../../composables/usePersonalization";
 import type { Personalization } from "../../composables/usePersonalization";
-import Card from "../ui/Card.vue";
-import Input from "../ui/Input.vue";
-import Button from "../ui/Button.vue";
-import Switch from "../ui/Switch.vue";
-import Slider from "../ui/Slider.vue";
+import { getBackgroundFiles, getBackgroundFileUrl, setWindowEffect } from "../../lib/api/settings";
 
 const props = defineProps<{
   showToast: (msg: string) => void;
@@ -30,17 +25,16 @@ const themePresets = [
 const effects = [
   { value: "none", label: "无" },
   { value: "transparent", label: "透明" },
-  { value: "mica", label: "Mica (Windows 11)" },
-  { value: "acrylic", label: "亚克力 (Windows 10)" },
-  { value: "hud_window", label: "HUD Window (macOS)" },
+  { value: "mica", label: "Mica (Win11)" },
+  { value: "acrylic", label: "亚克力 (Win10)" },
+  { value: "hud_window", label: "HUD (macOS)" },
 ];
 
 const bgTypes = [
-  { value: "default", label: "默认" },
-  { value: "solid", label: "纯色" },
-  { value: "transparent", label: "透明" },
-  { value: "image", label: "图片" },
-  { value: "video", label: "视频" },
+  { value: "default", label: "默认", icon: "bi bi-app" },
+  { value: "solid", label: "纯色", icon: "bi bi-square-fill" },
+  { value: "image", label: "图片", icon: "bi bi-image" },
+  { value: "video", label: "视频", icon: "bi bi-film" },
 ];
 
 const fitModes = [
@@ -49,6 +43,18 @@ const fitModes = [
   { value: "aspect-fill", label: "等比填充" },
   { value: "width-fix", label: "宽度固定" },
   { value: "height-fix", label: "高度固定" },
+];
+
+const themeModes = [
+  { value: "system", label: "跟随系统", icon: "bi bi-circle-half" },
+  { value: "light", label: "浅色", icon: "bi bi-sun" },
+  { value: "dark", label: "深色", icon: "bi bi-moon-stars" },
+];
+
+const homepageModes = [
+  { value: "default", label: "默认" },
+  { value: "blank", label: "空白" },
+  { value: "webpage", label: "网页" },
 ];
 
 interface BackgroundFileItem {
@@ -66,7 +72,6 @@ const bgMusicUrlInput = ref("");
 
 const homepageUrlInput = ref("");
 
-// 跨组件缓存
 let persCache: Personalization | null = null;
 
 const persSettings = ref<Personalization>(getDefaultPers());
@@ -98,6 +103,11 @@ async function loadPersonalization() {
         resolvedBgUrl.value = await resolveBgFile(data.background_value);
       }
     }
+    // 回填 URL 输入框，避免已保存的 URL 设置在界面上显示为空
+    const d = persSettings.value;
+    if (d.background_value?.startsWith('http')) bgUrlInput.value = d.background_value;
+    if (d.music_mode === 'url' && d.music_value) bgMusicUrlInput.value = d.music_value;
+    if (d.homepage_mode === 'webpage' && d.homepage_value) homepageUrlInput.value = d.homepage_value;
   } catch {
     // 使用默认值
   } finally {
@@ -110,7 +120,7 @@ async function loadPersonalization() {
 async function loadBackgroundFiles() {
   bgFileLoading.value = true;
   try {
-    const allFiles = await invoke<BackgroundFileItem[]>("get_background_files");
+    const allFiles = await getBackgroundFiles();
     backgroundFiles.value = allFiles;
     musicFiles.value = allFiles.filter(f => {
       const ext = f.name.split('.').pop()?.toLowerCase();
@@ -143,9 +153,14 @@ function selectTheme(color: string) {
   onPersChange();
 }
 
+function selectThemeMode(mode: string) {
+  persSettings.value.theme_mode = mode;
+  onPersChange();
+}
+
 function setEffect(effect: string) {
   persSettings.value.transparent_effect = effect;
-  invoke("set_window_effect", { effect }).catch(() => {});
+  setWindowEffect(effect).catch(() => {});
   onPersChange();
 }
 
@@ -166,7 +181,6 @@ function selectMusicFile(name: string) {
   persSettings.value.music_mode = 'file';
   bgMusicUrlInput.value = '';
   onPersChange();
-  applyPersStyleForSection();
 }
 
 function applyMusicUrl() {
@@ -175,14 +189,13 @@ function applyMusicUrl() {
   persSettings.value.music_value = url;
   persSettings.value.music_mode = 'url';
   onPersChange();
-  applyPersStyleForSection();
 }
 
 function selectBgFile(name: string, isVideo: boolean) {
   persSettings.value.background_value = name;
   persSettings.value.background_type = isVideo ? 'video' : 'image';
   bgUrlInput.value = '';
-  invoke<string>("get_background_file_url", { filename: name })
+  getBackgroundFileUrl(name)
     .then(path => {
       resolvedBgUrl.value = convertFileSrc(path);
       applyPersStyleForSection();
@@ -216,671 +229,671 @@ defineExpose({ loadPersonalization });
 </script>
 
 <template>
-  <div v-if="persLoading" class="setting-loading">加载中...</div>
-  <div v-else class="personalization-page">
-    <!-- 主题色 -->
-    <Card>
-      <div class="pers-card-title">主题色</div>
-      <div class="pers-colors">
-        <div
-          v-for="preset in themePresets"
-          :key="preset.color"
-          class="pers-color-item"
-          :class="{ active: persSettings.theme_color === preset.color }"
-          @click="selectTheme(preset.color)"
-        >
-          <div class="pers-color-swatch" :style="{ background: preset.color }">
-            <i v-if="persSettings.theme_color === preset.color" class="bi bi-check-lg"></i>
-          </div>
-          <span class="pers-color-name">{{ preset.name }}</span>
+  <div v-if="persLoading" class="loading-text">
+    <el-icon class="is-loading"><i class="bi bi-arrow-repeat" /></el-icon>
+    <span>加载中...</span>
+  </div>
+  <div v-else class="pers-grid">
+    <!-- 外观：主题色 + 主题模式 -->
+    <section class="pcard pcard--wide">
+      <header class="pcard__head">
+        <span class="pcard__icon"><i class="bi bi-palette"></i></span>
+        <div class="pcard__titles">
+          <h3 class="pcard__title">外观</h3>
+          <p class="pcard__desc">主题色与明暗模式，改动即时生效并自动保存</p>
         </div>
-        <div class="pers-color-item pers-color-custom">
-          <label class="pers-color-swatch pers-color-picker" :style="{ background: persSettings.theme_color }">
-            <input type="color" v-model="persSettings.theme_color" class="pers-color-input" @input="onPersChange" />
-            <i class="bi bi-eyedropper"></i>
-          </label>
-          <span class="pers-color-name">自定义</span>
+      </header>
+      <div class="pcard__body">
+        <div class="color-grid">
+          <div
+            v-for="preset in themePresets"
+            :key="preset.color"
+            class="color-item"
+            :class="{ 'is-active': persSettings.theme_color === preset.color }"
+            @click="selectTheme(preset.color)"
+          >
+            <div class="color-item__swatch" :style="{ background: preset.color }">
+              <i v-if="persSettings.theme_color === preset.color" class="bi bi-check-lg"></i>
+            </div>
+            <span class="color-item__name">{{ preset.name }}</span>
+          </div>
+          <div class="color-item color-item--custom">
+            <div class="color-item__swatch color-item__picker" :style="{ background: persSettings.theme_color }">
+              <el-color-picker
+                v-model="persSettings.theme_color"
+                size="small"
+                class="color-item__input"
+                @change="onPersChange"
+              />
+              <i class="bi bi-eyedropper"></i>
+            </div>
+            <span class="color-item__name">自定义</span>
+          </div>
+        </div>
+        <div class="pcard__divider"></div>
+        <div class="mode-tiles">
+          <button
+            v-for="mode in themeModes"
+            :key="mode.value"
+            type="button"
+            class="mode-tile"
+            :class="{ 'is-active': persSettings.theme_mode === mode.value }"
+            @click="selectThemeMode(mode.value)"
+          >
+            <i :class="mode.icon"></i>
+            <span>{{ mode.label }}</span>
+          </button>
         </div>
       </div>
-    </Card>
+    </section>
 
     <!-- 动画 -->
-    <Card>
-      <div class="pers-card-title">动画</div>
-      <div class="pers-row">
-        <span>启用动画</span>
-        <Switch v-model="persSettings.animation_enabled" @change="onPersChange" />
-      </div>
-      <div class="pers-row" v-if="persSettings.animation_enabled">
-        <span>动画速度</span>
-        <div class="pers-speed">
-          <Slider v-model="persSettings.animation_speed" :min="0.25" :max="2" :step="0.25" @input="onPersChange" />
-          <span class="pers-speed-label">{{ persSettings.animation_speed }}x</span>
+    <section class="pcard">
+      <header class="pcard__head">
+        <span class="pcard__icon"><i class="bi bi-magic"></i></span>
+        <div class="pcard__titles">
+          <h3 class="pcard__title">动画</h3>
+          <p class="pcard__desc">界面过渡与动效</p>
+        </div>
+        <el-switch v-model="persSettings.animation_enabled" @change="onPersChange" />
+      </header>
+      <div v-if="persSettings.animation_enabled" class="pcard__body">
+        <div class="field-row">
+          <span class="field-row__title">动画速度</span>
+          <div class="speed-control">
+            <el-slider
+              v-model="persSettings.animation_speed"
+              :min="0.25"
+              :max="2"
+              :step="0.25"
+              class="speed-slider"
+              @input="onPersChange"
+            />
+            <span class="speed-control__label">{{ persSettings.animation_speed }}x</span>
+          </div>
         </div>
       </div>
-    </Card>
+    </section>
 
     <!-- 透明效果 -->
-    <Card>
-      <div class="pers-card-title">透明效果</div>
-      <div class="pers-effects">
-        <div
-          v-for="effect in effects"
-          :key="effect.value"
-          class="pers-effect-item"
-          :class="{ active: persSettings.transparent_effect === effect.value }"
-          @click="setEffect(effect.value)"
-        >
-          {{ effect.label }}
+    <section class="pcard">
+      <header class="pcard__head">
+        <span class="pcard__icon"><i class="bi bi-droplet-half"></i></span>
+        <div class="pcard__titles">
+          <h3 class="pcard__title">透明效果</h3>
+          <p class="pcard__desc">窗口材质，依赖操作系统支持</p>
         </div>
+      </header>
+      <div class="pcard__body">
+        <el-radio-group
+          v-model="persSettings.transparent_effect"
+          class="chip-group"
+          @change="setEffect(persSettings.transparent_effect)"
+        >
+          <el-radio-button
+            v-for="effect in effects"
+            :key="effect.value"
+            :value="effect.value"
+          >
+            {{ effect.label }}
+          </el-radio-button>
+        </el-radio-group>
       </div>
-    </Card>
+    </section>
 
     <!-- 背景 -->
-    <Card>
-      <div class="pers-card-title">背景</div>
-      <div class="pers-bg-types">
-        <div
-          v-for="bt in bgTypes"
-          :key="bt.value"
-          class="pers-bg-type-item"
-          :class="{ active: persSettings.background_type === bt.value }"
-          @click="persSettings.background_type = bt.value; onPersChange()"
+    <section class="pcard pcard--wide">
+      <header class="pcard__head">
+        <span class="pcard__icon"><i class="bi bi-image"></i></span>
+        <div class="pcard__titles">
+          <h3 class="pcard__title">背景</h3>
+          <p class="pcard__desc">纯色、本地图片/视频或网络资源</p>
+        </div>
+      </header>
+      <div class="pcard__body">
+        <el-radio-group
+          v-model="persSettings.background_type"
+          class="chip-group"
+          @change="onPersChange"
         >
-          {{ bt.label }}
-        </div>
-      </div>
-      <div v-if="persSettings.background_type === 'solid'" class="pers-bg-solid">
-        <input type="color" v-model="persSettings.background_value" class="pers-color-input-inline" @input="autoSave" />
-        <span class="pers-color-hex">{{ persSettings.background_value || '#18191a' }}</span>
-      </div>
-      <div v-if="persSettings.background_type === 'image' || persSettings.background_type === 'video'" class="pers-bg-media">
-        <div class="pers-bg-section">
-          <div class="pers-bg-section-label">适应模式</div>
-          <div class="pers-fit-modes">
-            <div
-              v-for="fm in fitModes"
-              :key="fm.value"
-              class="pers-fit-item"
-              :class="{ active: persSettings.background_fit === fm.value }"
-              @click="persSettings.background_fit = fm.value; onPersChange()"
-            >
-              {{ fm.label }}
-            </div>
-          </div>
-        </div>
-        <div class="pers-bg-section">
-          <div class="pers-bg-section-label">本地文件 (Background 文件夹)</div>
-          <div v-if="bgFileLoading" class="pers-bg-loading">扫描中...</div>
-          <div v-else-if="backgroundFiles.length === 0" class="pers-bg-empty">暂无文件，请将图片/视频放入 Background 文件夹</div>
-          <div v-else class="pers-bg-files">
-            <div
-              v-for="f in backgroundFiles"
-              :key="f.name"
-              class="pers-bg-file"
-              :class="{ active: persSettings.background_value === f.name && !persSettings.background_value.startsWith('http') }"
-              @click="selectBgFile(f.name, f.is_video)"
-            >
-              <i :class="f.is_video ? 'bi bi-film' : 'bi bi-file-earmark-image'"></i>
-              <span class="pers-bg-file-name">{{ f.name }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="pers-bg-section">
-          <div class="pers-bg-section-label">URL 链接</div>
-          <div class="pers-bg-url-row">
-            <Input
-              v-model="bgUrlInput"
-              placeholder="输入图片/视频 URL"
-              @keyup.enter="selectBgUrl"
-              class="pers-bg-url-input"
-            />
-            <Button variant="primary" size="sm" @click="selectBgUrl">应用</Button>
-          </div>
-        </div>
-        <div v-if="persSettings.background_value" class="pers-bg-current">
-          当前: {{ persSettings.background_value }}
-        </div>
-      </div>
-    </Card>
+          <el-radio-button
+            v-for="bt in bgTypes"
+            :key="bt.value"
+            :value="bt.value"
+          >
+            <i :class="bt.icon" class="chip-icon"></i>{{ bt.label }}
+          </el-radio-button>
+        </el-radio-group>
 
-    <!-- 主题模式 -->
-    <Card>
-      <div class="pers-card-title">主题模式</div>
-      <div class="pers-effects">
-        <div
-          v-for="mode in [{value:'system',label:'跟随系统'},{value:'light',label:'浅色'},{value:'dark',label:'深色'}]"
-          :key="mode.value"
-          class="pers-effect-item"
-          :class="{ active: persSettings.theme_mode === mode.value }"
-          @click="persSettings.theme_mode = mode.value; onPersChange()"
-        >
-          {{ mode.label }}
+        <div v-if="persSettings.background_type === 'solid'" class="bg-solid">
+          <el-color-picker
+            v-model="persSettings.background_value"
+            size="default"
+            @change="onPersChange"
+          />
+          <span class="color-hex">{{ persSettings.background_value || '#18191a' }}</span>
+        </div>
+
+        <div v-if="persSettings.background_type === 'image' || persSettings.background_type === 'video'" class="bg-media">
+          <div class="bg-section">
+            <div class="section-subtitle">适应模式</div>
+            <el-radio-group
+              v-model="persSettings.background_fit"
+              class="chip-group chip-group--sm"
+              @change="onPersChange"
+            >
+              <el-radio-button
+                v-for="fm in fitModes"
+                :key="fm.value"
+                :value="fm.value"
+                size="small"
+              >
+                {{ fm.label }}
+              </el-radio-button>
+            </el-radio-group>
+          </div>
+          <div class="bg-section">
+            <div class="section-subtitle">本地文件 (Background 文件夹)</div>
+            <div v-if="bgFileLoading" class="bg-empty">扫描中...</div>
+            <div v-else-if="backgroundFiles.length === 0" class="bg-empty">暂无文件，请将图片/视频放入 Background 文件夹</div>
+            <div v-else class="bg-files">
+              <div
+                v-for="f in backgroundFiles"
+                :key="f.name"
+                :class="['bg-file', { 'is-active': persSettings.background_value === f.name && !persSettings.background_value.startsWith('http') }]"
+                @click="selectBgFile(f.name, f.is_video)"
+              >
+                <i :class="f.is_video ? 'bi bi-film' : 'bi bi-file-earmark-image'"></i>
+                <span class="bg-file__name">{{ f.name }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="bg-section">
+            <div class="section-subtitle">URL 链接</div>
+            <div class="bg-url-row">
+              <el-input
+                v-model="bgUrlInput"
+                placeholder="输入图片/视频 URL"
+                @keyup.enter="selectBgUrl"
+              />
+              <el-button type="primary" @click="selectBgUrl">应用</el-button>
+            </div>
+          </div>
+          <div v-if="persSettings.background_value" class="bg-current">
+            当前: {{ persSettings.background_value }}
+          </div>
         </div>
       </div>
-    </Card>
+    </section>
 
     <!-- 背景遮罩 -->
-    <Card>
-      <div class="pers-card-title">背景遮罩</div>
-      <div class="pers-row">
-        <span>启用遮罩</span>
-        <Switch v-model="persSettings.background_overlay" @change="onPersChange" />
-      </div>
-      <div v-if="persSettings.background_overlay" class="pers-slider-row">
-        <span>遮罩透明度</span>
-        <Slider v-model="persSettings.background_overlay_opacity" :min="0" :max="100" @input="onPersChange" show-value />
-      </div>
-    </Card>
-
-    <!-- 音乐 -->
-    <Card>
-      <div class="pers-card-title">背景音乐</div>
-      <div class="pers-music-modes">
-        <div
-          v-for="m in getMusicModes()"
-          :key="m.value"
-          class="pers-music-mode-item"
-          :class="{ active: persSettings.music_mode === m.value }"
-          @click="persSettings.music_mode = m.value; onPersChange()"
-        >
-          {{ m.label }}
+    <section class="pcard">
+      <header class="pcard__head">
+        <span class="pcard__icon"><i class="bi bi-layers-half"></i></span>
+        <div class="pcard__titles">
+          <h3 class="pcard__title">背景遮罩</h3>
+          <p class="pcard__desc">在背景上叠加暗色遮罩以提升可读性</p>
         </div>
-      </div>
-      <div v-if="persSettings.music_mode === 'file'" class="pers-music-file">
-        <div class="pers-bg-section-label">从 Background 文件夹选择音乐文件</div>
-        <div v-if="musicFiles.length === 0" class="pers-bg-empty">暂无音频文件</div>
-        <div v-else class="pers-bg-files">
-          <div
-            v-for="f in musicFiles"
-            :key="f.name"
-            class="pers-bg-file"
-            :class="{ active: persSettings.music_value === f.name }"
-            @click="selectMusicFile(f.name)"
-          >
-            <i class="bi bi-file-earmark-music"></i>
-            <span class="pers-bg-file-name">{{ f.name }}</span>
+        <el-switch v-model="persSettings.background_overlay" @change="onPersChange" />
+      </header>
+      <div v-if="persSettings.background_overlay" class="pcard__body">
+        <div class="field-row">
+          <span class="field-row__title">遮罩透明度</span>
+          <div class="speed-control">
+            <el-slider
+              v-model="persSettings.background_overlay_opacity"
+              :min="0"
+              :max="100"
+              class="speed-slider"
+              @input="onPersChange"
+            />
+            <span class="speed-control__label">{{ persSettings.background_overlay_opacity }}%</span>
           </div>
         </div>
       </div>
-      <div v-if="persSettings.music_mode === 'url'" class="pers-music-url">
-        <div class="pers-bg-url-row">
-          <Input
-            v-model="bgMusicUrlInput"
-            placeholder="输入音频 URL"
-            @keyup.enter="applyMusicUrl"
-            class="pers-bg-url-input"
-          />
-          <Button variant="primary" size="sm" @click="applyMusicUrl">应用</Button>
+    </section>
+
+    <!-- 背景音乐 -->
+    <section class="pcard">
+      <header class="pcard__head">
+        <span class="pcard__icon"><i class="bi bi-music-note-beamed"></i></span>
+        <div class="pcard__titles">
+          <h3 class="pcard__title">背景音乐</h3>
+          <p class="pcard__desc">循环播放本地或网络音频</p>
+        </div>
+      </header>
+      <div class="pcard__body">
+        <el-radio-group
+          v-model="persSettings.music_mode"
+          class="chip-group"
+          @change="onPersChange"
+        >
+          <el-radio-button
+            v-for="m in getMusicModes()"
+            :key="m.value"
+            :value="m.value"
+          >
+            {{ m.label }}
+          </el-radio-button>
+        </el-radio-group>
+        <div v-if="persSettings.music_mode === 'file'" class="bg-section">
+          <div class="section-subtitle">从 Background 文件夹选择音乐文件</div>
+          <div v-if="musicFiles.length === 0" class="bg-empty">暂无音频文件</div>
+          <div v-else class="bg-files">
+            <div
+              v-for="f in musicFiles"
+              :key="f.name"
+              :class="['bg-file', { 'is-active': persSettings.music_value === f.name }]"
+              @click="selectMusicFile(f.name)"
+            >
+              <i class="bi bi-file-earmark-music"></i>
+              <span class="bg-file__name">{{ f.name }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="persSettings.music_mode === 'url'" class="bg-section">
+          <div class="bg-url-row">
+            <el-input
+              v-model="bgMusicUrlInput"
+              placeholder="输入音频 URL"
+              @keyup.enter="applyMusicUrl"
+            />
+            <el-button type="primary" @click="applyMusicUrl">应用</el-button>
+          </div>
         </div>
       </div>
-    </Card>
+    </section>
 
     <!-- 自定义主页 -->
-    <Card>
-      <div class="pers-card-title">自定义主页</div>
-      <div class="pers-music-modes">
-        <div
-          v-for="h in [{value:'default',label:'默认'},{value:'blank',label:'空白'},{value:'webpage',label:'网页'}]"
-          :key="h.value"
-          class="pers-music-mode-item"
-          :class="{ active: persSettings.homepage_mode === h.value }"
-          @click="persSettings.homepage_mode = h.value; onPersChange()"
+    <section class="pcard pcard--wide">
+      <header class="pcard__head">
+        <span class="pcard__icon"><i class="bi bi-house-gear"></i></span>
+        <div class="pcard__titles">
+          <h3 class="pcard__title">自定义主页</h3>
+          <p class="pcard__desc">启动时显示的首页内容</p>
+        </div>
+      </header>
+      <div class="pcard__body">
+        <el-radio-group
+          v-model="persSettings.homepage_mode"
+          class="chip-group"
+          @change="onPersChange"
         >
-          {{ h.label }}
+          <el-radio-button
+            v-for="h in homepageModes"
+            :key="h.value"
+            :value="h.value"
+          >
+            {{ h.label }}
+          </el-radio-button>
+        </el-radio-group>
+        <div v-if="persSettings.homepage_mode === 'webpage'" class="bg-section">
+          <div class="bg-url-row">
+            <el-input
+              v-model="homepageUrlInput"
+              placeholder="输入主页 URL (https://...)"
+              @keyup.enter="applyHomepageUrl"
+            />
+            <el-button type="primary" @click="applyHomepageUrl">应用</el-button>
+          </div>
         </div>
       </div>
-      <div v-if="persSettings.homepage_mode === 'webpage'" class="pers-music-url">
-        <div class="pers-bg-url-row">
-          <Input
-            v-model="homepageUrlInput"
-            placeholder="输入主页 URL (https://...)"
-            @keyup.enter="applyHomepageUrl"
-            class="pers-bg-url-input"
-          />
-          <Button variant="primary" size="sm" @click="applyHomepageUrl">应用</Button>
-        </div>
-      </div>
-    </Card>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.personalization-page {
+.pers-grid {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-5);
+  align-content: start;
   overflow-y: auto;
+  min-height: 0;
+  padding-bottom: var(--sp-5);
 }
 
-.pers-card-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 16px;
-}
-
-.pers-colors {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.pers-color-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 10px;
-  transition: background 0.15s ease;
-  min-width: 64px;
-}
-
-.pers-color-item:hover {
-  background: var(--bg-hover);
-}
-
-.pers-color-item.active {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-}
-
-@media (prefers-color-scheme: light) {
-  .pers-color-item.active {
-    background: rgba(0, 0, 0, 0.04);
+@media (max-width: 900px) {
+  .pers-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-.pers-color-swatch {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+/* 卡片 */
+.pcard {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  transition: box-shadow var(--motion-base) var(--ease),
+              border-color var(--motion-base) var(--ease),
+              transform var(--motion-base) var(--ease);
+}
+
+.pcard:hover {
+  border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--accent-primary) 8%, transparent);
+}
+
+.pcard--wide {
+  grid-column: 1 / -1;
+}
+
+.pcard__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.pcard__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  color: var(--accent-primary);
+  font-size: var(--fs-lg);
+}
+
+.pcard__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pcard__title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.pcard__desc {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.pcard__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.pcard__divider {
+  height: 1px;
+  background: var(--border-color);
+}
+
+.section-subtitle {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-2);
+}
+
+/* 主题色网格 */
+.color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+.color-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  cursor: pointer;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 12px;
+  transition: background var(--motion-base) var(--ease),
+              transform var(--motion-base) var(--ease);
+  min-width: 64px;
+}
+.color-item:hover {
+  background: var(--bg-soft-hover);
+  transform: translateY(-2px);
+}
+.color-item.is-active {
+  background: var(--status-info-bg);
+}
+.color-item__swatch {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   flex-shrink: 0;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid var(--border-color);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.15);
 }
-
-.pers-color-swatch .bi {
+.color-item.is-active .color-item__swatch {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.color-item__swatch .bi {
   color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
-
-.pers-color-picker {
+.color-item__picker {
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
   cursor: pointer;
   color: #fff;
-  font-size: 16px;
+  font-size: var(--fs-lg);
 }
-
-.pers-color-input {
+.color-item__input {
   position: absolute;
   inset: 0;
   opacity: 0;
   cursor: pointer;
-  width: 100%;
-  height: 100%;
 }
 
-.pers-color-name {
-  font-size: 11px;
+.color-item__input :deep(.el-color-picker__trigger) {
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.color-item__name {
+  font-size: var(--fs-xs);
   color: var(--text-muted);
   white-space: nowrap;
 }
 
-.pers-row {
+/* 主题模式选块 */
+.mode-tiles {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.mode-tile {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  transition: background var(--motion-base) var(--ease),
+              color var(--motion-base) var(--ease),
+              border-color var(--motion-base) var(--ease);
+}
+
+.mode-tile i {
+  font-size: 22px;
+}
+
+.mode-tile:hover {
+  background: var(--bg-soft-hover);
+  color: var(--text-primary);
+}
+
+.mode-tile.is-active {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  font-weight: var(--fw-semibold);
+}
+
+/* 字段行 */
+.field-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0;
-  font-size: 14px;
+  gap: var(--sp-4);
+}
+
+.field-row__title {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
   color: var(--text-primary);
 }
 
-.pers-row + .pers-row {
-  border-top: 1px solid var(--border-color);
-}
-
-.pers-speed {
+/* 滑块 */
+.speed-control {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
+  flex: 1;
+  max-width: 320px;
+  min-width: 180px;
 }
 
-.pers-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  cursor: pointer;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+.speed-slider {
+  flex: 1;
+  min-width: 120px;
 }
 
-.pers-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  cursor: pointer;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-}
-
-.pers-speed-label {
-  font-size: 13px;
-  font-weight: 600;
+.speed-control__label {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
   color: var(--text-primary);
-  min-width: 36px;
+  min-width: 44px;
   text-align: right;
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 
-.pers-effects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.pers-effect-item {
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.pers-effect-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.pers-effect-item.active {
-  background: var(--accent-primary);
-  color: #fff;
-  border-color: var(--accent-primary);
-}
-
-
-  .pers-bg-types {
-  display: flex;
-  gap: 8px;
+/* chip group */
+.chip-group {
   flex-wrap: wrap;
 }
 
-.pers-bg-type-item {
-  padding: 8px 20px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: all 0.15s ease;
+.chip-icon {
+  margin-right: 6px;
 }
 
-.pers-bg-type-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.pers-bg-type-item.active {
-  background: var(--accent-primary);
-  color: #fff;
-  border-color: var(--accent-primary);
-}
-
-.pers-bg-solid {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.pers-color-input-inline {
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 8px;
-  padding: 0;
-  cursor: pointer;
-  background: none;
-}
-
-.pers-color-input-inline::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.pers-color-input-inline::-webkit-color-swatch {
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-}
-
-.pers-color-hex {
-  font-size: 13px;
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  color: var(--text-muted);
-}
-
-.pers-bg-media {
-  margin-top: 12px;
+/* 背景相关 */
+.bg-media {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--sp-4);
 }
-
-.pers-bg-section {
+.bg-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
-
-.pers-bg-section-label {
-  font-size: 13px;
-  font-weight: 500;
+.bg-empty {
+  font-size: var(--fs-sm);
   color: var(--text-muted);
+  padding: var(--sp-2) 0;
 }
-
-.pers-fit-modes {
+.bg-files {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.pers-fit-item {
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.pers-fit-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.pers-fit-item.active {
-  background: var(--accent-primary);
-  color: #fff;
-  border-color: var(--accent-primary);
-}
-
-.pers-bg-loading,
-.pers-bg-empty {
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 8px 0;
-}
-
-.pers-bg-files {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 120px;
+  gap: var(--sp-2);
+  max-height: 140px;
   overflow-y: auto;
 }
-
-.pers-bg-file {
-  display: flex;
+.bg-file {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 10px;
+  font-size: var(--fs-sm);
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-soft);
   border: 1px solid var(--border-color);
   cursor: pointer;
-  transition: all 0.15s ease;
-  max-width: 200px;
+  transition: background var(--motion-base) var(--ease),
+              color var(--motion-base) var(--ease),
+              border-color var(--motion-base) var(--ease);
+  max-width: 220px;
 }
-
-.pers-bg-file:hover {
-  background: rgba(255, 255, 255, 0.1);
+.bg-file:hover {
+  background: var(--bg-soft-hover);
   color: var(--text-primary);
 }
-
-.pers-bg-file.active {
+.bg-file.is-active {
   background: var(--accent-primary);
   color: #fff;
   border-color: var(--accent-primary);
 }
-
-.pers-bg-file i {
-  font-size: 14px;
+.bg-file i {
+  font-size: var(--fs-md);
   flex-shrink: 0;
 }
-
-.pers-bg-file-name {
+.bg-file__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.pers-bg-url-row {
+.bg-url-row {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
+  max-width: 560px;
 }
-
-.pers-bg-url-input {
-  flex: 1;
-}
-
-.pers-bg-url-btn {
-  flex-shrink: 0;
-  padding: 8px 16px;
-  font-size: 13px;
-}
-
-.pers-bg-current {
-  font-size: 12px;
+.bg-current {
+  font-size: var(--fs-sm);
   color: var(--text-muted);
-  padding: 4px 0;
   word-break: break-all;
 }
 
-.pers-toggle.active {
-  background: var(--accent-primary);
-}
-
-.pers-toggle-knob {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #fff;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  transition: left 0.2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-}
-
-.pers-toggle.active .pers-toggle-knob {
-  left: 22px;
-}
-
-.pers-slider-row {
+.bg-solid {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
+  gap: var(--sp-3);
 }
 
-.pers-music-modes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.pers-music-mode-item {
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.pers-music-mode-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.pers-music-mode-item.active {
-  background: var(--accent-primary);
-  color: #fff;
-  border-color: var(--accent-primary);
-}
-
-.pers-music-file {
-  margin-top: 10px;
-}
-
-.pers-music-url {
-  margin-top: 10px;
-}
-
-@media (prefers-color-scheme: light) {
-  .pers-bg-type-item {
-    background: rgba(0, 0, 0, 0.04);
-  }
-  .pers-bg-type-item:hover {
-    background: rgba(0, 0, 0, 0.08);
-  }
-}
-
-.setting-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
+.color-hex {
+  font-size: var(--fs-base);
+  font-family: var(--font-mono);
   color: var(--text-muted);
-  font-size: 14px;
+}
+
+.loading-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-muted);
 }
 </style>

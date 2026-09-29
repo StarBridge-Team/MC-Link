@@ -1,27 +1,37 @@
 {
   "name": "mc-link",
   "private": true,
-  "version": "0.3.5",
+  "version": "0.4.0",
   "type": "module",
   "author": "棱镜Prism工作室",
   "description": "MC Link - 我的世界联机工具",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "build:pages": "vite build --config vite.pages.config.ts",
+    "dev:pages": "vite build --watch --config vite.pages.config.ts",
+    "dev:assets": "cargo run --manifest-path assets-server/Cargo.toml -- --port 54789 --root assets-server",
+    "dev:fe": "concurrently -n vite,pages,assets -c blue,magenta,green \"vite\" \"pnpm dev:pages\" \"pnpm dev:assets\"",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "build:release": "pnpm tauri build --ci && node rename-build.js"
+    "tauri": "node scripts/tauri-build.mjs",
+    "build:release": "node scripts/tauri-build.mjs build",
+    "sync:assets": "node scripts/sync-assets.mjs"
   },
   "dependencies": {
+    "@fontsource/poppins": "^5.3.0",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-deep-link": "^2.4.9",
     "@tauri-apps/plugin-opener": "^2",
+    "@vue/shared": "^3.5.40",
     "bootstrap-icons": "^1.13.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "element-plus": "^2.13.7",
+    "html2canvas": "^1.4.1",
     "lucide-vue-next": "^1.0.0",
     "tailwind-merge": "^3.5.0",
-    "vue": "^3.5.13"
+    "vue": "^3.5.13",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
@@ -29,6 +39,7 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "@volar/typescript": "^2.4.28",
     "autoprefixer": "^10.4.27",
+    "concurrently": "^9.1.0",
     "fdir": "^6.5.0",
     "picomatch": "^4.0.4",
     "postcss": "^8.5.8",
@@ -36,5 +47,6 @@
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vue-tsc": "^2.1.10"
-  }
+  },
+  "packageManager": "pnpm@10.14.0+sha1.85759954ad817d248e2fed7f789f046a24f0327d"
 }

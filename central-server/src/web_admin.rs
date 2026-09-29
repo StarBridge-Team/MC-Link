@@ -2,11 +2,14 @@
 //!
 //! 路由:
 //!   /               → 重定向到 /admin
-//!   /admin          → 管理面板仪表盘（需 Token 或 OAuth 会话）
-//!   /admin/login    → 登录页（OAuth 按钮 + Token 输入）
+//!   /admin          → 管理面板仪表盘（需 Token）
+//!   /admin/login    → 管理 Token 登录页
+//!   /auth/login     → 客户端 Token 获取页（邮箱 + OAuth）
+//!   /auth/{p}/login → OAuth 登录重定向
+//!   /auth/{p}/callback → OAuth 回调 → 展示客户端 Token
+//!   /auth/token-success → Token 获取成功页
 //!   /api/auth/*     → 认证 API
-//!   /auth/*         → OAuth 登录/回调
-//!   /api/admin/*    → 管理 API（需 Token 或 OAuth 会话）
+//!   /api/admin/*    → 管理 API（需 Token）
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -17,13 +20,130 @@ use tiny_http::{Header, Method, Response, Server, StatusCode};
 
 use mc_link_common::log::{log, LogLevel};
 use mc_link_common::utils::now_secs;
-use crate::oauth::{OAuthState, Provider};
+use crate::config::SmtpConfig;
+use crate::email::EmailVerifyState;
+use crate::identity::{IdentityEntry, IdentityStore};
+use crate::oauth::{urlencode, OAuthState, Provider};
 use crate::session::SessionStore;
 use crate::types::*;
 use crate::token;
 
+// ===== 桌面登录会话存储 =====
+
+/// 桌面登录会话
+#[derive(Clone)]
+struct DesktopSession {
+    session_id: String,
+    app_id: String,
+    status: String, // "pending" or "authorized"
+    encrypted_token: Option<String>,
+    account_token: Option<String>,
+    created_at: std::time::Instant,
+    expires_in: u64, // 秒
+}
+
+impl DesktopSession {
+    fn is_expired(&self) -> bool {
+        std::time::Instant::now().duration_since(self.created_at).as_secs() > self.expires_in
+    }
+}
+
+/// 桌面登录会话管理器
+struct DesktopStore {
+    sessions: std::sync::Mutex<HashMap<String, DesktopSession>>,
+}
+
+impl DesktopStore {
+    fn new() -> Self {
+        Self { sessions: std::sync::Mutex::new(HashMap::new()) }
+    }
+
+    fn create(&self, app_id: &str) -> String {
+        let session_id = uuid::Uuid::new_v4().to_string().replace('-', "");
+        let session = DesktopSession {
+            session_id: session_id.clone(),
+            app_id: app_id.to_string(),
+            status: "pending".to_string(),
+            encrypted_token: None,
+            account_token: None,
+            created_at: std::time::Instant::now(),
+            expires_in: 300, // 5 分钟
+        };
+        if let Ok(mut sessions) = self.sessions.lock() {
+            // 清理过期
+            sessions.retain(|_, s| !s.is_expired());
+            sessions.insert(session_id.clone(), session);
+        }
+        session_id
+    }
+
+    fn get(&self, session_id: &str) -> Option<DesktopSession> {
+        let sessions = self.sessions.lock().ok()?;
+        sessions.get(session_id).filter(|s| !s.is_expired()).cloned()
+    }
+
+    fn authorize(&self, session_id: &str, account_token: &str) -> bool {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            if let Some(session) = sessions.get_mut(session_id) {
+                if session.is_expired() { return false; }
+                // AES-256-CBC 加密
+                session.encrypted_token = Some(encrypt_desktop_token(session_id, account_token));
+                session.account_token = Some(account_token.to_string());
+                session.status = "authorized".to_string();
+                return true;
+            }
+        }
+        false
+    }
+
+    fn consume_token(&self, session_id: &str) -> Option<String> {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            if let Some(session) = sessions.get_mut(session_id) {
+                if session.status != "authorized" { return None; }
+                let token = session.encrypted_token.clone();
+                // 取出后清除明文
+                session.account_token = None;
+                return token;
+            }
+        }
+        None
+    }
+}
+
+/// AES-256-CBC 加密 token
+/// key = sha256(session_id), iv = 随机 16 字节
+/// 输出格式: hex(iv):hex(ciphertext)
+fn encrypt_desktop_token(session_id: &str, token: &str) -> String {
+    use aes::Aes256;
+    use cbc::Encryptor;
+    use cipher::{BlockEncryptMut, KeyIvInit};
+    use rand::Rng;
+    use sha2::{Sha256, Digest};
+
+    let key = Sha256::digest(session_id.as_bytes());
+    let mut iv = [0u8; 16];
+    rand::thread_rng().fill(&mut iv);
+
+    type Aes256CbcEnc = Encryptor<Aes256>;
+
+    let mut buf = token.as_bytes().to_vec();
+    // PKCS7 填充
+    let block_size = 16;
+    let pad_len = block_size - (buf.len() % block_size);
+    buf.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+
+    let cipher = Aes256CbcEnc::new_from_slices(&key, &iv).expect("无效密钥/IV");
+    let encrypted = cipher.encrypt_padded_mut::<cipher::block_padding::Pkcs7>(&mut buf, token.len())
+        .expect("加密失败");
+
+    let iv_hex = hex::encode(&iv);
+    let ct_hex = hex::encode(encrypted);
+    format!("{}:{}", iv_hex, ct_hex)
+}
+
 const ADMIN_HTML: &str = include_str!("web_admin.html");
 const LOGIN_HTML: &str = include_str!("admin_login.html");
+const CLIENT_LOGIN_HTML: &str = include_str!("client_login.html");
 
 fn json_response<T: serde::Serialize>(data: &T) -> Response<std::io::Cursor<Vec<u8>>> {
     json_response_with_status(data, StatusCode(200))
@@ -32,24 +152,29 @@ fn json_response<T: serde::Serialize>(data: &T) -> Response<std::io::Cursor<Vec<
 fn json_response_with_status<T: serde::Serialize>(data: &T, status: StatusCode) -> Response<std::io::Cursor<Vec<u8>>> {
     let body = serde_json::to_string(data).unwrap_or_default();
     let mut resp = Response::from_string(body).with_status_code(status);
-    let content_type = Header::from_bytes("Content-Type", "application/json").unwrap();
-    resp.add_header(content_type);
+    // "Content-Type" 和 "application/json" 是硬编码 ASCII 字符串，不会失败
+    if let Ok(content_type) = Header::from_bytes("Content-Type", "application/json") {
+        resp.add_header(content_type);
+    }
     resp
 }
 
 fn html_response(body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     let mut resp = Response::from_string(body);
-    let content_type = Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap();
-    resp.add_header(content_type);
-    let cors = Header::from_bytes("Access-Control-Allow-Origin", "*").unwrap();
-    resp.add_header(cors);
+    if let Ok(content_type) = Header::from_bytes("Content-Type", "text/html; charset=utf-8") {
+        resp.add_header(content_type);
+    }
+    if let Ok(cors) = Header::from_bytes("Access-Control-Allow-Origin", "*") {
+        resp.add_header(cors);
+    }
     resp
 }
 
 fn redirect(url: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     let mut resp = Response::from_string("").with_status_code(StatusCode(302));
-    let loc = Header::from_bytes("Location", url).unwrap();
-    resp.add_header(loc);
+    if let Ok(loc) = Header::from_bytes("Location", url) {
+        resp.add_header(loc);
+    }
     resp
 }
 
@@ -109,7 +234,11 @@ pub fn start_web_admin(
     admin_token: String,
     oauth_state: Arc<OAuthState>,
     sessions: Arc<SessionStore>,
+    email_state: Arc<EmailVerifyState>,
+    smtp_config: Option<SmtpConfig>,
+    identity_store: Arc<IdentityStore>,
 ) {
+    let desktop_store = Arc::new(DesktopStore::new());
     let server = match Server::http(&bind_addr) {
         Ok(s) => {
             log(LogLevel::Info, &format!("Web 服务器已启动在 http://{}", bind_addr));
@@ -130,10 +259,11 @@ pub fn start_web_admin(
 
         let url = request.url().to_string();
         let method = request.method().clone();
+        let path = url.split('?').next().unwrap_or(&url).to_string();
 
-        let response: Response<std::io::Cursor<Vec<u8>>> = match url.as_str() {
+        let response: Response<std::io::Cursor<Vec<u8>>> = match path.as_str() {
             // 公开页面
-            "/" | "/index.html" => redirect("/admin"),
+            "/" | "/index.html" => redirect("/auth/login"),
 
             "/admin/login" => html_response(LOGIN_HTML),
 
@@ -141,10 +271,35 @@ pub fn start_web_admin(
             "/admin" | "/admin/" => {
                 if is_authenticated(&request, &admin_token, &sessions) {
                     html_response(ADMIN_HTML)
+                } else if let Some(t) = url.split('?').nth(1).and_then(|q| {
+                    q.split('&').find_map(|p| {
+                        let mut kv = p.splitn(2, '=');
+                        match (kv.next(), kv.next()) {
+                            (Some("token"), Some(v)) => Some(v.to_string()),
+                            _ => None,
+                        }
+                    })
+                }) {
+                    if token::validate(&t, &admin_token) || sessions.get(&t).is_some() {
+                        // 通过 query token 验证成功，设置会话并刷新页面（不带 token）
+                        let mut resp = redirect("/admin");
+                        let cookie_val = format!("mc_link_token={}; Path=/; Max-Age=604800; SameSite=Lax", t);
+                        if let Ok(h) = Header::from_bytes("Set-Cookie", cookie_val.as_bytes()) {
+                            resp.add_header(h);
+                        }
+                        resp
+                    } else {
+                        redirect("/admin/login")
+                    }
                 } else {
                     redirect("/admin/login")
                 }
             }
+
+            // ===== 客户端 Token 获取/注册/忘记密码页 =====
+            "/auth/login" | "/auth/" => html_response(CLIENT_LOGIN_HTML),
+            "/auth/register" => html_response(CLIENT_LOGIN_HTML),
+            "/auth/forgot" => html_response(CLIENT_LOGIN_HTML),
 
             // ===== OAuth 登录入口 =====
             url if url.starts_with("/auth/") && url.ends_with("/login") => {
@@ -153,7 +308,7 @@ pub fn start_web_admin(
 
             // ===== OAuth 回调 =====
             url if url.starts_with("/auth/") && url.ends_with("/callback") => {
-                handle_oauth_callback(url, &mut request, &oauth_state, &sessions, &admin_token)
+                handle_oauth_callback(url, &mut request, &oauth_state, &admin_token, &identity_store)
             }
 
             // ===== 认证 API =====
@@ -169,6 +324,65 @@ pub fn start_web_admin(
                 handle_logout(&request, &admin_token, &sessions)
             }
 
+            // ===== 密码登录 =====
+            "/api/auth/password-login" => {
+                handle_password_login(&mut request)
+            }
+
+            // ===== 邮箱验证身份（用于注册流程）=====
+            "/api/auth/verify-identity" => {
+                handle_verify_identity(&mut request, &email_state, &identity_store)
+            }
+
+            // ===== 注册（用身份令牌 + 用户名 + 密码）=====
+            "/api/auth/register" => {
+                handle_register(&mut request, &identity_store)
+            }
+
+            // ===== 直接注册（用户名 + 密码，不用身份令牌）=====
+            "/api/auth/direct-register" => {
+                handle_direct_register(&mut request)
+            }
+
+            // ===== Token 验证 =====
+            "/api/auth/verify-token" => {
+                handle_verify_token(&mut request)
+            }
+
+            "/api/auth/ping" => {
+                json_response(&serde_json::json!({"code": 0, "message": "ok"}))
+            }
+
+            // ===== 忘记密码（邮箱验证码 → 重置密码）=====
+            "/api/auth/forgot-password" => {
+                handle_forgot_password(&mut request, &email_state)
+            }
+
+            // ===== 邮箱验证码 API =====
+            "/api/auth/send-code" => {
+                handle_send_code(&mut request, &email_state, &smtp_config)
+            }
+
+            "/api/auth/verify-code" => {
+                handle_verify_code(&mut request, &email_state)
+            }
+
+            // ===== 桌面登录 API =====
+            "/api/desktop/init" => {
+                handle_desktop_init(&mut request, &desktop_store)
+            }
+
+            "/api/desktop/poll" => {
+                handle_desktop_poll(&url, &desktop_store)
+            }
+
+            "/api/auth/desktop/authorize" => {
+                handle_desktop_authorize(&mut request, &desktop_store)
+            }
+
+            // 桌面登录授权页
+            "/login" => html_response(CLIENT_LOGIN_HTML),
+
             // ===== 管理 API =====
             _ if url.starts_with("/api/admin/") => {
                 if is_authenticated(&request, &admin_token, &sessions) {
@@ -181,10 +395,15 @@ pub fn start_web_admin(
             // ===== OPTIONS 预检 =====
             _ if method == Method::Options => {
                 let mut resp = Response::from_string("").with_status_code(StatusCode(204));
-                let h = Header::from_bytes("Access-Control-Allow-Origin", "*").unwrap();
-                resp.add_header(h);
-                resp.add_header(Header::from_bytes("Access-Control-Allow-Headers", "Authorization, X-Token, Content-Type").unwrap());
-                resp.add_header(Header::from_bytes("Access-Control-Allow-Methods", "GET, POST, OPTIONS").unwrap());
+                if let Ok(h) = Header::from_bytes("Access-Control-Allow-Origin", "*") {
+                    resp.add_header(h);
+                }
+                if let Ok(h) = Header::from_bytes("Access-Control-Allow-Headers", "Authorization, X-Token, Content-Type") {
+                    resp.add_header(h);
+                }
+                if let Ok(h) = Header::from_bytes("Access-Control-Allow-Methods", "GET, POST, OPTIONS") {
+                    resp.add_header(h);
+                }
                 resp
             }
 
@@ -194,6 +413,405 @@ pub fn start_web_admin(
         if let Err(e) = request.respond(response) {
             log(LogLevel::Warn, &format!("Web 响应失败: {}", e));
         }
+    }
+}
+
+// ===== 邮箱验证码 API =====
+
+fn handle_send_code(request: &mut tiny_http::Request, email_state: &EmailVerifyState, smtp_config: &Option<SmtpConfig>) -> Response<std::io::Cursor<Vec<u8>>> {
+    let smtp = match smtp_config {
+        Some(c) => c,
+        None => return json_response(&serde_json::json!({"code": 1, "error": "SMTP not configured"})),
+    };
+
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let email = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v.get("email").and_then(|e| e.as_str()).map(String::from))
+        .unwrap_or_default();
+
+    if email.is_empty() || !email.contains('@') {
+        return json_response(&serde_json::json!({"code": 1, "error": "请输入有效邮箱"}));
+    }
+
+    match email_state.send_code(&email, smtp) {
+        Ok(_) => json_response(&serde_json::json!({"code": 0, "message": "验证码已发送"})),
+        Err(e) => json_response(&serde_json::json!({"code": 1, "error": e})),
+    }
+}
+
+fn handle_verify_code(request: &mut tiny_http::Request, email_state: &EmailVerifyState) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let (email, code) = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) => (
+            v.get("email").and_then(|e| e.as_str()).unwrap_or("").to_string(),
+            v.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+        ),
+        Err(_) => (String::new(), String::new()),
+    };
+
+    if email.is_empty() || code.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    if email_state.verify_code(&email, &code) {
+        let account_result = crate::account_api::email_login_or_register(&email);
+
+        match account_result {
+            Ok(acct) => {
+                log(LogLevel::Info, &format!("邮箱登录成功: {} -> {}", email, acct.username));
+                json_response(&serde_json::json!({
+                    "code": 0,
+                    "message": "验证成功",
+                    "token": acct.token,
+                    "name": acct.username,
+                }))
+            }
+            Err(e) => {
+                log(LogLevel::Warn, &format!("邮箱登录失败 ({}): {}", email, e));
+                json_response(&serde_json::json!({"code": 1, "error": format!("账号服务错误: {}", e)}))
+            }
+        }
+    } else {
+        json_response(&serde_json::json!({"code": 1, "error": "验证码无效或已过期"}))
+    }
+}
+
+// ===== 密码登录 =====
+
+fn handle_password_login(request: &mut tiny_http::Request) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let (username, password_hashed) = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) => (
+            v.get("username").and_then(|u| u.as_str()).unwrap_or("").to_string(),
+            v.get("password_hashed").and_then(|p| p.as_str()).unwrap_or("").to_string(),
+        ),
+        Err(_) => (String::new(), String::new()),
+    };
+
+    if username.is_empty() || password_hashed.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    match crate::account_api::login(&username, &password_hashed) {
+        Ok(acct) => {
+            log(LogLevel::Info, &format!("密码登录成功: {}", username));
+            json_response(&serde_json::json!({
+                "code": 0,
+                "token": acct.token,
+                "name": acct.username,
+            }))
+        }
+        Err(e) => {
+            log(LogLevel::Warn, &format!("密码登录失败 ({}): {}", username, e));
+            json_response(&serde_json::json!({"code": 1, "error": e}))
+        }
+    }
+}
+
+// ===== 邮箱验证身份（用于注册流程）=====
+
+fn handle_verify_identity(
+    request: &mut tiny_http::Request,
+    email_state: &EmailVerifyState,
+    identity_store: &IdentityStore,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let (email, code) = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) => (
+            v.get("email").and_then(|e| e.as_str()).unwrap_or("").to_string(),
+            v.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+        ),
+        Err(_) => (String::new(), String::new()),
+    };
+
+    if email.is_empty() || code.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    if email_state.verify_code(&email, &code) {
+        let identity_token = identity_store.create(IdentityEntry {
+            email: Some(email.clone()),
+            provider: None,
+            provider_id: None,
+            name: None,
+            created_at: std::time::Instant::now(),
+        });
+        log(LogLevel::Info, &format!("邮箱验证通过，创建身份令牌: {}", email));
+        json_response(&serde_json::json!({
+            "code": 0,
+            "identity_token": identity_token,
+            "email": email,
+        }))
+    } else {
+        json_response(&serde_json::json!({"code": 1, "error": "验证码无效或已过期"}))
+    }
+}
+
+// ===== 注册 =====
+
+fn handle_register(
+    request: &mut tiny_http::Request,
+    identity_store: &IdentityStore,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let (identity_token, username, password_hashed) = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) => (
+            v.get("identity_token").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+            v.get("username").and_then(|u| u.as_str()).unwrap_or("").to_string(),
+            v.get("password_hashed").and_then(|p| p.as_str()).unwrap_or("").to_string(),
+        ),
+        Err(_) => (String::new(), String::new(), String::new()),
+    };
+
+    if identity_token.is_empty() || username.is_empty() || password_hashed.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    // 验证身份令牌
+    let entry = match identity_store.consume(&identity_token) {
+        Some(e) => e,
+        None => return json_response(&serde_json::json!({"code": 1, "error": "身份验证已过期，请重新验证"})),
+    };
+
+    // 调用账号 API 注册
+    match crate::account_api::register(&username, &password_hashed) {
+        Ok(_acct) => {
+            log(LogLevel::Info, &format!("注册成功: {} (邮箱: {:?})", username, entry.email));
+            // 注册后调用登录获取 token
+            match crate::account_api::login(&username, &password_hashed) {
+                Ok(login_acct) => {
+                    json_response(&serde_json::json!({
+                        "code": 0,
+                        "token": login_acct.token,
+                        "name": login_acct.username,
+                    }))
+                }
+                Err(e) => {
+                    json_response(&serde_json::json!({"code": 1, "error": format!("注册成功但登录失败: {}", e)}))
+                }
+            }
+        }
+        Err(e) => {
+            log(LogLevel::Warn, &format!("注册失败 ({}): {}", username, e));
+            json_response(&serde_json::json!({"code": 1, "error": e}))
+        }
+    }
+}
+
+// ===== 直接注册 =====
+
+fn handle_direct_register(request: &mut tiny_http::Request) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let (username, password_hashed) = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) => (
+            v.get("username").and_then(|u| u.as_str()).unwrap_or("").to_string(),
+            v.get("password_hashed").and_then(|p| p.as_str()).unwrap_or("").to_string(),
+        ),
+        Err(_) => (String::new(), String::new()),
+    };
+
+    if username.is_empty() || password_hashed.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    // 先尝试登录（可能已有账号）
+    match crate::account_api::login(&username, &password_hashed) {
+        Ok(acct) => {
+            log(LogLevel::Info, &format!("直接注册 — 已有账号，登录成功: {}", username));
+            return json_response(&serde_json::json!({
+                "code": 0,
+                "token": acct.token,
+                "name": acct.username,
+                "message": "登录成功",
+            }));
+        }
+        Err(_) => {}
+    }
+
+    // 不存在则注册
+    match crate::account_api::register(&username, &password_hashed) {
+        Ok(_) => {
+            log(LogLevel::Info, &format!("直接注册 — 注册成功: {}", username));
+            match crate::account_api::login(&username, &password_hashed) {
+                Ok(acct) => json_response(&serde_json::json!({
+                    "code": 0,
+                    "token": acct.token,
+                    "name": acct.username,
+                    "message": "注册成功",
+                })),
+                Err(e) => json_response(&serde_json::json!({"code": 1, "error": format!("注册成功但登录失败: {}", e)})),
+            }
+        }
+        Err(e) => {
+            log(LogLevel::Warn, &format!("直接注册 — 注册失败 ({}): {}", username, e));
+            json_response(&serde_json::json!({"code": 1, "error": e}))
+        }
+    }
+}
+
+// ===== Token 验证 =====
+
+fn handle_verify_token(request: &mut tiny_http::Request) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let token = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v.get("token").and_then(|t| t.as_str()).map(String::from))
+        .unwrap_or_default();
+
+    if token.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    match crate::account_api::verify(&token) {
+        Ok(acct) => {
+            json_response(&serde_json::json!({
+                "code": 0,
+                "token": acct.token,
+                "name": acct.username,
+            }))
+        }
+        Err(e) => {
+            json_response(&serde_json::json!({"code": 1, "error": e}))
+        }
+    }
+}
+
+// ===== 忘记密码 =====
+
+fn handle_forgot_password(
+    request: &mut tiny_http::Request,
+    email_state: &EmailVerifyState,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let (email, code, _new_password_hashed) = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) => (
+            v.get("email").and_then(|e| e.as_str()).unwrap_or("").to_string(),
+            v.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string(),
+            v.get("new_password_hashed").and_then(|p| p.as_str()).unwrap_or("").to_string(),
+        ),
+        Err(_) => (String::new(), String::new(), String::new()),
+    };
+
+    if email.is_empty() || code.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    if !email_state.verify_code(&email, &code) {
+        return json_response(&serde_json::json!({"code": 1, "error": "验证码无效或已过期"}));
+    }
+
+    // 账号 API 暂未提供重置密码接口
+    json_response(&serde_json::json!({"code": 1, "error": "功能开发中，请在账号服务中添加重置密码接口后使用"}))
+}
+
+// ===== 桌面登录 API =====
+
+fn handle_desktop_init(
+    request: &mut tiny_http::Request,
+    desktop_store: &DesktopStore,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let app_id = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v.get("app_id").and_then(|a| a.as_str()).map(String::from))
+        .unwrap_or_default();
+
+    if app_id.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "缺少 app_id"}));
+    }
+
+    let session = desktop_store.create(&app_id);
+    log(LogLevel::Info, &format!("桌面登录初始化: app_id={}, session={}", app_id, &session[..8]));
+    json_response(&serde_json::json!({
+        "code": 0,
+        "session": session,
+        "expires_in": 300,
+    }))
+}
+
+fn handle_desktop_poll(
+    url: &str,
+    desktop_store: &DesktopStore,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let query = url.split('?').nth(1).unwrap_or("");
+    let params = parse_query_params(query);
+    let app_id = params.get("app_id").cloned().unwrap_or_default();
+    let session = params.get("session").cloned().unwrap_or_default();
+
+    if app_id.is_empty() || session.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    let session_data = desktop_store.get(&session);
+    match session_data {
+        Some(data) if data.status == "authorized" => {
+            let encrypted_token = desktop_store.consume_token(&session);
+            match encrypted_token {
+                Some(enc_token) => {
+                    json_response(&serde_json::json!({
+                        "code": 0,
+                        "status": "authorized",
+                        "encrypted_token": enc_token,
+                    }))
+                }
+                None => {
+                    json_response(&serde_json::json!({
+                        "code": 0,
+                        "status": "authorized",
+                        "encrypted_token": null,
+                    }))
+                }
+            }
+        }
+        Some(_) => {
+            json_response(&serde_json::json!({
+                "code": 0,
+                "status": "pending",
+            }))
+        }
+        None => {
+            json_response(&serde_json::json!({
+                "code": 1,
+                "error": "会话无效或已过期",
+            }))
+        }
+    }
+}
+
+fn handle_desktop_authorize(
+    request: &mut tiny_http::Request,
+    desktop_store: &DesktopStore,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut body = String::new();
+    let _ = request.as_reader().read_to_string(&mut body);
+    let (app_id, session, token) = match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(v) => (
+            v.get("app_id").and_then(|a| a.as_str()).unwrap_or("").to_string(),
+            v.get("session").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            v.get("token").and_then(|t| t.as_str()).unwrap_or("").to_string(),
+        ),
+        Err(_) => (String::new(), String::new(), String::new()),
+    };
+
+    if app_id.is_empty() || session.is_empty() || token.is_empty() {
+        return json_response(&serde_json::json!({"code": 1, "error": "参数不完整"}));
+    }
+
+    if desktop_store.authorize(&session, &token) {
+        log(LogLevel::Info, &format!("桌面登录授权成功: app_id={}", app_id));
+        json_response(&serde_json::json!({"code": 0, "message": "授权成功"}))
+    } else {
+        json_response(&serde_json::json!({"code": 1, "error": "会话无效或已过期"}))
     }
 }
 
@@ -215,23 +833,26 @@ fn handle_oauth_login(
         None => return not_found(),
     };
 
-    // 可选的 redirect_base — 使用请求的 Host header 确定回调地址
-    // 默认使用服务器绑定地址
+    // 从 query 中提取客户端回调地址
+    let query = url.split('?').nth(1).unwrap_or("");
+    let params = parse_query_params(query);
+    let client_redirect = params.get("redirect_uri").map(|s| s.as_str()).unwrap_or("");
+
     let redirect_base = "http://localhost";
 
-    match oauth_state.start_login(provider, redirect_base) {
+    match oauth_state.start_login(provider, redirect_base, client_redirect) {
         Ok((_state, auth_url)) => redirect(&auth_url),
         Err(e) => html_response(&format!("<html><body><h2>配置错误</h2><p>{}</p></body></html>", e)),
     }
 }
 
-/// OAuth 回调 — 处理授权码交换
+/// OAuth 回调 — 处理授权码交换，重定向回客户端或注册页
 fn handle_oauth_callback(
     url: &str,
-    request: &mut tiny_http::Request,
+    _request: &mut tiny_http::Request,
     oauth_state: &OAuthState,
-    sessions: &SessionStore,
     _admin_token: &str,
+    identity_store: &IdentityStore,
 ) -> Response<std::io::Cursor<Vec<u8>>> {
     // 提取 query 参数
     let query = url.split('?').nth(1).unwrap_or("");
@@ -240,25 +861,25 @@ fn handle_oauth_callback(
     // 检查 error
     if let Some(error) = params.get("error") {
         return html_response(&format!(
-            "<html><body><h2>授权失败</h2><p>{}</p><p><a href='/admin/login'>返回登录页</a></p></body></html>",
+            "<html><body><h2>授权失败</h2><p>{}</p><p><a href='/auth/login'>返回登录页</a></p></body></html>",
             error
         ));
     }
 
     let code = match params.get("code") {
         Some(c) => c.clone(),
-        None => return html_response("<html><body><h2>缺少授权码</h2><p><a href='/admin/login'>返回登录页</a></p></body></html>"),
+        None => return html_response("<html><body><h2>缺少授权码</h2><p><a href='/auth/login'>返回登录页</a></p></body></html>"),
     };
 
     let state = match params.get("state") {
         Some(s) => s.clone(),
-        None => return html_response("<html><body><h2>缺少 state 参数</h2><p><a href='/admin/login'>返回登录页</a></p></body></html>"),
+        None => return html_response("<html><body><h2>缺少 state 参数</h2><p><a href='/auth/login'>返回登录页</a></p></body></html>"),
     };
 
-    // 验证 state
-    let provider = match oauth_state.verify_state(&state) {
-        Some(p) => p,
-        None => return html_response("<html><body><h2>state 无效</h2><p><a href='/admin/login'>返回登录页</a></p></body></html>"),
+    // 验证 state 并取回客户端回调地址
+    let (provider, client_redirect_uri) = match oauth_state.verify_state(&state) {
+        Some((p, uri)) => (p, uri),
+        None => return html_response("<html><body><h2>state 无效</h2><p><a href='/auth/login'>返回登录页</a></p></body></html>"),
     };
 
     // 回调地址需与请求一致
@@ -267,31 +888,48 @@ fn handle_oauth_callback(
     // 交换 code → token → user info
     match oauth_state.exchange_code(provider, &code, redirect_base) {
         Ok(user) => {
-            log(LogLevel::Info, &format!("OAuth 登录成功: {} ({})", user.name, user.provider));
+            log(LogLevel::Info, &format!("OAuth 验证成功: {} ({})", user.name, user.provider));
 
-            // TODO: 调用账号 API 注册/登录
-            // 当 account_api_url 配置后，此处应调用:
-            // POST {account_api_url}/oauth_login { provider, provider_id, name, email }
-            // 获取返回的 token 和 username
-            //
-            // 当前直接使用 OAuth 用户信息创建会话
+            // 先尝试登录（已有账号）
+            match crate::account_api::oauth_login(&user.provider, &user.provider_id) {
+                Ok(acct) => {
+                    // 登录成功 → 已有账号，直接返回 token
+                    log(LogLevel::Info, &format!("OAuth 已有账号: {}", acct.username));
+                    if client_redirect_uri.is_empty() {
+                        return html_response(&format!(
+                            "<html><body><h2>登录成功</h2><p>欢迎 {}！</p></body></html>", acct.username
+                        ));
+                    }
+                    let sep = if client_redirect_uri.contains('?') { '&' } else { '?' };
+                    let redirect_url = format!("{}{}token={}&name={}",
+                        client_redirect_uri, sep, urlencode(&acct.token), urlencode(&acct.username));
+                    return redirect(&redirect_url);
+                }
+                Err(_) => {
+                    // 登录失败 → 新用户，跳转到注册页
+                    log(LogLevel::Info, &format!("OAuth 新用户，跳转到注册页: {} ({})", user.name, user.provider));
+                    let identity_token = identity_store.create(IdentityEntry {
+                        email: None,
+                        provider: Some(user.provider.clone()),
+                        provider_id: Some(user.provider_id.clone()),
+                        name: Some(user.name.clone()),
+                        created_at: std::time::Instant::now(),
+                    });
 
-            // 创建会话
-            let session_id = sessions.create(user);
-
-            // 设置会话 Cookie 并重定向到 /admin
-            let mut resp = redirect("/admin");
-            let cookie = Header::from_bytes(
-                "Set-Cookie",
-                format!("mc_link_session={}; Path=/; Max-Age=86400; SameSite=Lax", session_id).as_bytes()
-            ).unwrap();
-            resp.add_header(cookie);
-            resp
+                    let redirect_target = if client_redirect_uri.is_empty() {
+                        format!("/auth/register?identity_token={}", identity_token)
+                    } else {
+                        format!("/auth/register?identity_token={}&redirect_uri={}",
+                            identity_token, urlencode(&client_redirect_uri))
+                    };
+                    return redirect(&redirect_target);
+                }
+            }
         }
         Err(e) => {
             log(LogLevel::Warn, &format!("OAuth 登录失败: {}", e));
             html_response(&format!(
-                "<html><body><h2>登录失败</h2><p>{}</p><p><a href='/admin/login'>返回登录页</a></p></body></html>",
+                "<html><body><h2>登录失败</h2><p>{}</p><p><a href='/auth/login'>返回登录页</a></p></body></html>",
                 e
             ))
         }
@@ -361,8 +999,12 @@ fn handle_logout(request: &tiny_http::Request, _admin_token: &str, sessions: &Se
     }
     let mut resp = json_response(&serde_json::json!({"code": 0, "message": "logged out"}));
     // 清除所有 cookie
-    resp.add_header(Header::from_bytes("Set-Cookie", "mc_link_token=; Path=/; Max-Age=0").unwrap());
-    resp.add_header(Header::from_bytes("Set-Cookie", "mc_link_session=; Path=/; Max-Age=0").unwrap());
+    if let Ok(h) = Header::from_bytes("Set-Cookie", "mc_link_token=; Path=/; Max-Age=0") {
+        resp.add_header(h);
+    }
+    if let Ok(h) = Header::from_bytes("Set-Cookie", "mc_link_session=; Path=/; Max-Age=0") {
+        resp.add_header(h);
+    }
     resp
 }
 
@@ -462,10 +1104,16 @@ fn handle_paths(state: &CentralState) -> Response<std::io::Cursor<Vec<u8>>> {
 }
 
 fn handle_topology(state: &CentralState) -> Response<std::io::Cursor<Vec<u8>>> {
-    let topo = state.topology.lock().unwrap_or_else(|e| e.into_inner());
-    let nodes: Vec<serde_json::Value> = topo.nodes.values().map(|n| serde_json::json!({"id": n.id, "name": n.name, "address": n.address})).collect();
-    let edges: Vec<serde_json::Value> = topo.edges.values().map(|e| serde_json::json!({"node_a": e.node_a, "node_b": e.node_b, "latency_ms": e.latency_ms, "packet_loss": e.packet_loss})).collect();
-    json_response(&serde_json::json!({"nodes": nodes, "edges": edges, "timestamp": now_secs()}))
+    let mgr = state.topology_manager.read().unwrap_or_else(|e| e.into_inner());
+    let nodes: Vec<serde_json::Value> = mgr.ipv4.nodes.values().map(|n| serde_json::json!({"id": n.id, "name": n.name, "address": n.address})).collect();
+    let edges: Vec<serde_json::Value> = mgr.ipv4.edges.values().map(|e| serde_json::json!({"node_a": e.node_a, "node_b": e.node_b, "latency_ms": e.latency_ms, "packet_loss": e.packet_loss})).collect();
+    let mixed_nodes: Vec<serde_json::Value> = mgr.mixed.nodes.values().map(|n| serde_json::json!({"id": n.id, "name": n.name, "address": n.address, "address_v6": n.address_v6})).collect();
+    let mixed_edges: Vec<serde_json::Value> = mgr.mixed.edges.values().map(|e| serde_json::json!({"node_a": e.node_a, "node_b": e.node_b, "latency_ms": e.latency_ms, "packet_loss": e.packet_loss})).collect();
+    json_response(&serde_json::json!({
+        "nodes": nodes, "edges": edges,
+        "mixed_nodes": mixed_nodes, "mixed_edges": mixed_edges,
+        "timestamp": now_secs()
+    }))
 }
 
 fn handle_traffic(state: &CentralState) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -494,3 +1142,4 @@ fn parse_query_params(query: &str) -> HashMap<String, String> {
     }
     map
 }
+

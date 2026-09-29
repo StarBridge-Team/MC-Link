@@ -1,10 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MC Link",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "identifier": "com.cugo.mc-link",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm dev:fe",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm vite build",
     "frontendDist": "../dist"
@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' asset: http://localhost:54789; media-src *; img-src 'self' data: blob: asset: http://localhost:54789; font-src 'self' data: asset: http://localhost:54789; frame-src *; connect-src 'self' http://localhost:54789",
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]
@@ -33,7 +33,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage"],
+    "targets": ["deb", "appimage", "nsis"],
     "copyright": "© 2026 棱镜Prism工作室",
     "icon": [
       "icons/32x32.png",
@@ -42,5 +42,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["mclink"]
+      }
+    }
   }
 }

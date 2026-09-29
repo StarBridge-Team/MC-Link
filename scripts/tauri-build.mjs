@@ -1,0 +1,106 @@
+#!/usr/bin/env node
+/**
+ * pnpm tauri 包装脚本
+ * ------------------------------------------------------------------
+ * - `pnpm tauri build`            : 自动改版本号 + tauri build --ci + 重命名产物 + 上传资源到资源服务器
+ * - `pnpm tauri build --minor`    : 次版本号 +1（--major / --patch 同理，默认 patch）
+ * - `pnpm tauri build --no-bump`  : 不改版本号
+ * - `pnpm tauri build --no-upload`: 跳过资源上传
+ * - `pnpm tauri build --no-release`: 仅执行原生 tauri build（不做版本/上传）
+ * - `pnpm tauri dev|icon|...`     : 透传给真实 tauri CLI
+ *
+ * 原生 tauri 通过 `pnpm exec tauri` 调用，避免递归调用本脚本。
+ */
+import { execSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, "..");
+
+const args = process.argv.slice(2);
+const cmd = args[0];
+const rest = args.slice(1);
+
+const KNOWN_BUILD_FLAGS = new Set([
+  "--major",
+  "--minor",
+  "--patch",
+  "--no-bump",
+  "--no-upload",
+  "--no-release",
+]);
+
+if (cmd === "build" && !rest.includes("--no-release")) {
+  const noBump = rest.includes("--no-bump");
+  const noUpload = rest.includes("--no-upload");
+  const bump = rest.includes("--major")
+    ? "major"
+    : rest.includes("--minor")
+      ? "minor"
+      : rest.includes("--patch")
+        ? "patch"
+        : "patch";
+  // 其余以 -- 开头的参数（如 --ci、--debug、--target）透传给原生 tauri
+  const extra = rest.filter((a) => a.startsWith("--") && !KNOWN_BUILD_FLAGS.has(a));
+
+  if (!noBump) bumpVersion(bump);
+
+  // 真实 tauri build（--ci 保证非交互）
+  execSync(`pnpm exec tauri build --ci ${extra.join(" ")}`.trim(), {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
+
+  // 产物重命名（EXE/安装包加版本号）
+  execSync("node rename-build.js", { cwd: ROOT, stdio: "inherit" });
+
+  // 资源上传到资源服务器
+  if (!noUpload) {
+    execSync("node scripts/sync-assets.mjs", { cwd: ROOT, stdio: "inherit" });
+  }
+
+  process.exit(0);
+}
+
+// 其余子命令（dev / icon / ...）原样透传
+execSync(`pnpm exec tauri ${args.join(" ")}`.trim(), {
+  cwd: ROOT,
+  stdio: "inherit",
+});
+
+// ------------------------------------------------------------------
+// 版本号自增：同步 package.json 与 src-tauri/tauri.conf.json
+// ------------------------------------------------------------------
+function bumpVersion(kind) {
+  const pkgPath = join(ROOT, "package.json");
+  const confPath = join(ROOT, "src-tauri", "tauri.conf.json");
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+  const conf = JSON.parse(readFileSync(confPath, "utf8"));
+
+  const old = pkg.version;
+  const next = inc(old, kind);
+  pkg.version = next;
+  conf.version = next;
+
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+  writeFileSync(confPath, JSON.stringify(conf, null, 2) + "\n");
+  console.log(`[tauri-build] 版本 ${old} -> ${next} (${kind})`);
+}
+
+function inc(v, kind) {
+  const parts = (v.split(".").map((n) => parseInt(n, 10) || 0));
+  let [maj, min, pat] = [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+  if (kind === "major") {
+    maj += 1;
+    min = 0;
+    pat = 0;
+  } else if (kind === "minor") {
+    min += 1;
+    pat = 0;
+  } else {
+    pat += 1;
+  }
+  return `${maj}.${min}.${pat}`;
+}
