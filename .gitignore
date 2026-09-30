@@ -5,11 +5,6 @@ target/
 build/
 *.exe
 
-# Runtime config files
-central-server/config.yaml
-central-server/relays.json
-mc-link-relay/config.yml
-
 # Logs
 logs
 *.log
@@ -34,7 +29,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-mc-link-relay/config.yml.example
 
 # 陈旧的依赖目录（当时的 node_modules 副本，勿入库）
 node_modules_stale/
