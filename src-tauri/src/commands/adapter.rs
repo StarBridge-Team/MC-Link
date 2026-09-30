@@ -9,16 +9,21 @@
 
 use std::sync::Arc;
 use std::time::Duration;
-use futures_util::StreamExt;
 use serde_json::{json, Value};
 use tauri::Emitter;
-use tokio::io::AsyncWriteExt;
 
 use crate::adapter::AdapterStatus;
+use crate::assets::adapter::{
+    current_platform, download_verified_package, fetch_manifest, pick_entry,
+};
 use crate::plugin::manager::PluginManager;
 use crate::plugin::protocol::adapter_method;
 
 /// 下载并安装内置适配器。
+///
+/// 流程：向资源服务器索取适配器清单 → 按当前平台选包 → 下载并校验 SHA256 →
+/// 校验通过才解压 → 交给适配器插件启动。清单拉不到或校验不通过一律失败，
+/// 不会执行未经验证的二进制。
 #[tauri::command]
 pub(crate) async fn download_adapter(
     window: tauri::Window,
@@ -27,56 +32,36 @@ pub(crate) async fn download_adapter(
     let adapter_dir = plugin_manager.adapter_dir()?.join("Terracotta");
     std::fs::create_dir_all(&adapter_dir).map_err(|e| format!("创建目录失败: {}", e))?;
 
-    let url = "https://gitee.com/burningtnt/Terracotta/releases/download/v0.4.2/terracotta-0.4.2-windows-x86_64-pkg.tar.gz";
-    let filename = "terracotta-0.4.2-windows-x86_64-pkg.tar.gz";
-    let archive_path = adapter_dir.join(filename);
+    window
+        .emit("app-log", "[下载] 正在从资源服务器获取适配器校验清单...".to_string())
+        .ok();
 
-    window.emit("app-log", "[下载] 开始下载陶瓦联机...").ok();
-    window.emit("download-progress", 0u8).ok();
-
+    let data_dir = plugin_manager.data_dir().to_path_buf();
     let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(300))
+        .connect_timeout(Duration::from_secs(15))
         .build()
-        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("下载失败: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("下载失败 (HTTP {})", response.status()));
-    }
-
-    let tmp_path = adapter_dir.join(format!("{}.tmp", filename));
-    let mut file = tokio::fs::File::create(&tmp_path)
-        .await
-        .map_err(|e| format!("创建临时文件失败: {}", e))?;
-
-    let total = response.content_length().unwrap_or(0);
-    let mut downloaded: u64 = 0;
-    let mut stream = response.bytes_stream();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("读取数据失败: {}", e))?;
-        downloaded += chunk.len() as u64;
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("写入文件失败: {}", e))?;
-        if total > 0 {
-            let pct = (downloaded as f64 / total as f64 * 100.0) as u8;
-            let _ = window.emit("download-progress", pct);
-        }
-    }
-
-    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
-    drop(file);
-
-    std::fs::rename(&tmp_path, &archive_path).map_err(|e| format!("重命名文件失败: {}", e))?;
+    // 校验清单来自我们自己的资源服务器；拉不到即中止（fail-closed）
+    let manifest = fetch_manifest(&data_dir, &client).await?;
+    let platform = current_platform();
+    let entry = pick_entry(&manifest, &platform)?;
 
     window
-        .emit("app-log", format!("[下载] 下载完成 ({} bytes)，开始解压...", downloaded))
+        .emit(
+            "app-log",
+            format!("[下载] 目标：{}（版本 {}），开始下载...", entry.file, entry.version),
+        )
+        .ok();
+    window.emit("download-progress", 0u8).ok();
+
+    let archive_path = download_verified_package(&adapter_dir, &client, entry, |pct| {
+        let _ = window.emit("download-progress", pct);
+    })
+    .await?;
+
+    window
+        .emit("app-log", "[下载] SHA256 校验通过，开始解压...".to_string())
         .ok();
 
     let file = std::fs::File::open(&archive_path).map_err(|e| format!("打开下载文件失败: {}", e))?;

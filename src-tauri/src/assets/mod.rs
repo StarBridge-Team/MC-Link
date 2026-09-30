@@ -1,4 +1,5 @@
 pub mod pull;
+pub(crate) mod adapter;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

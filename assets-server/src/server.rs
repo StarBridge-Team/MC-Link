@@ -96,6 +96,17 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
             serve_file(&cfg.assets_dir().join("icons"), rel, &cfg.cors_origin)
         }
 
+        // 适配器校验清单（客户端据此校验适配器包的 SHA256）
+        "/adapter/manifest.json" => {
+            serve_file(&cfg.assets_dir().join("adapter"), "manifest.json", &cfg.cors_origin)
+        }
+
+        // 适配器包文件（存放于 Assets/adapter/，与上传端点布局一致）
+        p if p.starts_with("/adapter/") => {
+            let rel = p.trim_start_matches("/adapter/");
+            serve_file(&cfg.assets_dir().join("adapter"), rel, &cfg.cors_origin)
+        }
+
         // 页面清单
         "/pages/manifest.json" => {
             serve_file(&cfg.pages_dir(), "manifest.json", &cfg.cors_origin)

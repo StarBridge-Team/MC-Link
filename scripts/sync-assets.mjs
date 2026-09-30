@@ -4,10 +4,13 @@
  * ------------------------------------------------------------------
  * 1. 从 node_modules 同步 Bootstrap Icons / Poppins 字体到 assets-server/Assets
  *    （镜像 Rust 侧 prepare_from_npm 的逻辑，使本地 Assets 始终最新）
- * 2. 扫描 assets-server/Assets，重新生成 manifest.json：
- *      - version = 所有资源内容哈希（资源有变动才变，客户端据此判定是否重下）
+ * 2. 准备适配器包：下载上游发布包到 Assets/adapter/，计算 SHA256 并生成
+ *    adapter/manifest.json（客户端据此校验安装包，未通过校验不会安装）。
+ *    该目录独立于 Assets 版本聚合，避免适配器升级触发客户端重下全部资源。
+ * 3. 扫描 assets-server/Assets，重新生成 manifest.json：
+ *      - version = 所有资源内容哈希（不含 adapter/，资源有变动才变）
  *      - assets  = 完整文件清单（path + size）
- * 3. 通过资源服务器新增的 POST /upload 接口上传全部文件（manifest 最后传）
+ * 4. 通过资源服务器新增的 POST /upload 接口上传全部文件（各级 manifest 最后传）
  *
  * 环境变量 / 参数：
  *   ASSET_SERVER_URL      目标资源服务器（默认 http://localhost:54789）
@@ -34,6 +37,13 @@ import { request as httpsRequest } from "node:https";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const ASSETS_DIR = join(ROOT, "assets-server", "Assets");
+const ADAPTER_DIR = join(ASSETS_DIR, "adapter");
+
+// 适配器包来源与版本：升级时改这里，再执行 pnpm sync:assets 发布新清单
+const ADAPTER_PLATFORM = "windows-x86_64";
+const ADAPTER_VERSION = "0.4.2";
+const ADAPTER_FILE = `terracotta-${ADAPTER_VERSION}-${ADAPTER_PLATFORM}-pkg.tar.gz`;
+const ADAPTER_URL = `https://gitee.com/burningtnt/Terracotta/releases/download/v${ADAPTER_VERSION}/${ADAPTER_FILE}`;
 
 const PROD_URL = "https://mclinkassets.xigo.top:54789";
 const SERVER_URL =
@@ -47,10 +57,17 @@ const REQUIRED = process.env.ASSET_UPLOAD_REQUIRED === "1";
 // 1) 从 npm 同步字体/图标，确保 Assets 是最新的
 syncFromNpm();
 
-// 2) 扫描并生成 manifest
-const files = [];
-collectFiles(ASSETS_DIR, ASSETS_DIR, files);
-files.sort((a, b) => a.rel.localeCompare(b.rel));
+// 2) 准备适配器包与校验清单（须在扫描前完成，否则不会被收集与上传）
+await prepareAdapters();
+
+// 3) 扫描并生成 manifest；adapter/ 独立维护，不参与 Assets 版本聚合
+const allFiles = [];
+collectFiles(ASSETS_DIR, ASSETS_DIR, allFiles);
+allFiles.sort((a, b) => a.rel.localeCompare(b.rel));
+
+const isAdapter = (f) => f.rel.startsWith("adapter/");
+const adapterFiles = allFiles.filter(isAdapter);
+const files = allFiles.filter((f) => !isAdapter(f));
 
 const version = computeVersion(files);
 const manifest = {
@@ -72,9 +89,12 @@ if (SKIP) {
   process.exit(0);
 }
 
-// 3) 上传：资源文件先传，manifest 最后传，避免客户端拉到半更新状态
+// 4) 上传：内容文件先传，各级 manifest 最后传，避免客户端拉到半更新状态
 const ordered = [
   ...files.filter((f) => f.rel !== "manifest.json"),
+  // 适配器包必须先于其清单可见，否则客户端会拿到指向不存在文件的清单
+  ...adapterFiles.filter((f) => f.rel !== "adapter/manifest.json"),
+  { rel: "adapter/manifest.json", full: join(ADAPTER_DIR, "manifest.json") },
   { rel: "manifest.json", full: join(ASSETS_DIR, "manifest.json") },
 ];
 
@@ -160,6 +180,94 @@ function uploadFile(rel, buf) {
       resolve(false);
     });
     req.write(buf);
+    req.end();
+  });
+}
+
+// 下载上游适配器发布包，计算 SHA256 并生成校验清单（客户端据此校验后才安装）
+async function prepareAdapters() {
+  mkdirSync(ADAPTER_DIR, { recursive: true });
+  const pkgPath = join(ADAPTER_DIR, ADAPTER_FILE);
+  const manifestPath = join(ADAPTER_DIR, "manifest.json");
+
+  // 包已存在且与清单记录的哈希一致 → 跳过下载（避免每次 sync 都重下整个包）
+  if (existsSync(pkgPath) && existsSync(manifestPath)) {
+    try {
+      const prev = JSON.parse(readFileSync(manifestPath, "utf8"));
+      const rec = (prev.adapters || []).find((a) => a.platform === ADAPTER_PLATFORM);
+      if (rec && rec.version === ADAPTER_VERSION) {
+        const actual = createHash("sha256").update(readFileSync(pkgPath)).digest("hex");
+        if (actual === rec.sha256) {
+          console.log(`[sync-assets] 适配器包已是最新（${ADAPTER_FILE}），跳过下载`);
+          return;
+        }
+      }
+    } catch {
+      // 清单损坏：落到下面重新生成
+    }
+  }
+
+  console.log(`[sync-assets] 下载适配器包 ${ADAPTER_URL} ...`);
+  const buf = await httpGetBuffer(ADAPTER_URL);
+  const sha256 = createHash("sha256").update(buf).digest("hex");
+  writeFileSync(pkgPath, buf);
+
+  const manifest = {
+    version: "1",
+    adapters: [
+      {
+        platform: ADAPTER_PLATFORM,
+        version: ADAPTER_VERSION,
+        file: ADAPTER_FILE,
+        sha256,
+        size: buf.length,
+        urls: [ADAPTER_URL],
+      },
+    ],
+  };
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+  console.log(
+    `[sync-assets] 适配器清单已生成：${ADAPTER_FILE}（${buf.length}B，sha256=${sha256.slice(0, 16)}…）`,
+  );
+}
+
+// 跟随重定向的 GET，返回完整响应体（gitee 发布下载会 302 到 CDN）
+function httpGetBuffer(url, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    if (redirects > 5) {
+      reject(new Error("重定向次数过多"));
+      return;
+    }
+    const u = new URL(url);
+    const lib = u.protocol === "https:" ? httpsRequest : httpRequest;
+    const req = lib(
+      {
+        method: "GET",
+        hostname: u.hostname,
+        port: u.port,
+        path: u.pathname + u.search,
+        headers: { "User-Agent": "mc-link-sync-assets" },
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          resolve(
+            httpGetBuffer(new URL(res.headers.location, url).toString(), redirects + 1),
+          );
+          return;
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
+        }
+        const chunks = [];
+        res.on("data", (d) => chunks.push(d));
+        res.on("end", () => resolve(Buffer.concat(chunks)));
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
     req.end();
   });
 }
