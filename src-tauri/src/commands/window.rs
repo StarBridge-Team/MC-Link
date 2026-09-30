@@ -34,10 +34,14 @@ pub(crate) fn drag_window(window: tauri::WebviewWindow) -> Result<(), String> {
     window.start_dragging().map_err(|e| e.to_string())
 }
 
-/// 退出应用：完整关停插件系统（关闭远程插件与网关、停止适配器）。
+/// 退出应用。
+///
+/// 这里只停适配器（与改造前行为一致，保证第三方进程先于本进程退出）；
+/// 完整关停（关闭远程插件与网关）由 `lib.rs` 的 `RunEvent::Exit` 处理器统一执行，
+/// 不在此处重复调用 [`PluginManager::shutdown`]。
 #[tauri::command]
 pub(crate) fn exit_app(plugin_manager: tauri::State<'_, Arc<PluginManager>>, app: tauri::AppHandle) -> Result<String, String> {
-    plugin_manager.shutdown();
+    plugin_manager.shutdown_adapters()?;
     app.exit(0);
     Ok("已退出".to_string())
 }
