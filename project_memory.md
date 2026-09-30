@@ -57,7 +57,8 @@
 | `PersonalizationSettings` 字段名 | 后端 `config/mod.rs` ↔ 前端 `lib/api/types.ts` | 字段名即 yml 的 key，改名等于让老用户配置失效 |
 | `lib/persist.ts` 的 `KEYS` 字符串 | `src/lib/persist.ts` | 改名会让老用户 localStorage 变孤儿（表现为设置丢失） |
 | 窗口效果取值集合 | `mica` / `acrylic` / `hud_window` / `none` | 后端 `effect::apply_effect_by_name` 按名称匹配 |
-| 事件名与负载结构 | `app-log`、`download-progress`、`p2p-event`、`tray-resize`、`deep-link` | 后端 emit 侧未变，前端改名会监听不到 |
+| 事件名与负载结构 | `app-log`、`download-progress`、`update-progress`、`p2p-event`、`tray-resize`、`deep-link` | 后端 emit 侧未变，前端改名会监听不到 |
+| 更新清单格式与命令名 | `update/latest.json` ↔ `src/lib/api/update.ts` | 见下文"应用更新"章节 |
 
 ### 重构期间必须继续遵守的两条硬规则（与本次重构无关，属长期规范）
 
@@ -75,9 +76,73 @@
 |---|---|---|
 | 插件系统 | `src-tauri/src/plugin/**` 完整（8 个命令 + 回环网关 + 权限/加密） | 无 `lib/api/plugin.ts`，无插件管理界面 |
 | 联机（P2P） | 已按用户要求**暂时断开** | 联机页保留但调用失败；重接见 `legacy-wgp-p2p-v0.4.0` |
-| 检查更新 | `update.rs` 3 个命令完整 | `useUpdater.ts` 无引用，未接进界面 |
+| 检查更新 | ✅ 已完整实现（两种安装形态，见下节） | api + composable 已就绪，**只缺界面** |
 | 玩家名 | `Setting/account.yml` 的 `player_name` | 只读不写，无写入入口 |
 | 分区设置 | `save_setting` 命令存在 | `connector.yml` / `account.yml` 无设置界面 |
+
+## 应用更新（2026-09-30 实现）
+
+### 两种安装形态（这是本次更新的核心）
+
+| 形态 | 判定 | 更新方式 |
+|---|---|---|
+| **便携版** | exe 同目录存在 `data/`、`portable.txt` 或 `portable` | 下载单个 exe，**直接替换自身**，随后重启 |
+| **安装版** | 其余情况（数据在系统 app_data_dir） | 下载 NSIS 安装器并运行，装完由我们重新拉起应用 |
+
+判定逻辑在 `src-tauri/src/datadir.rs::install_mode()`（与数据目录判定共用同一套约定）。
+**不要把安装版包塞给便携版**：`install.rs` 会拒绝"形态与包类型不匹配"的组合，这是刻意的。
+
+### 落地为什么必须由外部进程做
+
+覆盖正在运行的 exe、或运行安装器替换本目录文件，都必须发生在**本进程退出之后**。
+实现方式：生成一段 PowerShell，以 `-EncodedCommand`（UTF-16LE + Base64）交给隐藏窗口子进程，
+它按 PID 等待本进程退出 → 执行替换/安装 → 重新拉起应用。用 `-EncodedCommand` 而非临时脚本文件，
+是为了绕开"路径含中文时的代码页"问题。日志写在 `<data_dir>/Cache/Updates/install.log`。
+
+### 更新清单（`<assets_server>/update/latest.json`）
+
+多资产格式，**同一份清单同时服务两种发行方式**，客户端按 `platform` + `kind` 自选：
+
+| 字段 | 说明 |
+|---|---|
+| `manifest_version` | 客户端只接受 ≤ 自身支持的版本（当前 1），更高即拒绝并提示手动下载 |
+| `assets[].platform` | 形如 `windows-x86_64`，与 `assets::adapter::current_platform()` 一致 |
+| `assets[].kind` | `installer` / `portable` / `portable-zip`（仅手动下载） |
+| `assets[].sha256` | **必填**：更新包会被直接执行，缺失即拒绝自动安装 |
+| `assets[].urls` | 留空时客户端按自身资源服务器地址推导 `update/<file>`，因此清单里不必写死域名 |
+
+### 发布流程
+
+```
+pnpm build:release            # 自增版本 + tauri build + rename-build + make-update + sync-assets
+pnpm tauri build --mandatory  # 同上，并把清单标记为强制更新
+node scripts/make-update.mjs --platform windows-aarch64   # 其他架构，增量合并进同一份清单
+```
+
+- 清单与更新包由 `scripts/make-update.mjs` 生成到 `assets-server/Assets/update/`（不进 git），
+  更新说明取仓库根目录可选的 `release-notes.md`。
+- 资源服务器 `/update/*` 从 `Assets/update/` 读取（与 `POST /upload` 布局一致），并回退旧的 `Updates/` 目录。
+- `update/` 与 `adapter/` 一样**不参与** `Assets/manifest.json` 的版本聚合，
+  否则每次发版都会让所有客户端重下字体与图标。
+
+### 前端契约
+
+- `src/lib/api/update.ts`：`checkUpdate` / `downloadUpdate` / `installUpdate` / `clearUpdateCache` / `getInstallMode`
+- `src/composables/useUpdater.ts`：`check()` → `download()`（可选，带进度）→ `install()`；
+  `canAutoInstall` 为 false 时只能引导用户走 `manualUrl`
+- 进度事件 `update-progress`，负载 `{ downloaded, total }`（`total` 为 0 表示长度未知）
+- `install()` 成功后应用会在约 0.6 秒内退出：**先给用户提示再调用**
+
+### 已知取舍与限制
+
+- **仅 Windows 支持自动安装**。Linux（deb/appimage）与 macOS 返回 `asset: null`，只能手动下载。
+  这不是遗漏：deb 需要包管理器与提权，macOS 需要签名校验，自行替换会破坏系统安装记录。
+- 便携版更新包用的是**未压缩的 exe**（当前约 17MB），而便携整包 zip 只有约 7MB。
+  换成 zip 需要引入解压依赖且要处理多文件覆盖，当前按"简单可靠"取舍；若带宽成为问题可再改。
+- `Assets/update/` 下的旧版本包不会自动清理，会随版本累积，确认无客户端在用后可手动删除。
+- `downloader/downloader.rs`（分片 + 断点续传下载器）目前**零调用方**：适配器与更新包都走
+  `downloader/verified.rs`。保留是因为其续传能力对弱网仍有价值，但按整洁规则需要二选一：
+  删除，或把续传并入 `verified`。**此项待用户决定**（见文件头的 `allow(dead_code)` 说明）。
 
 ## 持久化约定（2026-09-30 起强制执行）
 
