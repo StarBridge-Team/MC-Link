@@ -80,46 +80,53 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
         return cors_preflight(&cfg.cors_origin);
     }
 
+    // 把 Range 与 CORS 一起传给文件响应函数：tiny_http 不处理 Range，
+    // 断点续传完全由我们实现（详见 serve_abs）
+    let ctx = ServeCtx {
+        cors: &cfg.cors_origin,
+        range: header_value(req, "Range"),
+    };
+
     match path {
         "/health" => json_response(r#"{"status":"ok"}"#, &cfg.cors_origin),
 
         // 资源清单（客户端据此判断是否需要重新下载）
         "/manifest.json" => {
-            serve_file(&cfg.assets_dir(), "manifest.json", &cfg.cors_origin)
+            serve_file(&cfg.assets_dir(), "manifest.json", &ctx)
         }
 
         // Bootstrap Icons
         p if p.starts_with("/bootstrap-icons/") => {
             let rel = p.trim_start_matches("/bootstrap-icons/");
-            serve_file(&cfg.assets_dir().join("bootstrap-icons"), rel, &cfg.cors_origin)
+            serve_file(&cfg.assets_dir().join("bootstrap-icons"), rel, &ctx)
         }
 
         // 字体
         p if p.starts_with("/fonts/") => {
             let rel = p.trim_start_matches("/fonts/");
-            serve_file(&cfg.assets_dir().join("fonts"), rel, &cfg.cors_origin)
+            serve_file(&cfg.assets_dir().join("fonts"), rel, &ctx)
         }
 
         // 图标（应用图标、托盘图标等）
         p if p.starts_with("/icons/") => {
             let rel = p.trim_start_matches("/icons/");
-            serve_file(&cfg.assets_dir().join("icons"), rel, &cfg.cors_origin)
+            serve_file(&cfg.assets_dir().join("icons"), rel, &ctx)
         }
 
         // 适配器校验清单（客户端据此校验适配器包的 SHA256）
         "/adapter/manifest.json" => {
-            serve_file(&cfg.assets_dir().join("adapter"), "manifest.json", &cfg.cors_origin)
+            serve_file(&cfg.assets_dir().join("adapter"), "manifest.json", &ctx)
         }
 
         // 适配器包文件（存放于 Assets/adapter/，与上传端点布局一致）
         p if p.starts_with("/adapter/") => {
             let rel = p.trim_start_matches("/adapter/");
-            serve_file(&cfg.assets_dir().join("adapter"), rel, &cfg.cors_origin)
+            serve_file(&cfg.assets_dir().join("adapter"), rel, &ctx)
         }
 
         // 页面清单
         "/pages/manifest.json" => {
-            serve_file(&cfg.pages_dir(), "manifest.json", &cfg.cors_origin)
+            serve_file(&cfg.pages_dir(), "manifest.json", &ctx)
         }
 
         // 单个页面内容
@@ -131,14 +138,16 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
             } else {
                 format!("{}.html", rel)
             };
-            serve_file(&cfg.pages_dir(), &rel, &cfg.cors_origin)
+            serve_file(&cfg.pages_dir(), &rel, &ctx)
         }
 
         // 更新目录文件清单（供发布脚本回收旧版本包；必须排在下面的前缀匹配之前）
         "/update/list" | "/updates/list" => list_update_files(&cfg),
 
         // 更新清单
-        "/update/latest.json" | "/updates/latest.json" => serve_update(&cfg, "latest.json"),
+        "/update/latest.json" | "/updates/latest.json" => {
+            serve_update(&cfg, "latest.json", &ctx)
+        }
 
         // 更新包文件
         p if p.starts_with("/update/") || p.starts_with("/updates/") => {
@@ -146,12 +155,12 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
                 .strip_prefix("/update/")
                 .or_else(|| p.strip_prefix("/updates/"))
                 .unwrap_or("");
-            serve_update(&cfg, rel)
+            serve_update(&cfg, rel, &ctx)
         }
 
         // 设置项清单（列出所有可用的设置分区）
         "/settings/manifest.json" => {
-            serve_file(&cfg.setting_meta_dir(), "manifest.json", &cfg.cors_origin)
+            serve_file(&cfg.setting_meta_dir(), "manifest.json", &ctx)
         }
 
         // 设置项元配置
@@ -162,7 +171,7 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
                 return bad_request("无效的 section");
             }
             let file = format!("{}.yml", safe);
-            serve_meta(&cfg.setting_meta_dir(), &file, &cfg.cors_origin)
+            serve_meta(&cfg.setting_meta_dir(), &file, ctx.cors)
         }
 
         // 整个 SettingMeta 目录索引（列出可用的 section）
@@ -174,13 +183,24 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
     }
 }
 
+/// 一次文件请求中与传输相关的上下文。
+///
+/// 把 `Range` 与 CORS 一起往下传，是因为**续传必须由我们实现**：
+/// `tiny_http` 不会处理 `Range` 头（实测带 `Range` 的请求仍返回 200 + chunked），
+/// 客户端要能分片/续传，就得有人返回 206 + `Content-Range`。
+struct ServeCtx<'a> {
+    cors: &'a str,
+    /// `Range` 头原文；`None` 表示请求整个文件
+    range: Option<String>,
+}
+
 /// 提供普通静态文件
-fn serve_file(dir: &Path, rel: &str, cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn serve_file(dir: &Path, rel: &str, ctx: &ServeCtx) -> Response<std::io::Cursor<Vec<u8>>> {
     let safe = sanitize_path(rel);
     if safe.as_os_str().is_empty() {
         return bad_request("无效路径");
     }
-    serve_abs(&dir.join(&safe), cors)
+    serve_abs(&dir.join(&safe), ctx)
 }
 
 /// 提供更新包文件。
@@ -188,7 +208,7 @@ fn serve_file(dir: &Path, rel: &str, cors: &str) -> Response<std::io::Cursor<Vec
 /// 优先从 `Assets/update/` 读取——**与上传端点 `POST /upload?path=update/...` 的布局一致**，
 /// 否则会出现"上传成功但下载 404"的静默不一致（历史实现读的是 `Updates/` 目录）。
 /// 同时兼容旧的 `Updates/` 目录，便于平滑迁移已部署的服务器。
-fn serve_update(cfg: &AssetsConfig, rel: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn serve_update(cfg: &AssetsConfig, rel: &str, ctx: &ServeCtx) -> Response<std::io::Cursor<Vec<u8>>> {
     let safe = sanitize_path(rel);
     if safe.as_os_str().is_empty() {
         return bad_request("无效路径");
@@ -196,28 +216,131 @@ fn serve_update(cfg: &AssetsConfig, rel: &str) -> Response<std::io::Cursor<Vec<u
 
     let modern = cfg.assets_dir().join("update").join(&safe);
     if modern.is_file() {
-        return serve_abs(&modern, &cfg.cors_origin);
+        return serve_abs(&modern, ctx);
     }
 
     let legacy = cfg.updates_dir().join(&safe);
     if legacy.is_file() {
-        return serve_abs(&legacy, &cfg.cors_origin);
+        return serve_abs(&legacy, ctx);
     }
 
     not_found()
 }
 
-/// 读取一个已知安全的绝对路径并按扩展名推断 MIME。
-fn serve_abs(full: &Path, cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
-    match std::fs::read(full) {
-        Ok(bytes) => {
-            let mime = mime_guess::from_path(full)
-                .first_or_octet_stream()
-                .to_string();
-            file_response(bytes, &mime, cors)
+/// 读取一个已知安全的绝对路径并按扩展名推断 MIME，支持 Range 断点续传。
+///
+/// 响应约定：
+/// - 无 `Range`（或该头无效/多段）→ 200 + 全量，但**仍带 `Accept-Ranges: bytes`**，
+///   客户端据此判断这份资源将来能否续传；
+/// - 合法且可满足的 `Range` → 206 + `Content-Range` + 对应切片；
+/// - 起点超出文件长度 → 416（RFC 9110 要求），客户端会退回整体下载。
+fn serve_abs(full: &Path, ctx: &ServeCtx) -> Response<std::io::Cursor<Vec<u8>>> {
+    let bytes = match std::fs::read(full) {
+        Ok(bytes) => bytes,
+        Err(_) => return not_found(),
+    };
+    let total = bytes.len() as u64;
+    let mime = mime_guess::from_path(full)
+        .first_or_octet_stream()
+        .to_string();
+
+    match ctx.range.as_deref().map(|h| parse_range(h, total)) {
+        Some(RangeSpec::Partial(start, end)) => {
+            let slice = bytes[start as usize..=end as usize].to_vec();
+            file_response(slice, &mime, 206, Some(format!("bytes {}-{}/{}", start, end, total)), ctx.cors)
         }
-        Err(_) => not_found(),
+        Some(RangeSpec::Unsatisfiable) => {
+            let mut resp = Response::from_string("416 Range Not Satisfiable")
+                .with_status_code(StatusCode(416));
+            // 416 必须带 `bytes */<总长>`，客户端据此知道该怎么调整请求
+            if let Ok(h) = Header::from_bytes(
+                "Content-Range",
+                format!("bytes */{}", total).as_bytes(),
+            ) {
+                resp.add_header(h);
+            }
+            if let Ok(h) = Header::from_bytes("Accept-Ranges", "bytes") {
+                resp.add_header(h);
+            }
+            add_cors(&mut resp, ctx.cors);
+            resp
+        }
+        // 无 Range 或该头无效：按整体响应（RFC 允许忽略无法解析的 Range）
+        _ => file_response(bytes, &mime, 200, None, ctx.cors),
     }
+}
+
+/// 解析 `Range` 头的结果。
+#[derive(Debug, PartialEq, Eq)]
+enum RangeSpec {
+    /// 不是我们支持的形态（非 `bytes=`、多段、语法错误）→ 按整体响应处理
+    Ignore,
+    /// 起点越界或零长度后缀 → 416
+    Unsatisfiable,
+    /// 命中的闭区间 `[start, end]`
+    Partial(u64, u64),
+}
+
+/// 解析单段 `Range: bytes=start-end`。
+///
+/// 只实现单段：多段（`bytes=0-1,5-6`）需要 `multipart/byteranges` 响应体，
+/// 而我们的客户端只会请求单段，遇到多段直接整体响应即可。
+fn parse_range(header: &str, total: u64) -> RangeSpec {
+    let Some(spec) = header.trim().strip_prefix("bytes=") else {
+        return RangeSpec::Ignore;
+    };
+    if spec.contains(',') {
+        return RangeSpec::Ignore;
+    }
+    let Some((start_raw, end_raw)) = spec.split_once('-') else {
+        return RangeSpec::Ignore;
+    };
+    let (start_raw, end_raw) = (start_raw.trim(), end_raw.trim());
+
+    // `-N`：最后 N 字节
+    if start_raw.is_empty() {
+        let Ok(n) = end_raw.parse::<u64>() else {
+            return RangeSpec::Ignore;
+        };
+        if n == 0 || total == 0 {
+            return RangeSpec::Unsatisfiable;
+        }
+        let n = n.min(total);
+        return RangeSpec::Partial(total - n, total - 1);
+    }
+
+    let Ok(start) = start_raw.parse::<u64>() else {
+        return RangeSpec::Ignore;
+    };
+    if start >= total {
+        return RangeSpec::Unsatisfiable;
+    }
+
+    let end = if end_raw.is_empty() {
+        total - 1
+    } else {
+        match end_raw.parse::<u64>() {
+            // `end` 超出末尾时按末尾截断（RFC 允许）
+            Ok(end) => end.min(total - 1),
+            Err(_) => return RangeSpec::Ignore,
+        }
+    };
+
+    if end < start {
+        // `bytes=5-2` 属于非法字段，按忽略处理
+        return RangeSpec::Ignore;
+    }
+    RangeSpec::Partial(start, end)
+}
+
+/// 读取请求头（大小写不敏感）。
+///
+/// 不用 `HeaderField::equiv`：它要求传入 `&'static str`，而我们的头名来自运行时参数。
+fn header_value(req: &Request, name: &str) -> Option<String> {
+    req.headers()
+        .iter()
+        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
+        .map(|h| h.value.as_str().to_string())
 }
 
 /// 提供元配置文件（同时返回 YAML 与说明 CORS 头）
@@ -260,14 +383,35 @@ fn serve_meta_index(dir: &Path, cors: &str) -> Response<std::io::Cursor<Vec<u8>>
     json_response(&body, cors)
 }
 
-fn file_response(bytes: Vec<u8>, mime: &str, cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
-    let len = bytes.len();
-    let mut resp = Response::from_data(bytes).with_status_code(StatusCode(200));
+/// 构造文件响应（200 全量或 206 分片）。
+///
+/// 两个容易踩的点：
+/// - **不要手工设置 `Content-Length`**：`tiny_http` 会按数据源长度自行处理，
+///   手工设置反而可能让该头不出现（文档明确二者互斥）。这里通过数据长度表达。
+/// - **关掉 chunked 阈值**：默认超过 32KB 就改用 chunked 传输，那样响应里没有
+///   `Content-Length`，客户端探测不到文件大小，分片与续传就永远启用不了。
+fn file_response(
+    bytes: Vec<u8>,
+    mime: &str,
+    status: u16,
+    content_range: Option<String>,
+    cors: &str,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let mut resp = Response::from_data(bytes)
+        .with_status_code(StatusCode(status))
+        .with_chunked_threshold(usize::MAX);
+
     if let Ok(h) = Header::from_bytes("Content-Type", mime.as_bytes()) {
         resp.add_header(h);
     }
-    if let Ok(h) = Header::from_bytes("Content-Length", len.to_string().as_bytes()) {
+    // 无论 200 还是 206 都声明支持范围请求：客户端据此决定这份资源能否续传
+    if let Ok(h) = Header::from_bytes("Accept-Ranges", "bytes") {
         resp.add_header(h);
+    }
+    if let Some(cr) = content_range {
+        if let Ok(h) = Header::from_bytes("Content-Range", cr.as_bytes()) {
+            resp.add_header(h);
+        }
     }
     add_cors(&mut resp, cors);
     resp
@@ -486,6 +630,48 @@ fn safe_join(base: &Path, rel: &str) -> Option<PathBuf> {
         return None;
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RangeSpec::{Ignore, Partial, Unsatisfiable};
+    use super::*;
+
+    #[test]
+    fn parses_plain_and_open_ranges() {
+        assert_eq!(parse_range("bytes=0-9", 100), Partial(0, 9));
+        assert_eq!(parse_range("bytes=90-", 100), Partial(90, 99));
+        // 末尾越界按末尾截断（RFC 允许）
+        assert_eq!(parse_range("bytes=50-999", 100), Partial(50, 99));
+        // 容忍空白
+        assert_eq!(parse_range("bytes= 10 - 20 ", 100), Partial(10, 20));
+    }
+
+    #[test]
+    fn parses_suffix_ranges() {
+        assert_eq!(parse_range("bytes=-10", 100), Partial(90, 99));
+        // 后缀长度超过文件长度 → 整个文件
+        assert_eq!(parse_range("bytes=-500", 100), Partial(0, 99));
+    }
+
+    #[test]
+    fn unsatisfiable_ranges_are_reported() {
+        assert_eq!(parse_range("bytes=100-", 100), Unsatisfiable);
+        assert_eq!(parse_range("bytes=200-300", 100), Unsatisfiable);
+        assert_eq!(parse_range("bytes=-0", 100), Unsatisfiable);
+        // 空文件上任何范围都不可满足
+        assert_eq!(parse_range("bytes=0-", 0), Unsatisfiable);
+    }
+
+    #[test]
+    fn malformed_ranges_are_ignored_not_fatal() {
+        // 语法错误按 RFC 忽略（回退整体响应），不能因此让下载失败
+        assert_eq!(parse_range("items=0-9", 100), Ignore);
+        assert_eq!(parse_range("bytes=abc", 100), Ignore);
+        assert_eq!(parse_range("bytes=0-1,5-6", 100), Ignore);
+        assert_eq!(parse_range("bytes=5-2", 100), Ignore);
+        assert_eq!(parse_range("bytes=", 100), Ignore);
+    }
 }
 
 /// 返回 JSON 状态响应

@@ -63,6 +63,9 @@ pub(crate) fn clear_update_cache(data_dir: &Path) -> Result<(), String> {
 /// **版本不高于当前应用版本**的包已经用完（装过了，或已被替换掉）——
 /// 而比当前版本新的包必须留着：用户可能下载完选择了"稍后安装"。
 ///
+/// 续传产生的 `*.part` / `*.progress` 同样是 `MC-Link-<版本>-` 前缀，
+/// 因此也按同一版本规则处理：旧版本的半成品删掉，新版本的留着供续传。
+///
 /// 认不出格式的文件（例如 `install.log`）一律保留：宁可多留一个文件，
 /// 也不要删掉可能还有用的东西。
 pub(crate) fn prune_cache(data_dir: &Path) {

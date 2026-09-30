@@ -122,7 +122,7 @@ pub(crate) async fn download_verified_package(
     dir: &Path,
     client: &reqwest::Client,
     entry: &AdapterEntry,
-    mut on_progress: impl FnMut(u8),
+    mut on_progress: impl FnMut(u8) + Send,
 ) -> Result<PathBuf, String> {
     let remote = crate::downloader::verified::RemoteFile {
         file: &entry.file,
