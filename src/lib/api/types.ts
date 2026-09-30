@@ -225,3 +225,22 @@ export interface SettingSection {
 export interface SettingManifest {
   sections: SettingSection[];
 }
+
+// ===== 首次启动引导（OOBE）与本地化 =====
+
+/**
+ * 引导状态。
+ *
+ * `language` / `region` 是**当前生效**的值（用户选过就是用户选的，否则是系统检测值）；
+ * `detected_*` 是系统检测值，供引导页预选；`supported_*` 是可选清单——
+ * 界面不要自己硬编码这些选项，以后端返回为准。
+ */
+export interface SetupState {
+  completed: boolean;
+  language: string;
+  region: string;
+  detected_language: string;
+  detected_region: string;
+  supported_languages: string[];
+  supported_regions: string[];
+}

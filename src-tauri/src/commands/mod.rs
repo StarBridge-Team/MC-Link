@@ -1,10 +1,12 @@
 pub(crate) mod window;
 pub(crate) mod app;
 pub(crate) mod adapter;
+pub(crate) mod setup;
 
 pub(crate) use window::*;
 pub(crate) use app::*;
 pub(crate) use adapter::*;
+pub(crate) use setup::*;
 
 pub(crate) use crate::plugin::commands::*;
 pub(crate) use crate::config::push::*;

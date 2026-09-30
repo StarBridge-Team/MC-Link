@@ -21,4 +21,9 @@ impl<'a> ReadMgr<'a> {
         let path = crate::assets::get_asset_path(self.mgr.data_dir(), relative)?;
         Ok(path.to_string_lossy().to_string())
     }
+
+    /// 引导状态（是否已完成 OOBE、生效与检测到的语言/地区）。
+    pub fn setup_state(&self) -> Result<crate::setup::SetupState, String> {
+        crate::setup::state(self.mgr.data_dir())
+    }
 }

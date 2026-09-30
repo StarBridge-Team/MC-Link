@@ -56,4 +56,34 @@ impl<'a> WriteMgr<'a> {
             .map_err(|e| format!("获取写锁失败: {}", e))?;
         crate::setting_meta::clear_setting_meta_cache(self.mgr.data_dir())
     }
+
+    /// 完成首次引导：保存语言与地区并标记已完成。
+    pub fn complete_setup(&self, language: &str, region: &str) -> Result<(), String> {
+        let _guard = self
+            .mgr
+            .write_lock
+            .lock()
+            .map_err(|e| format!("获取写锁失败: {}", e))?;
+        crate::setup::save_selection(self.mgr.data_dir(), language, region, Some(true)).map(|_| ())
+    }
+
+    /// 修改语言/地区（保持"已完成"标记不变）。
+    pub fn update_setup(&self, language: &str, region: &str) -> Result<(), String> {
+        let _guard = self
+            .mgr
+            .write_lock
+            .lock()
+            .map_err(|e| format!("获取写锁失败: {}", e))?;
+        crate::setup::save_selection(self.mgr.data_dir(), language, region, None).map(|_| ())
+    }
+
+    /// 重置引导状态，让下次启动重新走一遍 OOBE。
+    pub fn reset_setup(&self) -> Result<(), String> {
+        let _guard = self
+            .mgr
+            .write_lock
+            .lock()
+            .map_err(|e| format!("获取写锁失败: {}", e))?;
+        crate::setup::reset(self.mgr.data_dir()).map(|_| ())
+    }
 }

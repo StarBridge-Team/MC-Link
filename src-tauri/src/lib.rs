@@ -19,6 +19,7 @@ mod mgr;
 mod downloader;
 mod deep_link;
 mod setting_meta;
+mod setup;
 mod m3;
 use m3::commands::*;
 
@@ -204,6 +205,10 @@ pub fn run() {
             install_update_command,
             clear_update_cache_command,
             get_runtime_info_command,
+            get_setup_state_command,
+            complete_setup_command,
+            update_setup_command,
+            reset_setup_command,
             get_setting_meta,
             get_setting_manifest,
             clear_setting_meta_cache_command,

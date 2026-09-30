@@ -5,6 +5,7 @@ export * from "./effect";
 export * from "./datadir";
 export * from "./page";
 export * from "./update";
+export * from "./setup";
 export * from "./adapter";
 export * from "./connect";
 

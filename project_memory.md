@@ -60,10 +60,12 @@
 | 事件名与负载结构 | `app-log`、`download-progress`、`update-progress`、`p2p-event`、`tray-resize`、`deep-link` | 后端 emit 侧未变，前端改名会监听不到 |
 | 更新清单格式与命令名 | `update/latest.json` ↔ `src/lib/api/update.ts` | 见下文"应用更新"章节 |
 
-### 重构期间必须继续遵守的两条硬规则（与本次重构无关，属长期规范）
+### 重构期间必须继续遵守的硬规则（与本次重构无关，属长期规范）
 
 - `invoke(...)` 只允许出现在 `src/lib/api/**`，页面与组件必须经 api 层。
 - 本地存储只经 `src/lib/persist.ts`，不得直接写 `localStorage` / `sessionStorage`。
+- **提交时只 `git add` 自己改的文件，不要用 `git add -A`**：UI 重构期间仓库可能被多方同时编辑，
+  一次 `git add -A` 会把别人正在写的文件卷进自己的提交（已发生过一次，需事后拆分提交）。
 
 ### 不要删除的东西（用户已明确要求保留）
 
@@ -263,6 +265,56 @@ CI 里必须用**环境变量**提供私钥（`.env` 文件无效），并保持
 - 测试：`verified.rs` 内置一个支持 Range 的最小测试服务器，集成测试分别断言
   "并发峰值 ≥ 2"、"续传实际传输量 < 总长"、"不支持 Range 时并发为 1"、
   "哈希不符不留残留文件"、"已校验文件零请求"。
+
+## 首次启动引导（OOBE）与国际化（2026-09-30 实现）
+
+### 现状
+
+- **后端与前后端契约已就绪；OOBE 界面尚未实现**（用户本轮明确要求"前端先不体现"）。
+- 界面侧下一步：`useSetup()` → `needsOobe` 为真时展示引导页 → 选语言与地区 → 调 `finish()`。
+
+### 存储
+
+`Setting/setup.yml`（经 `crate::persist` 原子写入与损坏隔离，写操作走 `mgr` 的写锁）：
+
+```yaml
+completed: true      # 是否已完成首次引导
+language: zh-CN      # 用户的选择；空表示"还没选"
+region: CN           # 同上
+```
+
+**「用户的选择」与「系统检测值」是两件事**：文件里只存用户的选择，字段为空时由系统语言推导预选值
+（Windows 读注册表 `Control Panel\International\LocaleName`，其它平台读 `LANG`/`LC_ALL`）。
+这样系统语言变化不会悄悄覆盖用户已经做出的选择。若存储值已不再受支持（例如将来下掉某种语言），
+生效值会回退到检测值，避免界面拿到一个没有翻译的语言标识。
+
+### 命令（可选清单**以后端为准**，界面不要硬编码）
+
+| 命令 | 语义 |
+|---|---|
+| `get_setup_state_command` | 是否已完成 + 生效/检测到的语言与地区 + 可选清单 |
+| `complete_setup_command(language, region)` | 完成引导（置 `completed=true`）；非法值直接报错且不写入半个选择 |
+| `update_setup_command(language, region)` | 引导之后改语言/地区，**不动** `completed` |
+| `reset_setup_command()` | 重置引导，下次启动重新走一遍（调引导界面时常用） |
+
+### 前端
+
+- `src/i18n/index.ts`：vue-i18n 实例 + `setLocale()` / `initI18n()`（挂载前读取，带 1.5 秒超时兜底）
+- `src/i18n/locales/{zh-CN,en-US}.ts`：按域分组的文案（`app` / `common` / `oobe` / `settings` / `region`）
+- `src/lib/api/setup.ts` + `src/composables/useSetup.ts`
+- `src/main.ts`：先 `initI18n()` 再 `mount()`，避免"先按浏览器语言渲染一帧再切换"的文案闪动
+- `useSetup` 的 `completed` 初值为 `true`：读不到状态时进正常界面，
+  不把用户困在一个"存不下去"的引导页里（那样应用会完全不可用）
+
+### 新增语言的步骤（三处同改，漏一处就会出现"能选但没翻译"）
+
+1. `src-tauri/src/setup.rs` 的 `SUPPORTED_LANGUAGES`
+2. `src/i18n/locales/` 下新增同名文案文件
+3. `src/i18n/index.ts` 里注册该语言
+
+地区清单同理只在 `setup.rs` 的 `SUPPORTED_REGIONS` 维护（含显式的 `OTHER`，避免用户所在国家
+不在列表里就无路可选）；显示名放在 locale 文件的 `region.*`，取不到的名称由界面回退成原始代码，
+因此后端加地区不会让界面崩。
 
 ## 持久化约定（2026-09-30 起强制执行）
 
