@@ -1,18 +1,26 @@
 # MC Link
 
-我的世界联机工具 — 通过中继服务器实现远程联机，无需公网 IP，无需端口映射，无需内网穿透。
+我的世界联机工具 — 无需公网 IP、无需端口映射、无需内网穿透即可远程联机。
+
+> **架构状态**：联机核心已从"自建中继转发"迁移为基于**折跃门协议（WGP）**的 P2P 直连。
+> 旧中继实现（`mc-link-relay/`、`mc-link-chat/`）已停止维护并移出主分支，
+> 源码完整保留在 `archive/legacy-relay` 分支与 `legacy-relay-stack-v0.4.0` tag。
 
 ## 架构
 
 ```
-房主 Minecraft ──→ MC Link 房主 ──→ 中继服务器 ←── MC Link 成员 ←── 成员 Minecraft
-                                        ↕
-                                 中央服务器 (房间协调/中继列表)
+房主 Minecraft <──> MC Link 客户端(房主) ──┐
+                                          ├── 折跃门协议 P2P 直连 (wgp-core)
+成员 Minecraft <──> MC Link 客户端(成员) ──┘
+                          │
+                          └── 中央服务器 (账号认证 / 管理面板)
 ```
 
-- **中央服务器** (central-server)：管理房间和中继服务器列表
-- **中继服务器** (mc-link-relay)：转发游戏数据，负责连接双方
-- **客户端** (src-tauri)：Tauri 桌面应用，包含房主模式和成员模式
+- **客户端** (`src-tauri` + `src`)：Tauri 2 桌面应用，包含房主模式与成员模式
+- **P2P 核心**：`wgp-core`（折跃门协议），位于独立仓库 `mc-link-core`
+- **中央服务器** (`central-server`)：账号认证与 Web 管理面板
+
+> 依赖位置：`wgp-core` 以跨目录 path 依赖引入，本机开发需把 `mc-link-core` 放在本仓库上一级的 `Rust/` 目录下。
 
 ## 快速开始
 
@@ -20,18 +28,12 @@
 
 从 [Releases](https://github.com/DogerMMC/mc-link/releases) 下载最新版本 `mc-link-v0.x.x.exe`，直接运行即可。
 
-### 启动服务端（自建中继）
+### 启动中央服务器（账号服务，可选）
 
 ```bash
-# 中央服务器
 cd central-server
 cargo build --release
 ./target/release/mc-link-central.exe
-
-# 中继服务器（需先修改 config.yml 中的 central_server 地址）
-cd mc-link-relay
-cargo build --release
-./target/release/mc-link-relay.exe
 ```
 
 ### 使用
@@ -42,15 +44,8 @@ cargo build --release
 ## 技术栈
 
 - **客户端**: Tauri 2 + Vue 3 + TypeScript + Rust
-- **中央服务器**: Rust (TCP)
-- **中继服务器**: Rust (TCP + AES-256-ECB 加密)
-
-## 协议
-
-中继协议使用自定义加密 TCP 协议：
-- 包头：`[room_len:1byte][room_name][pass_len:1byte][password][AES加密数据]`
-- AES-256-ECB 加密，密钥由密码的 SHA256 派生
-- TCP 帧：4 字节大端长度前缀 + 数据
+- **P2P 核心**: 折跃门协议（`wgp-core`，独立仓库 `mc-link-core`）
+- **中央服务器**: Rust（账号认证 / Web 管理面板）
 
 ## 版本历史
 
