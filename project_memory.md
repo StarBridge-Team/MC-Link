@@ -33,6 +33,18 @@
   回环 WebSocket 控制面、权限与加密。检测类与耦合类目前只有接口与路由，尚无内置实现。
 - 下一步：前端 UI 大幅重构，含插件管理界面；联机能力在新流程下经插件系统接入。
 
+### 适配器安装的完整性校验（2026-09-30）
+
+- 适配器包是**第三方可执行文件**，安装前必须通过 SHA256 校验。校验清单托管在我们自己的资源服务器：
+  `<assets_server>/adapter/manifest.json`。客户端 **fail-closed**——拉不到清单即拒绝安装，
+  不会退回无校验下载。
+- 清单由 `scripts/sync-assets.mjs` 的 `prepareAdapters()` 生成（下载上游发布包 → 计算 SHA256 →
+  写入 `assets-server/Assets/adapter/`），随 `pnpm sync:assets` 上传；资源服务器新增了 `/adapter/*` 路由。
+- `adapter/` 目录**不参与** `Assets/manifest.json` 的版本聚合，否则每次适配器升级都会让客户端重下全部字体/图标。
+- 升级适配器：改 `sync-assets.mjs` 顶部的 `ADAPTER_VERSION` / `ADAPTER_URL`，再执行 `pnpm sync:assets`。
+- 若将来适配器改为随应用内嵌（`tauri.conf.json` 的 `bundle.resources`），应在
+  `src-tauri/src/assets/adapter.rs` 的 `fetch_manifest` 中增加"本地常量清单"分支。
+
 ## 认证方案（2026-09-30 更新）
 
 ### 现状：客户端不含任何登录功能
