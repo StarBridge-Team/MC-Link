@@ -227,7 +227,7 @@ pub fn generate_m3_scheme(
 
     // 语义色采用固定的 Material 基准种子，确保 success/warning/error/info
     // 在任意主题色下都能保持一致的语义可读性，并遵循 M3 角色分配。
-    let green = Argb::from_u32(0xff_2e_7d_32);
+    let green = Argb::from_u32(0xff2e7d32);
     let orange = Argb::from_u32(0xff_ed_6c_02);
     let red = Argb::from_u32(0xff_d3_2f_2f);
 
