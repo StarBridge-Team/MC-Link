@@ -20,18 +20,12 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
 
 use crate::asset_server::{assets_server_url, join};
 
 /// 清单拉取超时。
 const MANIFEST_TIMEOUT: Duration = Duration::from_secs(10);
-/// 单次读取分片的等待上限：防止对端挂起导致下载永不结束。
-const CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
-/// 包体积上限：防止对端无限推送撑爆磁盘。
-const MAX_PACKAGE_BYTES: u64 = 256 * 1024 * 1024;
 
 /// 资源服务器上的适配器清单。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,117 +115,27 @@ pub(crate) fn pick_entry<'a>(
 /// 下载适配器包并校验 SHA256，返回落地的压缩包路径。
 ///
 /// 校验失败会删除已下载文件并返回错误，绝不把未校验的文件交给解压/启动流程。
+///
+/// 下载与校验的具体链路在 [`crate::downloader::verified`]——**与更新包共用同一实现**，
+/// 避免"适配器校验了、更新包忘了校验"这类两边漂移。本函数只做清单字段的映射。
 pub(crate) async fn download_verified_package(
     dir: &Path,
     client: &reqwest::Client,
     entry: &AdapterEntry,
     mut on_progress: impl FnMut(u8),
 ) -> Result<PathBuf, String> {
-    let expected = entry.sha256.trim().to_ascii_lowercase();
-    if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err("适配器清单中的 sha256 字段非法，已中止安装".to_string());
-    }
-    if entry.urls.is_empty() {
-        return Err("适配器清单未提供下载地址，已中止安装".to_string());
-    }
-
-    let dest = dir.join(&entry.file);
-    let tmp = dir.join(format!("{}.tmp", entry.file));
-
-    let mut last_err = String::new();
-    let mut got = false;
-    for url in &entry.urls {
-        match stream_to_file(client, url, &tmp, entry, &mut on_progress).await {
-            Ok(()) => {
-                got = true;
-                break;
-            }
-            Err(e) => {
-                last_err = format!("{}（来源 {}）", e, url);
-                let _ = tokio::fs::remove_file(&tmp).await;
-            }
-        }
-    }
-    if !got {
-        return Err(format!("下载适配器包失败: {}", last_err));
-    }
-
-    // 完整性校验：本模块存在的理由
-    if !crate::downloader::verify::verify_file(&tmp, &expected).await? {
-        let actual = crate::downloader::verify::sha256_file(&tmp)
-            .await
-            .unwrap_or_else(|_| "无法计算".to_string());
-        let _ = tokio::fs::remove_file(&tmp).await;
-        return Err(format!(
-            "适配器包校验失败，已丢弃：期望 sha256={}，实际={}",
-            expected, actual
-        ));
-    }
-
-    if dest.exists() {
-        let _ = tokio::fs::remove_file(&dest).await;
-    }
-    std::fs::rename(&tmp, &dest).map_err(|e| format!("重命名下载文件失败: {}", e))?;
-    Ok(dest)
-}
-
-/// 流式下载单个来源到临时文件（分片超时与体积上限；连接超时由调用方构造 client 时设置）。
-async fn stream_to_file(
-    client: &reqwest::Client,
-    url: &str,
-    dest: &Path,
-    entry: &AdapterEntry,
-    on_progress: &mut impl FnMut(u8),
-) -> Result<(), String> {
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("HTTP {}", response.status()));
-    }
-
-    let total = response.content_length().or(entry.size).unwrap_or(0);
-    if total > MAX_PACKAGE_BYTES {
-        return Err(format!(
-            "包体积 {} 字节超过上限 {} 字节",
-            total, MAX_PACKAGE_BYTES
-        ));
-    }
-
-    let mut file = tokio::fs::File::create(dest)
-        .await
-        .map_err(|e| format!("创建临时文件失败: {}", e))?;
-    let mut stream = response.bytes_stream();
-    let mut downloaded: u64 = 0;
-
-    loop {
-        let step = tokio::time::timeout(CHUNK_TIMEOUT, stream.next())
-            .await
-            .map_err(|_| format!("读取超时（{} 秒无数据）", CHUNK_TIMEOUT.as_secs()))?;
-
-        let chunk = match step {
-            None => break,
-            Some(chunk) => chunk.map_err(|e| format!("读取数据失败: {}", e))?,
-        };
-
-        downloaded += chunk.len() as u64;
-        if downloaded > MAX_PACKAGE_BYTES {
-            return Err(format!("下载体积超过上限 {} 字节", MAX_PACKAGE_BYTES));
-        }
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("写入文件失败: {}", e))?;
-
+    let remote = crate::downloader::verified::RemoteFile {
+        file: &entry.file,
+        urls: &entry.urls,
+        sha256: &entry.sha256,
+        size: entry.size,
+    };
+    crate::downloader::verified::download_verified(dir, client, &remote, |done, total| {
         if total > 0 {
-            on_progress(((downloaded as f64 / total as f64) * 100.0).min(100.0) as u8);
+            on_progress(((done as f64 / total as f64) * 100.0).min(100.0) as u8);
         }
-    }
-
-    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
-    Ok(())
+    })
+    .await
 }
 
 #[cfg(test)]
