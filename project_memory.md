@@ -181,12 +181,22 @@ node scripts/make-update.mjs --platform windows-aarch64   # 其他架构，增�
 
 ```powershell
 # 1. 生成密钥对（私钥务必妥善保管：丢了以后已安装的用户再也收不到更新）
+#    私钥必须放在仓库之外。项目内曾有 .tauri/updater.key，已从索引移除并加入 .gitignore。
 pnpm exec tauri signer generate -w $env:USERPROFILE\.tauri\mclink.key
 # 2. 把输出的公钥内容（不是路径）填进 src-tauri/tauri.conf.json 的 plugins.updater.pubkey
 # 3. 发布时提供私钥，脚本会自动签名并生成 tauri.json
 $env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\.tauri\mclink.key"
 pnpm build:release
 ```
+
+> **安全：历史提交里的私钥必须轮换。**
+> `.tauri/updater.key`（加密的 minisign 私钥）与 `.pub` 在提交 `9ee632d` 中被跟踪，
+> 此后一直在版本历史里。把它从索引移除**不会**从历史中删除，因此这份密钥要视为已泄露。
+> 轮换成本为零：此前从未发布过使用该密钥的更新（插件路径是 2026-09-30 才接入的），
+> 没有任何已安装版本依赖它。生成新密钥后把新公钥填进 `plugins.updater.pubkey` 即可。
+>
+> 另注：`分析.md` 把 `.tauri/` 列为"Tauri 更新密钥"目录，正是这种做法的源头；
+> 该文件已列为待重写，重写时不要再保留这条。
 
 注意 Tauri CLI 区分两个变量：`TAURI_SIGNING_PRIVATE_KEY_PATH` 收**路径**、
 `TAURI_SIGNING_PRIVATE_KEY` 收**内容**。`make-update.mjs` 两种写法都接受

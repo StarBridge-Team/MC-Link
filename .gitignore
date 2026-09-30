@@ -31,6 +31,12 @@ dist-ssr
 *.sw?
 .codebuddy/*
 
+# 更新签名私钥：绝不能入库。
+# `.tauri/updater.key` 曾在历史提交（9ee632d）中被跟踪，已从索引移除；
+# 历史里的那份必须视为已泄露，需生成新密钥轮换（见 project_memory.md）。
+.tauri/
+*.key
+
 # 陈旧的依赖目录（当时的 node_modules 副本，勿入库）
 node_modules_stale/
 node_modules_stale2/
