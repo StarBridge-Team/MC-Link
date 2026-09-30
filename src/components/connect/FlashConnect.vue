@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import type { P2PStage, StartP2PArgs } from "../../lib/api/connect";
+import { local, KEYS } from "../../lib/persist";
 
 const props = defineProps<{
   showToast: (msg: string) => void;
@@ -13,9 +14,9 @@ const emit = defineEmits<{
   stop: [];
 }>();
 
-const code = ref(localStorage.getItem("flash_code") || "");
+const code = ref(local.getString(KEYS.flashCode));
 const mode = ref<"create" | "join">(
-  (localStorage.getItem("flash_mode") as "create" | "join") || "create"
+  (local.getString(KEYS.flashMode) as "create" | "join") || "create"
 );
 
 const canStart = computed(() => code.value.trim().length > 0 && props.stage !== "connecting" && props.stage !== "connected");
@@ -23,11 +24,11 @@ const busy = computed(() => props.stage === "connecting" || props.stage === "con
 
 function persistCode(v: string) {
   code.value = v;
-  localStorage.setItem("flash_code", v);
+  local.setString(KEYS.flashCode, v);
 }
 function chooseMode(m: "create" | "join") {
   mode.value = m;
-  localStorage.setItem("flash_mode", m);
+  local.setString(KEYS.flashMode, m);
 }
 
 function start() {

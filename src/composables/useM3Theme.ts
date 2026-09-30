@@ -14,8 +14,7 @@ import { ref, shallowRef, watch, type Ref } from "vue";
 import { applyM3Scheme } from "../lib/m3/applyM3Theme";
 import { exportM3Scheme, generateM3SchemeSynced } from "../lib/m3/m3Client";
 import type { M3Scheme, M3Variant } from "../lib/m3/types";
-
-const STORAGE_KEY = "m3-theme-config";
+import { local, KEYS } from "../lib/persist";
 
 export const M3_VARIANTS: { value: M3Variant; label: string }[] = [
   { value: "tonal_spot", label: "Tonal Spot（默认）" },
@@ -54,13 +53,8 @@ function loadConfig(): M3PersistedConfig {
     contrast: 0,
     isDark: false,
   };
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return fallback;
-    return { ...fallback, ...JSON.parse(raw) };
-  } catch {
-    return fallback;
-  }
+  const saved = local.get<Partial<M3PersistedConfig> | null>(KEYS.m3Theme, null);
+  return saved ? { ...fallback, ...saved } : fallback;
 }
 
 export function useM3Theme() {
@@ -119,11 +113,7 @@ export function useM3Theme() {
       contrast: contrast.value,
       isDark: isDark.value,
     };
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
-    } catch {
-      /* ignore */
-    }
+    local.set(KEYS.m3Theme, cfg);
   }
 
   // 参数变化时自动重新生成并持久化

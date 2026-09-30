@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import type { P2PStage, StartP2PArgs } from "../../lib/api/connect";
+import { local, KEYS } from "../../lib/persist";
 
 const props = defineProps<{
   showToast: (msg: string) => void;
@@ -13,15 +14,15 @@ const emit = defineEmits<{
   stop: [];
 }>();
 
-const PKEY = "gaoji_p2p_";
-const code = ref(localStorage.getItem(PKEY + "code") || "");
+const K = KEYS.advancedPrefix;
+const code = ref(local.getString(K + "code"));
 const mode = ref<"create" | "join">(
-  (localStorage.getItem(PKEY + "mode") as "create" | "join") || "create"
+  (local.getString(K + "mode") as "create" | "join") || "create"
 );
-const signalingAddr = ref(localStorage.getItem(PKEY + "signaling") || "");
-const stunAddr = ref(localStorage.getItem(PKEY + "stun") || "");
-const natStunServers = ref(localStorage.getItem(PKEY + "nat_stun") || "");
-const appType = ref(localStorage.getItem(PKEY + "app_type") || "GameTcp");
+const signalingAddr = ref(local.getString(K + "signaling"));
+const stunAddr = ref(local.getString(K + "stun"));
+const natStunServers = ref(local.getString(K + "nat_stun"));
+const appType = ref(local.getString(K + "app_type", "GameTcp"));
 
 const appTypeOptions = [
   { value: "GameTcp", label: "Minecraft Java (TCP)" },
@@ -35,12 +36,12 @@ const appTypeOptions = [
   { value: "Chat", label: "P2P 聊天" },
 ];
 
-watch(code, (v) => localStorage.setItem(PKEY + "code", v));
-watch(signalingAddr, (v) => localStorage.setItem(PKEY + "signaling", v));
-watch(stunAddr, (v) => localStorage.setItem(PKEY + "stun", v));
-watch(natStunServers, (v) => localStorage.setItem(PKEY + "nat_stun", v));
-watch(appType, (v) => localStorage.setItem(PKEY + "app_type", v));
-watch(mode, (v) => localStorage.setItem(PKEY + "mode", v));
+watch(code, (v) => local.setString(K + "code", v));
+watch(signalingAddr, (v) => local.setString(K + "signaling", v));
+watch(stunAddr, (v) => local.setString(K + "stun", v));
+watch(natStunServers, (v) => local.setString(K + "nat_stun", v));
+watch(appType, (v) => local.setString(K + "app_type", v));
+watch(mode, (v) => local.setString(K + "mode", v));
 
 const busy = computed(() => props.stage === "connecting" || props.stage === "connected");
 const canStart = computed(() => code.value.trim().length > 0 && !busy.value);

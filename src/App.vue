@@ -6,7 +6,7 @@ import type { Personalization } from './composables/usePersonalization';
 import { useToast } from './composables/useToast';
 import { useWindowControls } from './composables/useWindowControls';
 import { useAppInit } from './composables/useAppInit';
-import { savePersonalization } from './lib/api/config';
+import { local, KEYS } from './lib/persist';
 import './assets/design-system.css';
 import TextSidebar from './components/TextSidebar.vue';
 import IconSidebar from './components/IconSidebar.vue';
@@ -26,7 +26,7 @@ const {
 const { resolvedBgUrl, initialize } = useAppInit();
 
 const isConnected = ref(false);
-const playerName = ref(localStorage.getItem("player_name") || "玩家");
+const playerName = ref(local.getString(KEYS.playerName) || "玩家");
 const homepageMode = ref("default");
 const homepageValue = ref("");
 
@@ -73,10 +73,8 @@ function applyPersSettings(data: Personalization) {
 
 onMounted(async () => {
   await initialize((settings) => {
-    if (!settings.transparent_effect || settings.transparent_effect === 'none' || settings.transparent_effect === '') {
-      settings.transparent_effect = 'mica';
-      savePersonalization(settings).catch(() => {});
-    }
+    // 不再在这里改写 transparent_effect：后端默认值已改为平台默认效果，
+    // 用户显式选择的 "none"（无材质）必须被尊重并原样保留。
     applyPersSettings(settings);
   });
 

@@ -13,6 +13,7 @@ import {
   type StartP2PArgs,
 } from "../../lib/api/connect";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { local, KEYS } from "../../lib/persist";
 
 const props = defineProps<{
   showToast: (msg: string) => void;
@@ -25,7 +26,7 @@ const emit = defineEmits<{
 }>();
 
 const activeTab = ref<"quick" | "advanced">(
-  (localStorage.getItem("active_tab") as "quick" | "advanced") || "quick"
+  (local.getString(KEYS.activeTab) as "quick" | "advanced") || "quick"
 );
 const gaojiRef = ref<InstanceType<typeof GaojiConnect> | null>(null);
 
@@ -35,7 +36,7 @@ let unlisten: UnlistenFn | null = null;
 
 function onTabChange(name: string) {
   activeTab.value = name as "quick" | "advanced";
-  localStorage.setItem("active_tab", name);
+  local.setString(KEYS.activeTab, name);
 }
 
 function setRunning(v: boolean) {

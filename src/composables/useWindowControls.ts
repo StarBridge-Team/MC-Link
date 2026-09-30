@@ -1,8 +1,7 @@
 import { ref, onUnmounted, onDeactivated } from "vue";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-
-const WINDOW_STATE_KEY = "window_state";
+import { local, KEYS } from "../lib/persist";
 
 interface WindowState {
   x: number;
@@ -21,12 +20,14 @@ export function useWindowControls() {
       const pos = await window.outerPosition();
       const size = await window.outerSize();
       if (size.width < 100 || size.height < 100) return;
-      localStorage.setItem(
-        WINDOW_STATE_KEY,
-        JSON.stringify({ x: pos.x, y: pos.y, width: size.width, height: size.height } satisfies WindowState)
-      );
-    } catch {
-      /* ignore */
+      local.set(KEYS.windowState, {
+        x: pos.x,
+        y: pos.y,
+        width: size.width,
+        height: size.height,
+      } satisfies WindowState);
+    } catch (e) {
+      console.warn("[窗口] 保存窗口位置失败:", e);
     }
   }
 
@@ -36,16 +37,16 @@ export function useWindowControls() {
   }
 
   async function restoreWindowState() {
-    const saved = localStorage.getItem(WINDOW_STATE_KEY);
-    if (!saved) return false;
+    const s = local.get<WindowState | null>(KEYS.windowState, null);
+    if (!s) return false;
     try {
-      const s: WindowState = JSON.parse(saved);
       if (s.width < 100 || s.height < 100) return false;
       await invoke("resize_window", { width: s.width, height: s.height, minWidth: 700, minHeight: 500, center: false });
       const window = getCurrentWindow();
       await window.setPosition(new LogicalPosition(s.x, s.y));
       return true;
-    } catch {
+    } catch (e) {
+      console.warn("[窗口] 恢复窗口位置失败:", e);
       return false;
     }
   }
