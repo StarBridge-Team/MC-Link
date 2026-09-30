@@ -30,7 +30,9 @@ impl Default for PersonalizationSettings {
             theme_mode: "system".to_string(),
             animation_enabled: true,
             animation_speed: 1.0,
-            transparent_effect: "none".to_string(),
+            // 平台默认效果（Windows 为 mica、macOS 为 hud_window）：
+            // 让"从未设置"与"后端默认"一致，避免启动瞬间先应用默认值再被用户值覆盖而闪烁
+            transparent_effect: crate::effect::get_default_effect(),
             background_type: "default".to_string(),
             background_value: String::new(),
             background_fit: "scale-to-fill".to_string(),
@@ -67,6 +69,20 @@ pub struct PrepareAppData {
 pub struct IpInfo {
     pub region: String,
     pub isp: String,
+}
+
+/// 分区名 → 设置目录下的文件路径。
+///
+/// 读写共用同一份过滤规则（此前 `read.rs` 与 `write.rs` 各写一份，容易漂移）。
+pub(crate) fn section_path(
+    data_dir: &std::path::Path,
+    section: &str,
+) -> Result<std::path::PathBuf, String> {
+    let file = format!(
+        "{}.yml",
+        section.replace(' ', "_").replace('/', "_").replace('\\', "_")
+    );
+    Ok(crate::datadir::setting_dir(data_dir)?.join(file))
 }
 
 pub const CONFIG_VERSION: u32 = 1;

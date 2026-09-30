@@ -46,22 +46,27 @@ fn run_migrations(data_dir: &Path, from: u32) -> Result<(), String> {
 }
 
 /// 从 v0 迁移到 v1：
-/// - 若存在旧版 personalization.yml 且无法解析，则重置为默认配置。
+/// - 若存在旧版 personalization.yml 且无法解析，交由统一持久化层隔离为备份并重建默认值。
 fn migrate_from_v0(data_dir: &Path) -> Result<(), String> {
     let path = setting_dir(data_dir)?.join("personalization.yml");
     if !path.exists() {
         return Ok(());
     }
 
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("读取旧版个性化配置失败: {}", e))?;
-
-    if serde_yaml::from_str::<serde_yaml::Value>(&content).is_err() {
+    // 旧实现在此处直接把默认值写入原文件，等于静默清空用户配置且无法取证。
+    // 现在：损坏文件被改名保留（`.corrupt-<时间戳>`），再原子写入一份默认配置。
+    let loaded = crate::persist::load_yaml::<super::PersonalizationSettings>(&path)?;
+    if loaded.recovered {
         let default = super::PersonalizationSettings::default();
-        let yaml = serde_yaml::to_string(&default)
-            .map_err(|e| format!("序列化默认配置失败: {}", e))?;
-        std::fs::write(&path, yaml)
-            .map_err(|e| format!("重置个性化配置失败: {}", e))?;
+        crate::persist::save_yaml(&path, &default)?;
+        eprintln!(
+            "[配置迁移] 旧版个性化配置损坏，原文件已隔离为 {}，已重建默认配置",
+            loaded
+                .backup
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "（隔离失败，原文件仍保留在原处）".to_string())
+        );
     }
 
     Ok(())

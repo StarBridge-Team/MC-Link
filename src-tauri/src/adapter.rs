@@ -14,7 +14,7 @@ use crate::utils::lock_or_recover;
 /// 适配器状态。
 ///
 /// 字段名与磁盘上的 `Terracotta.json` 以及前端契约保持一致，请勿重命名。
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AdapterStatus {
     pub installed: bool,
     pub running: bool,
@@ -42,20 +42,16 @@ impl AdapterManager {
     }
 
     fn read_status(&self) -> AdapterStatus {
-        let path = self.status_path();
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or(AdapterStatus { installed: false, running: false, starting: false, port: None })
+        // 文件损坏时由 persist 隔离原文件并返回默认值
+        crate::persist::load_json::<AdapterStatus>(&self.status_path())
+            .map(|loaded| loaded.value)
+            .unwrap_or_default()
     }
 
     fn write_status(&self, status: &AdapterStatus) {
-        let path = self.status_path();
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Ok(json) = serde_json::to_string(status) {
-            let _ = std::fs::write(&path, &json);
+        // 旧实现用 `let _ =` 吞掉落盘错误，导致"状态改了但没保存"无从察觉
+        if let Err(e) = crate::persist::save_json(&self.status_path(), status) {
+            eprintln!("[适配器] 状态落盘失败: {}", e);
         }
     }
 

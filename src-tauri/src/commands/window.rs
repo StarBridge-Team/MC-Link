@@ -77,44 +77,13 @@ pub(crate) fn resize_window(window: tauri::Window, width: f64, height: f64, min_
     }
 }
 
+/// 切换窗口效果（mica / acrylic / hud_window / none）。
+///
+/// 效果名到平台实现的映射集中在 `effect::apply_effect_by_name`，
+/// 与启动时的预应用共用同一份逻辑，避免两处各写一份而漂移。
 #[tauri::command]
 pub(crate) fn set_window_effect(window: tauri::WebviewWindow, effect: String) -> Result<(), String> {
-    // macOS: 切换到非 hud_window 效果时先卸载已添加的 vibrancy 视图
-    #[cfg(target_os = "macos")]
-    {
-        if effect != "hud_window" {
-            crate::effect::remove_vibrancy_backdrop();
-        }
-    }
-    match effect.as_str() {
-        "mica" => {
-            #[cfg(windows)]
-            {
-                crate::effect::apply_mica_backdrop_typed(&window, 2);
-            }
-        }
-        "acrylic" => {
-            #[cfg(windows)]
-            {
-                crate::effect::apply_mica_backdrop_typed(&window, 3);
-            }
-        }
-        "hud_window" => {
-            #[cfg(target_os = "macos")]
-            {
-                crate::effect::apply_vibrancy_backdrop(&window);
-            }
-        }
-        _ => {
-            // "none" / "transparent"：显式卸载 DWM backdrop（DWMSBT_NONE = 1），
-            // 避免从 mica/acrylic 切换过来时旧材质残留
-            #[cfg(windows)]
-            {
-                crate::effect::apply_mica_backdrop_typed(&window, 1);
-            }
-        }
-    }
-    let _ = &window;
+    crate::effect::apply_effect_by_name(&window, &effect);
     Ok(())
 }
 

@@ -10,21 +10,53 @@ pub fn get_default_effect() -> String {
     { "none".to_string() }
 }
 
-/// 在 Windows 11 / macOS 上应用窗口效果。
-pub fn setup_window_effects(app: &tauri::App) {
+/// 启动时按**已保存的设置**预应用窗口效果。
+///
+/// 必须使用持久化的值而不是平台默认值：否则用户设置的 acrylic / none 会在启动瞬间
+/// 先被默认的 mica 覆盖一次，界面出现可见闪烁（此前 `useAppInit.ts` 里那句
+/// "setup_window_effects 启动时会预应用 mica" 的注释就是在描述这个症状）。
+pub fn setup_window_effects(app: &tauri::App, effect: &str) {
+    if let Some(window) = app.get_webview_window("main") {
+        apply_effect_by_name(&window, effect);
+    }
+}
+
+/// 按名称应用窗口效果。**效果名 → 平台实现的唯一映射处**。
+///
+/// 启动预应用（[`setup_window_effects`]）与 `set_window_effect` 命令都走这里，
+/// 避免两处各写一份映射而漂移。
+pub fn apply_effect_by_name(window: &tauri::WebviewWindow, effect: &str) {
     #[cfg(target_os = "windows")]
     {
-        if is_windows_11() {
-            if let Some(window) = app.get_webview_window("main") {
-                apply_mica_backdrop(&window);
+        match effect {
+            // Mica / Acrylic 仅 Windows 11 支持
+            "mica" => {
+                if is_windows_11() {
+                    apply_mica_backdrop(window);
+                }
             }
+            "acrylic" => {
+                if is_windows_11() {
+                    apply_mica_backdrop_typed(window, 3);
+                }
+            }
+            // "none" / "transparent" 及其他：显式卸载 DWM backdrop（DWMSBT_NONE = 1），
+            // 避免从 mica/acrylic 切换过来时旧材质残留
+            _ => apply_mica_backdrop_typed(window, 1),
         }
     }
     #[cfg(target_os = "macos")]
     {
-        if let Some(window) = app.get_webview_window("main") {
-            apply_vibrancy_backdrop(&window);
+        if effect == "hud_window" {
+            apply_vibrancy_backdrop(window);
+        } else {
+            // 切换到非 hud_window 效果时先卸载已添加的 vibrancy 视图
+            remove_vibrancy_backdrop();
         }
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = (window, effect);
     }
 }
 

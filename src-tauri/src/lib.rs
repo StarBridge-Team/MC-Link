@@ -1,6 +1,7 @@
 mod state;
 mod adapter;
 mod utils;
+mod persist;
 mod commands;
 use commands::*;
 mod plugin;
@@ -74,7 +75,13 @@ pub fn run() {
             if let Err(e) = init_plugin_subsystem(app, &data_dir) {
                 eprintln!("[插件] 子系统初始化失败: {}", e);
             }
-            effect::setup_window_effects(app);
+            // 用已保存的设置预应用窗口效果，避免启动瞬间先闪一下平台默认效果
+            let effect_name = mgr
+                .read()
+                .personalization()
+                .map(|p| p.transparent_effect)
+                .unwrap_or_else(|_| effect::get_default_effect());
+            effect::setup_window_effects(app, &effect_name);
 
             // 注册 mclink:// 深度链接
             let result = deep_link::register_scheme();

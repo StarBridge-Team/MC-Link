@@ -76,10 +76,8 @@ impl PluginRecord {
             }
         }
         let raw = crypto::random_bytes(32);
-        std::fs::create_dir_all(&self.dir)
-            .map_err(|e| format!("创建插件目录失败: {}", e))?;
-        std::fs::write(&path, hex::encode(&raw))
-            .map_err(|e| format!("写入插件密钥失败: {}", e))?;
+        // 原子写入：插件密钥被截断会导致会话密钥派生失效
+        crate::persist::atomic_write(&path, hex::encode(&raw).as_bytes())?;
         restrict_permissions(&path);
         let mut key = [0u8; 32];
         key.copy_from_slice(&raw);
@@ -147,18 +145,13 @@ impl PluginRegistry {
     }
 
     fn read_state(&self) -> RegistryState {
-        std::fs::read_to_string(self.state_path())
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
+        crate::persist::load_json::<RegistryState>(&self.state_path())
+            .map(|loaded| loaded.value)
             .unwrap_or_default()
     }
 
     fn write_state(&self, state: &RegistryState) -> Result<(), String> {
-        std::fs::create_dir_all(&self.plugins_dir)
-            .map_err(|e| format!("创建插件目录失败: {}", e))?;
-        let text = serde_json::to_string_pretty(state)
-            .map_err(|e| format!("序列化注册表失败: {}", e))?;
-        std::fs::write(self.state_path(), text).map_err(|e| format!("写入注册表失败: {}", e))
+        crate::persist::save_json(&self.state_path(), state)
     }
 
     /// 扫描磁盘上的外部插件并合并内置插件。
