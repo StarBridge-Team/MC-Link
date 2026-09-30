@@ -45,6 +45,40 @@
 - 若将来适配器改为随应用内嵌（`tauri.conf.json` 的 `bundle.resources`），应在
   `src-tauri/src/assets/adapter.rs` 的 `fetch_manifest` 中增加"本地常量清单"分支。
 
+## UI 重构期间的约定（2026-09-30 起，进行中）
+
+**当前阶段**：用户正在做前端大面积 UI 重构；这轮**前端不接后端逻辑**，UI 完成后由 AI 负责把
+后端能力接上去（含插件系统接线与联机能力恢复）。
+
+### 重构期间保持"跨层契约"不变（改了我需要同步改后端，改动前先告知）
+
+| 契约 | 位置 | 为什么 |
+|---|---|---|
+| `PersonalizationSettings` 字段名 | 后端 `config/mod.rs` ↔ 前端 `lib/api/types.ts` | 字段名即 yml 的 key，改名等于让老用户配置失效 |
+| `lib/persist.ts` 的 `KEYS` 字符串 | `src/lib/persist.ts` | 改名会让老用户 localStorage 变孤儿（表现为设置丢失） |
+| 窗口效果取值集合 | `mica` / `acrylic` / `hud_window` / `none` | 后端 `effect::apply_effect_by_name` 按名称匹配 |
+| 事件名与负载结构 | `app-log`、`download-progress`、`p2p-event`、`tray-resize`、`deep-link` | 后端 emit 侧未变，前端改名会监听不到 |
+
+### 重构期间必须继续遵守的两条硬规则（与本次重构无关，属长期规范）
+
+- `invoke(...)` 只允许出现在 `src/lib/api/**`，页面与组件必须经 api 层。
+- 本地存储只经 `src/lib/persist.ts`，不得直接写 `localStorage` / `sessionStorage`。
+
+### 不要删除的东西（用户已明确要求保留）
+
+- 联机页 4 个组件（`components/connect/`）+ `lib/api/connect.ts`：作为 UI 重构素材保留，
+  调用会失败属预期（见上文"联机核心"章节）。
+
+### UI 完成后需要 AI 接线的后端能力（后端已实现，前端目前零调用）
+
+| 能力 | 后端状态 | 前端缺口 |
+|---|---|---|
+| 插件系统 | `src-tauri/src/plugin/**` 完整（8 个命令 + 回环网关 + 权限/加密） | 无 `lib/api/plugin.ts`，无插件管理界面 |
+| 联机（P2P） | 已按用户要求**暂时断开** | 联机页保留但调用失败；重接见 `legacy-wgp-p2p-v0.4.0` |
+| 检查更新 | `update.rs` 3 个命令完整 | `useUpdater.ts` 无引用，未接进界面 |
+| 玩家名 | `Setting/account.yml` 的 `player_name` | 只读不写，无写入入口 |
+| 分区设置 | `save_setting` 命令存在 | `connector.yml` / `account.yml` 无设置界面 |
+
 ## 持久化约定（2026-09-30 起强制执行）
 
 ### 唯一入口
