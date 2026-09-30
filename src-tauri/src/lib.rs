@@ -64,6 +64,9 @@ pub fn run() {
             let data_dir = resolve_data_dir(app);
             std::fs::create_dir_all(&data_dir).ok();
 
+            // 清理上一次自动更新留下的旧 exe 备份与下载残留；此时旧进程必然已退出
+            update::cleanup_leftovers(&data_dir);
+
             let mgr = Arc::new(AppMgr::new(data_dir.clone())?);
             app.manage(mgr.clone());
 
@@ -182,7 +185,9 @@ pub fn run() {
             clear_page_cache_command,
             check_update_command,
             download_update_command,
+            install_update_command,
             clear_update_cache_command,
+            get_install_mode_command,
             get_setting_meta,
             get_setting_manifest,
             clear_setting_meta_cache_command,

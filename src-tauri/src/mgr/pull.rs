@@ -42,9 +42,11 @@ impl<'a> PullMgr<'a> {
 
     pub async fn download_update(
         &self,
-        info: crate::update::UpdateInfo,
+        asset: crate::update::UpdateAsset,
+        on_progress: impl FnMut(u64, u64) + Send,
     ) -> Result<crate::update::DownloadUpdateResult, String> {
         let _guard = self.mgr.pull_lock.lock().await;
-        crate::update::download_update(self.mgr.data_dir(), info, self.mgr.http()).await
+        crate::update::download_asset(self.mgr.data_dir(), self.mgr.http(), &asset, on_progress)
+            .await
     }
 }
