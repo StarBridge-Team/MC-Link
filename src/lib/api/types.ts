@@ -70,24 +70,77 @@ export interface PageManifest {
 
 // ===== 应用更新类型 =====
 
+/**
+ * 更新包类型。
+ * - `installer`：安装版用（NSIS 安装器，会弹出安装界面）
+ * - `portable`：便携版用（单个 exe，直接替换自身）
+ * - `portable-zip`：便携整包，仅作为手动下载链接（新用户首次下载）
+ */
+export type UpdateAssetKind = "installer" | "portable" | "portable-zip";
+
+export interface UpdateAsset {
+  /** 形如 `windows-x86_64` */
+  platform: string;
+  kind: UpdateAssetKind | string;
+  /** 文件名，同时是缓存的落地名 */
+  file: string;
+  /** 候选下载地址，按顺序尝试 */
+  urls: string[];
+  sha256: string;
+  size: number | null;
+}
+
 export interface UpdateInfo {
   version: string;
-  download_url: string;
   release_notes: string;
   release_date: string;
+  /** 强制更新：界面不应提供"稍后再说" */
   mandatory: boolean;
+  /** 与当前安装形态匹配、可自动落地的包；为 null 表示只能手动下载 */
+  asset: UpdateAsset | null;
+  /** 手动下载地址（便携整包 / 安装包），可能为 null */
+  manual_url: string | null;
 }
 
 export interface CheckUpdateResult {
   has_update: boolean;
+  /** 形如 `v0.4.0` */
   current_version: string;
-  latest?: UpdateInfo;
+  /** `portable` | `installed` */
+  install_mode: string;
+  /** 形如 `windows-x86_64` */
+  platform: string;
+  latest: UpdateInfo | null;
 }
 
 export interface DownloadUpdateResult {
   success: boolean;
-  path?: string;
+  /** 缓存目录内的落地文件名 */
+  file: string;
+  size: number;
   message: string;
+}
+
+export interface InstallUpdateResult {
+  /** 恒为 true：落地流程已启动，应用随即退出并重启 */
+  restarting: boolean;
+  message: string;
+}
+
+export interface InstallModeInfo {
+  /** `portable` | `installed` */
+  install_mode: string;
+  /** 当前平台是否支持自动安装（目前仅 Windows） */
+  auto_install_supported: boolean;
+  exe_path: string;
+  data_dir: string;
+}
+
+/** `update-progress` 事件负载 */
+export interface UpdateProgress {
+  downloaded: number;
+  /** 0 表示总长度未知 */
+  total: number;
 }
 
 // ===== Terracotta (陶瓦联机) 类型 =====
