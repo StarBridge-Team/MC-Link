@@ -7,6 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::asset_server::{assets_server_url, join};
+use crate::build_channel::BuildChannel;
 use crate::datadir::install_mode;
 
 use super::install::is_auto_install_supported;
@@ -56,24 +57,54 @@ pub(crate) async fn fetch_manifest(
     Ok(manifest)
 }
 
-/// 检查更新：拉清单 → 比版本 → 按当前平台与安装形态选出资产。
+/// 检查更新：判定渠道 → 拉清单 → 比版本 → 按平台与安装形态选出资产。
+///
+/// # 渠道闸门
+///
+/// 只有**官方发布构建**允许自动更新（见 [`crate::build_channel`]）：
+///
+/// - **开发构建**：直接返回"无可用更新"且**不发起任何网络请求**。它随时在变，
+///   "是否是最新版本"对它没有意义，跳过请求也免得开发者每次打开关于页都打一次网络。
+///   调试更新流程本身时可用 `MC_LINK_UPDATE_OVERRIDE=1` 强制开启。
+/// - **自行构建**：照常检查并告知"官方已发布新版本"，但 `asset` 恒为 `None`，
+///   只给手动下载链接——绝不静默替换别人的构建成果。
 pub(crate) async fn check_update(
     data_dir: &Path,
     client: &reqwest::Client,
 ) -> Result<CheckUpdateResult, String> {
     let current_version = format!("v{}", env!("CARGO_PKG_VERSION"));
-    let manifest = fetch_manifest(data_dir, client).await?;
+    let channel = crate::build_channel::channel();
+    let allowed = crate::build_channel::update_allowed();
 
     let platform = crate::assets::adapter::current_platform();
     let mode = install_mode();
-    let auto_supported = is_auto_install_supported();
+
+    if channel == BuildChannel::Dev && !allowed {
+        return Ok(CheckUpdateResult {
+            has_update: false,
+            current_version,
+            install_mode: mode.as_str().to_string(),
+            platform,
+            build_channel: channel.as_str().to_string(),
+            update_allowed: false,
+            latest: None,
+        });
+    }
+
+    let manifest = fetch_manifest(data_dir, client).await?;
     let has_update = version_greater(&manifest.version, &current_version);
+
+    // 渠道不允许自更新时，连同"平台是否支持"一起收敛为 false：
+    // 选不到资产，界面就只能走手动下载这条路
+    let auto_supported = is_auto_install_supported() && allowed;
 
     Ok(CheckUpdateResult {
         has_update,
         current_version,
         install_mode: mode.as_str().to_string(),
         platform: platform.clone(),
+        build_channel: channel.as_str().to_string(),
+        update_allowed: allowed,
         latest: if has_update {
             Some(build_info(
                 &manifest,

@@ -24,6 +24,8 @@
 //! 图标与版本信息仍由 `tauri-winres` 编译进 `.res` 并链接到 bin，未受影响。
 
 fn main() {
+    emit_build_channel();
+
     let attributes = if is_windows_target() {
         embed_app_manifest();
         // 清单由本脚本统一嵌入，避免 bin 侧重复嵌入。
@@ -36,6 +38,26 @@ fn main() {
     if let Err(e) = tauri_build::try_build(attributes) {
         panic!("tauri-build 执行失败: {e}");
     }
+}
+
+/// 把"这份二进制是不是官方发布构建"的信息编译进程序。
+///
+/// 自动更新会替换应用自身，因此客户端必须先知道自己在被谁替换：
+/// 开发构建与用户自行编译的版本都不允许被自动更新覆盖（详见 `src/build_channel.rs`）。
+///
+/// 这里只做"转发"：把 `PROFILE` 与外部注入的 `MC_LINK_BUILD_CHANNEL` 原样交给运行时，
+/// 判定规则留在 Rust 代码里，这样它有单测覆盖，而不是埋在构建脚本里。
+fn emit_build_channel() {
+    // 环境变量变化时重新执行本脚本，从而刷新 rustc-env
+    println!("cargo:rerun-if-env-changed=MC_LINK_BUILD_CHANNEL");
+    println!("cargo:rerun-if-env-changed=PROFILE");
+
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "release".to_string());
+    // 发布流程（scripts/tauri-build.mjs）会注入 official；其他情况为空
+    let stamped = std::env::var("MC_LINK_BUILD_CHANNEL").unwrap_or_default();
+
+    println!("cargo:rustc-env=MC_LINK_PROFILE={profile}");
+    println!("cargo:rustc-env=MC_LINK_STAMPED_CHANNEL={stamped}");
 }
 
 fn is_windows_target() -> bool {

@@ -13,6 +13,10 @@
  * 其他架构（如 arm64）的更新包，请单独执行：
  *   node scripts/make-update.mjs --platform windows-aarch64
  *
+ * 发布构建会注入 MC_LINK_BUILD_CHANNEL=official：客户端据此才允许自动更新，
+ * 详见 src-tauri/src/build_channel.rs。**CI 若要产出可自动更新的包，也必须走本脚本**
+ * （直接调用 `pnpm exec tauri build` 编出来的会被视为"自行构建"）。
+ *
  * 原生 tauri 通过 `pnpm exec tauri` 调用，避免递归调用本脚本。
  */
 import { execSync } from "node:child_process";
@@ -52,10 +56,16 @@ if (cmd === "build" && !rest.includes("--no-release")) {
 
   if (!noBump) bumpVersion(bump);
 
+  // 标记为官方发布构建：只有带这个标记的二进制才允许自动更新
+  // （见 src-tauri/src/build_channel.rs）。--no-release 的构建不带标记，
+  // 会被客户端视为"自行构建"而拒绝自更新，这是刻意的。
+  const releaseEnv = { ...process.env, MC_LINK_BUILD_CHANNEL: "official" };
+
   // 真实 tauri build（--ci 保证非交互）
   execSync(`pnpm exec tauri build --ci ${extra.join(" ")}`.trim(), {
     cwd: ROOT,
     stdio: "inherit",
+    env: releaseEnv,
   });
 
   // 产物重命名（EXE/安装包加版本号）

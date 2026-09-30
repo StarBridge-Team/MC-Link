@@ -82,6 +82,30 @@
 
 ## 应用更新（2026-09-30 实现）
 
+### 前置闸门：构建渠道（先看这个，再看下面）
+
+自动更新**替换的是应用自身**，所以先得判断"这份二进制是什么来路"。
+判定在 `src-tauri/src/build_channel.rs`，输入由 `build.rs` 从构建环境转发：
+
+| 渠道 | 何时出现 | 能否自动更新 |
+|---|---|---|
+| `official` | `pnpm build:release` / `pnpm tauri build`（发布流程注入 `MC_LINK_BUILD_CHANNEL=official`） | ✅ 可以 |
+| `dev` | debug 编译（含 `pnpm tauri dev`） | ❌ **连检查都不发起**（不打无意义的网络请求）；调试更新流程时用 `MC_LINK_UPDATE_OVERRIDE=1` 强制开启 |
+| `self-built` | release 编译但没走发布流程（`cargo build --release`、`--no-release`、fork 自编译） | ❌ 只提示"官方有新版本" + 手动下载链接，**绝不替换文件** |
+
+两条关键规则：
+
+- **debug 优先于标记**：带 official 标记的 debug 构建仍视为开发构建，否则 `cargo build`
+  时残留的环境变量就能把调试环境变成自更新目标。
+- **自构建版本不认 `MC_LINK_UPDATE_OVERRIDE`**：那个开关只给开发构建用，
+  因为自构建的 release 可能已经分发给别人，不能让一个环境变量绕过限制。
+
+闸门有两处：`update/fetch.rs`（决定是否检查、是否给可安装资产）与 `update/install.rs`
+（落地前二次确认，防绕过界面直接调用命令）。已实测四种组合（release±标记、debug±override）。
+
+**CI 注意**：CI 若直接调用 `pnpm exec tauri build`（而非 `scripts/tauri-build.mjs`），
+产物会被视为 `self-built` 而无法自动更新。
+
 ### 两种安装形态（这是本次更新的核心）
 
 | 形态 | 判定 | 更新方式 |
@@ -127,11 +151,15 @@ node scripts/make-update.mjs --platform windows-aarch64   # 其他架构，增�
 
 ### 前端契约
 
-- `src/lib/api/update.ts`：`checkUpdate` / `downloadUpdate` / `installUpdate` / `clearUpdateCache` / `getInstallMode`
+- `src/lib/api/update.ts`：`checkUpdate` / `downloadUpdate` / `installUpdate` /
+  `clearUpdateCache` / `getRuntimeInfo`（原 `getInstallMode` 已改名，命令为 `get_runtime_info_command`）
 - `src/composables/useUpdater.ts`：`check()` → `download()`（可选，带进度）→ `install()`；
-  `canAutoInstall` 为 false 时只能引导用户走 `manualUrl`
+  判断依据是 `updateAllowed`（渠道是否允许）与 `canAutoInstall`（渠道 + 是否有对应包），
+  不允许时显示 `blockedMessage`，并引导用户走 `manualUrl`
 - 进度事件 `update-progress`，负载 `{ downloaded, total }`（`total` 为 0 表示长度未知）
 - `install()` 成功后应用会在约 0.6 秒内退出：**先给用户提示再调用**
+- `check()` 返回的 `build_channel` / `update_allowed` 与 `RuntimeInfo` 里的字段同义，
+  界面应据此区分"已是最新版本"与"当前构建不参与自动更新"这两种情况
 
 ### 已知取舍与限制
 

@@ -104,6 +104,13 @@ pub struct CheckUpdateResult {
     pub install_mode: String,
     /// 形如 `windows-x86_64`。
     pub platform: String,
+    /// `dev` | `official` | `self-built`，见 [`crate::build_channel`]。
+    pub build_channel: String,
+    /// 是否允许自动替换程序文件。
+    ///
+    /// 为 `false`（开发构建 / 自行构建）时界面只能引导用户手动下载，
+    /// 此时 `latest.asset` 也会是 `None`。
+    pub update_allowed: bool,
     pub latest: Option<UpdateInfo>,
 }
 
@@ -125,11 +132,20 @@ pub struct InstallUpdateResult {
     pub message: String,
 }
 
-/// 安装形态与自更新能力（界面据此显示"便携版/安装版"并决定按钮文案）。
+/// 当前运行环境信息。
+///
+/// 界面用它显示"便携版 / 安装版"与"官方版本 / 自行构建"，并决定给
+/// "一键更新"还是"手动下载"按钮。不联网也能拿到，适合"关于"页首次渲染。
 #[derive(Debug, Clone, Serialize)]
-pub struct InstallModeInfo {
+pub struct RuntimeInfo {
+    /// `portable` | `installed`。
     pub install_mode: String,
+    /// `dev` | `official` | `self-built`，见 [`crate::build_channel`]。
+    pub build_channel: String,
+    /// 当前平台是否支持自动安装（目前仅 Windows）。
     pub auto_install_supported: bool,
+    /// 当前渠道是否允许自动更新。
+    pub update_allowed: bool,
     pub exe_path: String,
     pub data_dir: String,
 }

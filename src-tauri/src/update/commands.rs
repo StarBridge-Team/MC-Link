@@ -11,7 +11,7 @@ use crate::mgr::AppMgr;
 use super::download::update_cache_dir;
 use super::install::{apply_update, is_auto_install_supported};
 use super::model::{
-    CheckUpdateResult, DownloadUpdateResult, InstallModeInfo, InstallUpdateResult, UpdateAsset,
+    CheckUpdateResult, DownloadUpdateResult, InstallUpdateResult, RuntimeInfo, UpdateAsset,
 };
 
 /// 退出前的等待：让 invoke 的返回值先送达到前端，再关闭应用。
@@ -86,18 +86,21 @@ pub(crate) fn clear_update_cache_command(
     mgr.write().clear_update_cache()
 }
 
-/// 查询安装形态与自更新能力。
+/// 查询当前运行环境（安装形态 + 构建渠道 + 自更新许可）。
 ///
-/// 界面用它显示"便携版 / 安装版"，并决定是给"一键更新"还是"手动下载"按钮。
+/// 不联网，适合"关于"页首次渲染：界面据此显示"便携版 / 安装版"与
+/// "官方版本 / 自行构建"，并决定给"一键更新"还是"手动下载"按钮。
 #[tauri::command]
-pub(crate) fn get_install_mode_command(
+pub(crate) fn get_runtime_info_command(
     mgr: tauri::State<'_, Arc<AppMgr>>,
-) -> Result<InstallModeInfo, String> {
+) -> Result<RuntimeInfo, String> {
     let exe = exe_path().ok_or_else(|| "无法定位当前可执行文件".to_string())?;
 
-    Ok(InstallModeInfo {
+    Ok(RuntimeInfo {
         install_mode: install_mode().as_str().to_string(),
+        build_channel: crate::build_channel::channel().as_str().to_string(),
         auto_install_supported: is_auto_install_supported(),
+        update_allowed: crate::build_channel::update_allowed(),
         exe_path: exe.to_string_lossy().to_string(),
         data_dir: mgr.data_dir().to_string_lossy().to_string(),
     })

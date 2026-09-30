@@ -63,6 +63,17 @@ pub(crate) fn apply_update(
     if !is_auto_install_supported() {
         return Err("当前平台暂不支持自动安装更新，请手动下载安装包".to_string());
     }
+
+    // 渠道闸门：命令层已据此收敛，这里是第二道防线——
+    // 即使有人绕过界面直接调用命令，也不能让它替换掉开发构建或别人自构建的程序文件
+    let channel = crate::build_channel::channel();
+    if !crate::build_channel::update_allowed() {
+        return Err(format!(
+            "当前是{}，不会自动替换程序文件；请手动下载安装包",
+            channel.display_name()
+        ));
+    }
+
     if !payload.is_file() {
         return Err(format!("更新包不存在: {}", payload.display()));
     }

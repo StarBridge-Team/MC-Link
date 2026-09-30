@@ -102,6 +102,15 @@ export interface UpdateInfo {
   manual_url: string | null;
 }
 
+/**
+ * 构建渠道。它决定这份程序**能不能被自动更新替换**：
+ *
+ * - `official`：由发布流程产出，可自动更新
+ * - `dev`：debug 构建（含 `pnpm tauri dev`），不参与自动更新
+ * - `self-built`：用户/第三方自己编译的 release，只提示新版本 + 手动下载，绝不替换文件
+ */
+export type BuildChannel = "dev" | "official" | "self-built";
+
 export interface CheckUpdateResult {
   has_update: boolean;
   /** 形如 `v0.4.0` */
@@ -110,6 +119,12 @@ export interface CheckUpdateResult {
   install_mode: string;
   /** 形如 `windows-x86_64` */
   platform: string;
+  build_channel: BuildChannel | string;
+  /**
+   * 是否允许自动替换程序文件。为 false 时 `latest.asset` 必为 null，
+   * 界面只能引导用户手动下载。
+   */
+  update_allowed: boolean;
   latest: UpdateInfo | null;
 }
 
@@ -127,11 +142,15 @@ export interface InstallUpdateResult {
   message: string;
 }
 
-export interface InstallModeInfo {
+/** 当前运行环境信息（"关于"页用它显示版本形态，无需联网） */
+export interface RuntimeInfo {
   /** `portable` | `installed` */
   install_mode: string;
+  build_channel: BuildChannel | string;
   /** 当前平台是否支持自动安装（目前仅 Windows） */
   auto_install_supported: boolean;
+  /** 当前渠道是否允许自动更新 */
+  update_allowed: boolean;
   exe_path: string;
   data_dir: string;
 }

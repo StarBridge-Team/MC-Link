@@ -2,6 +2,7 @@ mod state;
 mod adapter;
 mod utils;
 mod persist;
+mod build_channel;
 mod commands;
 use commands::*;
 mod plugin;
@@ -187,7 +188,7 @@ pub fn run() {
             download_update_command,
             install_update_command,
             clear_update_cache_command,
-            get_install_mode_command,
+            get_runtime_info_command,
             get_setting_meta,
             get_setting_manifest,
             clear_setting_meta_cache_command,
