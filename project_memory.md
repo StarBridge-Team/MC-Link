@@ -7,7 +7,10 @@
 ### 现状：与 WGP Core 的连接已暂时断开
 
 - 已移除 `wgp-core` 的跨目录 path 依赖及其 Tauri 命令。**项目现在可独立构建，不再需要仓库外的 `mc-link-core`。**
-- 过渡期客户端**不含可用的联机功能**：联机页（`components/connect/`）与 `lib/api/connect.ts` 保留，但调用会失败，等待 UI 重构与插件系统落地后再接入。
+- 过渡期客户端**不含可用的联机功能**：联机页（`components/connect/`）与 `lib/api/connect.ts` 保留，但调用会失败。
+- **用户明确要求：上述前端文件保持现状——不要修改、不要删除、不要"修复"。**
+  它们将作为 UI 重构与插件系统的素材；联机能力在那一阶段之后再重新接入。
+  过渡期点击"开始联机"报 `command not found` 属于**预期现象**，不是 bug，无需处理。
 - **重新接入参考**：`legacy-wgp-p2p-v0.4.0` tag，包含：
   - `src-tauri/src/commands/connect.rs`（3 个命令 + `p2p-event` 事件）
   - `src-tauri/src/mgr/connection.rs`（ConnectionManager 状态机）
