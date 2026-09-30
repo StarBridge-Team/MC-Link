@@ -102,7 +102,7 @@ pub(crate) fn apply_update(
     Ok("更新已就绪，应用即将退出并自动重启".to_string())
 }
 
-/// 清理上一次落地留下的文件：旧 exe 的 `.bak`、下载中断残留的 `.tmp`。
+/// 启动时的清理：上一次落地留下的旧 exe 备份，以及更新缓存里已用完的包。
 ///
 /// 在启动时调用：此时旧进程必然已经退出，这些文件不再被占用。
 /// 清理失败不影响使用（下次启动再试）。
@@ -110,16 +110,7 @@ pub(crate) fn cleanup_leftovers(data_dir: &Path) {
     if let Some(exe) = exe_path() {
         let _ = std::fs::remove_file(bak_path(&exe));
     }
-
-    let dir = super::download::update_cache_dir(data_dir);
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("tmp") {
-                let _ = std::fs::remove_file(&path);
-            }
-        }
-    }
+    super::download::prune_cache(data_dir);
 }
 
 // ------------------------------------------------------------------

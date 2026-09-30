@@ -108,8 +108,9 @@ if (produced.length === 0) {
 }
 
 writeManifest(produced);
+pruneLocalOldVersions();
 console.log(`[make-update] 清单已更新: ${MANIFEST_PATH}`);
-console.log("[make-update] 下一步: pnpm sync:assets（上传到资源服务器）");
+console.log("[make-update] 下一步: pnpm sync:assets（上传到资源服务器并回收旧包）");
 
 // ------------------------------------------------------------------
 // helpers
@@ -249,4 +250,24 @@ function writeManifest(items) {
 
 function psEscape(p) {
   return p.replace(/'/g, "''");
+}
+
+/**
+ * 本地目录只保留**本次版本**的包（含其他架构，它们可能由另一次执行生成）。
+ *
+ * 为什么不删其他架构：清单会把同一版本的各平台资产合并在一起，
+ * 删掉 arm64 的包会让 arm64 客户端拿到指向不存在文件的清单。
+ *
+ * 远端由 sync-assets.mjs 另行回收（保留最新两个版本，给正在下载旧版的客户端留缓冲）。
+ * 本地"只留当前版本"与远端"留两个版本"策略不同是刻意的：
+ * 本地是上传源（留着只会每次重传），远端是分发点（需要一点冗余）。
+ */
+function pruneLocalOldVersions() {
+  for (const name of readdirSync(OUT_DIR)) {
+    if (name === "latest.json" || !name.startsWith("MC-Link-")) continue;
+    // 形如 MC-Link-<版本>-<平台>-<类型>.<扩展名>
+    if (name.includes(`-${version}-`)) continue;
+    rmSync(join(OUT_DIR, name), { force: true });
+    console.log(`[make-update] 已清理本地旧版本包: ${name}`);
+  }
 }

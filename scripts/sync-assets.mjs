@@ -134,6 +134,13 @@ if (fail > 0) {
 }
 console.log(`[sync-assets] 上传完成：${ok}/${ordered.length}`);
 
+// 5) 回收服务器上的旧版本更新包
+//    没有这一步，每个版本会在服务器上留约 30MB 且永远无法回收
+//   （服务器原先只有上传接口，没有任何删除能力）。
+if (updateFiles.length > 0) {
+  await pruneRemoteUpdates();
+}
+
 // ------------------------------------------------------------------
 // helpers
 // ------------------------------------------------------------------
@@ -249,6 +256,143 @@ async function prepareAdapters() {
   console.log(
     `[sync-assets] 适配器清单已生成：${ADAPTER_FILE}（${buf.length}B，sha256=${sha256.slice(0, 16)}…）`,
   );
+}
+
+/**
+ * 回收服务器上的旧版本更新包。
+ *
+ * 保留策略：最新**两个**版本。最新的必须在（清单指向它）；前一个留作缓冲——
+ * 正在下载旧版本的客户端不会因为文件突然消失而中断。更早的一律删除。
+ *
+ * 依赖资源服务器的两个端点：`GET /update/list` 与 `POST /delete`。
+ * 任一步失败都只打印警告：回收是维护动作，不该让发布流程失败。
+ */
+async function pruneRemoteUpdates() {
+  let listing;
+  try {
+    listing = await httpGetJson(`${SERVER_URL}/update/list`);
+  } catch (e) {
+    console.warn(`[sync-assets] 无法获取远端更新目录清单，跳过旧包回收: ${e.message}`);
+    return;
+  }
+
+  if (!listing || !Array.isArray(listing.files)) {
+    console.warn("[sync-assets] 远端更新目录清单格式异常，跳过旧包回收");
+    return;
+  }
+
+  const byVersion = new Map();
+  for (const name of listing.files) {
+    if (name === "latest.json") continue; // 清单本身永远保留
+    const version = parsePackageVersion(name);
+    if (!version) continue; // 认不出的文件名一律不动
+    if (!byVersion.has(version)) byVersion.set(version, []);
+    byVersion.get(version).push(name);
+  }
+
+  const versions = [...byVersion.keys()].sort(compareVersions).reverse();
+  const keep = new Set(versions.slice(0, 2));
+  const doomed = versions.slice(2).flatMap((v) => byVersion.get(v));
+  if (doomed.length === 0) return;
+
+  console.log(
+    `[sync-assets] 回收旧版本更新包（保留 ${[...keep].join(", ")}）：${doomed.length} 个文件`,
+  );
+  for (const name of doomed) {
+    try {
+      await postDelete(`update/${name}`);
+      console.log(`  ✗ 已回收 ${name}`);
+    } catch (e) {
+      console.warn(`  ! 回收失败 ${name}: ${e.message}`);
+    }
+  }
+}
+
+/** 从更新包文件名解析版本号：`MC-Link-0.4.1-windows-x86_64-setup.exe` → `0.4.1`。 */
+function parsePackageVersion(name) {
+  const rest = name.startsWith("MC-Link-") ? name.slice("MC-Link-".length) : null;
+  if (!rest) return null;
+  const version = rest.split("-")[0];
+  const parts = version.split(".");
+  if (parts.length !== 3) return null;
+  if (!parts.every((p) => /^\d+$/.test(p))) return null;
+  return version;
+}
+
+/** 版本号数字序比较（用于排序，不追求完整语义化版本支持）。 */
+function compareVersions(a, b) {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i += 1) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
+}
+
+/** GET 一个 JSON 端点。 */
+function httpGetJson(url) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const lib = u.protocol === "https:" ? httpsRequest : httpRequest;
+    const req = lib(
+      {
+        method: "GET",
+        hostname: u.hostname,
+        port: u.port,
+        path: u.pathname + u.search,
+        headers: { "User-Agent": "mc-link-sync-assets" },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (d) => (body += d));
+        res.on("end", () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`HTTP ${res.statusCode}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(new Error(`响应不是合法 JSON: ${e.message}`));
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+/** 请求服务器删除一个已上传的文件；404 视为"已经清理过"。 */
+function postDelete(rel) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(
+      `${SERVER_URL}/delete?path=${encodeURIComponent(rel)}` +
+        (TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : ""),
+    );
+    const lib = url.protocol === "https:" ? httpsRequest : httpRequest;
+    const req = lib(
+      {
+        method: "POST",
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + url.search,
+        headers: { "Content-Length": 0 },
+      },
+      (res) => {
+        res.resume();
+        res.on("end", () => {
+          if ((res.statusCode >= 200 && res.statusCode < 300) || res.statusCode === 404) {
+            resolve(true);
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}`));
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 // 跟随重定向的 GET，返回完整响应体（gitee 发布下载会 302 到 CDN）

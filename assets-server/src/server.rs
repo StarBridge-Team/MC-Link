@@ -60,6 +60,16 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
         return handle_upload(req, cfg, query);
     }
 
+    // 删除接口：仅允许 POST /delete（与上传同样需要 token）。
+    // 存在的理由：资源服务器只有上传没有删除时，旧版本的更新包会永久堆积
+    //（每个版本约 30MB），且没有任何办法回收。
+    if path == "/delete" {
+        if method != Method::Post {
+            return method_not_allowed();
+        }
+        return handle_delete(cfg, query);
+    }
+
     // 仅允许 GET / HEAD / OPTIONS
     if method != Method::Get && method != Method::Head && method != Method::Options {
         return method_not_allowed();
@@ -123,6 +133,9 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
             };
             serve_file(&cfg.pages_dir(), &rel, &cfg.cors_origin)
         }
+
+        // 更新目录文件清单（供发布脚本回收旧版本包；必须排在下面的前缀匹配之前）
+        "/update/list" | "/updates/list" => list_update_files(&cfg),
 
         // 更新清单
         "/update/latest.json" | "/updates/latest.json" => serve_update(&cfg, "latest.json"),
@@ -379,6 +392,66 @@ fn handle_upload(
             json_status(200, r#"{"ok":true}"#)
         }
         Err(e) => json_status(500, &format!("{{\"ok\":false,\"error\":\"write: {}\"}}", e)),
+    }
+}
+
+/// 列出更新目录下的文件名（`GET /update/list`）。
+///
+/// 发布脚本据此回收旧版本包：它必须知道服务器上实际存在哪些文件，
+/// 而服务器没有目录浏览能力，所以单开一个只读清单端点。
+fn list_update_files(cfg: &AssetsConfig) -> Response<std::io::Cursor<Vec<u8>>> {
+    let dir = cfg.assets_dir().join("update");
+    let mut files: Vec<String> = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_file() {
+                if let Some(name) = entry.file_name().to_str() {
+                    files.push(name.to_string());
+                }
+            }
+        }
+    }
+    files.sort();
+
+    let body = serde_json::to_string(&serde_json::json!({ "files": files }))
+        .unwrap_or_else(|_| r#"{"files":[]}"#.to_string());
+    json_response(&body, &cfg.cors_origin)
+}
+
+/// 删除一个已上传的文件（`POST /delete?path=<Assets 相对路径>&token=<token>`）。
+///
+/// 存在的理由：只有上传没有删除时，旧版本更新包会永久堆积（每版约 30MB）且无法回收。
+/// 与上传同样受 token 保护；`safe_join` 保证只能删 `Assets/` 目录内的文件。
+/// 文件不存在返回 404——调用方应把它当作"已经清理过"，而不是错误。
+fn handle_delete(cfg: &Arc<AssetsConfig>, query: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    if !cfg.upload_token.is_empty() {
+        let provided = query_param(query, "token").unwrap_or_default();
+        if provided != cfg.upload_token {
+            return json_status(401, r#"{"ok":false,"error":"unauthorized"}"#);
+        }
+    }
+
+    let rel = match query_param(query, "path") {
+        Some(p) if !p.is_empty() => p,
+        _ => return json_status(400, r#"{"ok":false,"error":"missing path"}"#),
+    };
+
+    let target = match safe_join(&cfg.assets_dir(), &rel) {
+        Some(t) => t,
+        None => return json_status(400, r#"{"ok":false,"error":"invalid path"}"#),
+    };
+
+    if !target.is_file() {
+        return json_status(404, r#"{"ok":false,"error":"not found"}"#);
+    }
+
+    match std::fs::remove_file(&target) {
+        Ok(_) => {
+            eprintln!("[delete] 已删除 {}", target.display());
+            json_status(200, r#"{"ok":true}"#)
+        }
+        Err(e) => json_status(500, &format!("{{\"ok\":false,\"error\":\"delete: {}\"}}", e)),
     }
 }
 
