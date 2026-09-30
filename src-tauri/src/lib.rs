@@ -1,9 +1,9 @@
 mod state;
 mod adapter;
 mod utils;
-mod terracotta_client;
 mod commands;
 use commands::*;
+mod plugin;
 mod tray;
 mod assets;
 mod asset_server;
@@ -20,24 +20,36 @@ mod setting_meta;
 mod m3;
 use m3::commands::*;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
 use state::AppState;
 use datadir::resolve_data_dir;
-use adapter::AdapterManager;
 use mgr::AppMgr;
+use plugin::PluginManager;
 
-fn launch_adapters(app: &tauri::App, data_dir: &std::path::Path) {
-    let manager = AdapterManager::new(data_dir);
-    app.manage(Arc::new(Mutex::new(manager)));
+/// 初始化插件子系统。
+///
+/// 同步部分（清单加载、内置插件注册、游戏画像）立即完成；需要网络的网关绑定
+/// 交给后台任务，避免拖慢窗口启动。
+fn init_plugin_subsystem(app: &tauri::App, data_dir: &std::path::Path) -> Result<(), String> {
+    let manager = PluginManager::new(data_dir)?;
+    manager.attach_app(app.handle().clone());
+    app.manage(manager.clone());
+
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = manager.start().await {
+            eprintln!("[插件] 网关启动失败，外部插件将不可用: {}", e);
+        }
+    });
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -59,7 +71,9 @@ pub fn run() {
             }
 
             tray::setup_tray(app.handle())?;
-            launch_adapters(app, &data_dir);
+            if let Err(e) = init_plugin_subsystem(app, &data_dir) {
+                eprintln!("[插件] 子系统初始化失败: {}", e);
+            }
             effect::setup_window_effects(app);
 
             // 注册 mclink:// 深度链接
@@ -166,7 +180,23 @@ pub fn run() {
             get_setting_manifest,
             clear_setting_meta_cache_command,
             generate_m3_scheme,
+            plugin_list,
+            plugin_gateway,
+            game_list,
+            plugin_route_plan,
+            plugin_set_enabled,
+            plugin_set_grants,
+            plugin_set_blocked,
+            plugin_reload,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            if let Some(manager) = app_handle.try_state::<Arc<PluginManager>>() {
+                manager.shutdown();
+            }
+        }
+    });
 }
