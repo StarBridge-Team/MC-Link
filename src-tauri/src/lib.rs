@@ -2,7 +2,6 @@ mod state;
 mod adapter;
 mod utils;
 mod terracotta_client;
-mod account;
 mod commands;
 use commands::*;
 mod tray;
@@ -156,13 +155,6 @@ pub fn run() {
             set_window_dark_mode,
             get_background_files,
             get_background_file_url,
-            account_login,
-            account_verify,
-            account_ping,
-            desktop_login_init,
-            desktop_login_poll,
-            account_get_me,
-            account_get_avatar,
             init_app,
             prepare_app,
             get_asset_url,

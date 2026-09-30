@@ -55,46 +55,6 @@ export interface InitAppData {
   tauri_version: string;
 }
 
-// ===== 账号类型 =====
-
-export interface AccountResponse {
-  status: string;
-  token?: string;
-  username?: string;
-  message?: string;
-}
-
-// ===== 桌面登录类型 =====
-
-export interface DesktopInitResult {
-  code: number;
-  session?: string;
-  expires_in?: number;
-  error: string;
-}
-
-export interface DesktopPollResult {
-  code: number;
-  status: string;
-  encrypted_token?: string;
-  token?: string;
-  error: string;
-}
-
-export interface UserInfoResult {
-  id?: number;
-  username?: string;
-  email?: string;
-  role?: string;
-  avatar?: string;
-}
-
-export interface MeResult {
-  code: number;
-  user?: UserInfoResult;
-  error: string;
-}
-
 // ===== 远程页面类型 =====
 
 export interface PageEntry {

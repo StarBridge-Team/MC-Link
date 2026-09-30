@@ -1,13 +1,11 @@
 pub(crate) mod window;
 pub(crate) mod app;
 pub(crate) mod adapter;
-pub(crate) mod account;
 pub(crate) mod connect;
 
 pub(crate) use window::*;
 pub(crate) use app::*;
 pub(crate) use adapter::*;
-pub(crate) use account::*;
 pub(crate) use connect::*;
 
 pub(crate) use crate::config::push::*;
