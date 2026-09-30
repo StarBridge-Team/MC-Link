@@ -13,7 +13,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-mc-link-common = { path = "../mc-link-common", features = ["async"] }
 # 联机核心：折跃门 P2P NAT 穿透库（跨目录 path 依赖）
 # 注意：wgp-core 在其原工作区使用 workspace 继承版本，这里需显式指定 version 以脱离原 workspace 解析。
 # 路径：src-tauri(此处) -> ../mc-link -> ../Tauri -> ../Code -> ../../Rust/mc-link-core/wgp-core

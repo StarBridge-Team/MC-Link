@@ -2501,7 +2501,6 @@ dependencies = [
  "hex",
  "local-ip-address",
  "material-colors",
- "mc-link-common",
  "rand 0.8.6",
  "rand_core 0.6.4",
  "raw-window-handle",
@@ -2524,18 +2523,6 @@ dependencies = [
  "uuid",
  "wgp-core",
  "winreg 0.52.0",
-]
-
-[[package]]
-name = "mc-link-common"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "hex",
- "rand_core 0.6.4",
- "serde",
- "sha2",
- "tokio",
 ]
 
 [[package]]
