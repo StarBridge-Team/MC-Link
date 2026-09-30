@@ -19,14 +19,19 @@
   `start_p2p_connection` / `stop_p2p_connection` / `get_p2p_status`；事件名 `p2p-event`；
   还需恢复 `mgr/mod.rs`、`commands/mod.rs`、`lib.rs` 中的模块声明、`app.manage(...)` 与命令注册。
 
-### 另一条独立链路：陶瓦适配器（保留）
+### 另一条独立链路：陶瓦适配器（已并入插件系统）
 
-- `adapter.rs` + `terracotta_client.rs` + `commands/adapter.rs` 封装第三方"陶瓦联机" exe
-  （本地 HTTP + 端口轮询），**与 WGP 无关**，不要因为"联机断开"而删除。
+- 陶瓦联机封装**与 WGP 无关**，不要因为"联机断开"而删除。
+- 2026-09-30 起已规范化为**内置适配器插件**：`builtin/terracotta.rs` 是唯一入口，
+  `adapter.rs` 退居为该插件的运行载体，`terracotta_client.rs` 已删除。
+  `commands/adapter.rs` 的 6 个命令签名不变，内部改为经插件管理器派发。
+- 设计说明见仓库根目录 `插件系统设计.md`。
 
 ### 进行中的方向
 
-- 接下来将对 UI 做大幅重构，并引入**插件系统**。联机能力将在该阶段之后重新接入。
+- **插件系统后端已落地**（`src-tauri/src/plugin/`）：三类能力（适配/检测/耦合）、
+  回环 WebSocket 控制面、权限与加密。检测类与耦合类目前只有接口与路由，尚无内置实现。
+- 下一步：前端 UI 大幅重构，含插件管理界面；联机能力在新流程下经插件系统接入。
 
 ## 认证方案（2026-09-30 更新）
 
