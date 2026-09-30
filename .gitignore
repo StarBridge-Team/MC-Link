@@ -29,6 +29,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.codebuddy/*
 
 # 陈旧的依赖目录（当时的 node_modules 副本，勿入库）
 node_modules_stale/

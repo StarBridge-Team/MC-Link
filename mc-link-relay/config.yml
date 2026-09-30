@@ -1,8 +1,0 @@
-central_server: mk.aini2.cn:8878
-relay_port: 57894
-report_address: null
-heartbeat_interval: 5
-latency_check_interval: 300
-probe_interval: 180
-bandwidth_limit_mbps: null
-relay_name: null
