@@ -45,6 +45,38 @@
 - 若将来适配器改为随应用内嵌（`tauri.conf.json` 的 `bundle.resources`），应在
   `src-tauri/src/assets/adapter.rs` 的 `fetch_manifest` 中增加"本地常量清单"分支。
 
+## 持久化约定（2026-09-30 起强制执行）
+
+### 唯一入口
+
+| 层 | 唯一入口 | 谁负责 |
+|---|---|---|
+| Rust 用户数据 | `src-tauri/src/persist.rs` | 原子写入（tmp+rename）、损坏隔离（改名为 `.corrupt-<时间戳>` 而非覆盖）、失败打印原因 |
+| 前端本地存储 | `src/lib/persist.ts` | `KEYS` 集中登记 key；`local` / `session` 命名空间；失败 `console.warn` |
+
+### 禁止事项
+
+- **禁止**在 Rust 侧用 `std::fs::write` 直接写用户数据（Setting/*.yml、Adapter/*.json、
+  Plugins/registry.json、插件密钥都必须走 `crate::persist`）。`Assets/` 是可重新下载的
+  缓存，仍走 `clear_cache` 语义，不受此约束。
+- **禁止**在前端直接使用 `localStorage` / `sessionStorage`，一律经 `lib/persist.ts`。
+- **禁止**"解析失败就用默认值覆盖原文件"——必须隔离备份后重建，并打印日志。
+  这条是"软件回到全新状态"的已知成因之一。
+- **禁止**改动 `KEYS` 里的 key 字符串。改名会让老用户的 localStorage 数据变孤儿
+  （表现为设置丢失）；确需改名必须先写迁移。
+
+### 为什么
+
+用户报告过"退出时改动没保存、重启后回到全新状态"。排查确认：个性化保存链路本身正常，
+真正的风险来自 ① 多处直接 `std::fs::write` + 静默覆盖（损坏即整体清空且无法取证）、
+② 前端存储封装写好却没人用、失败被静默吞掉、`player_name` 甚至只读不写。
+
+### 已知的"未接线"项（不是 bug，重构时一并处理）
+
+- 玩家名（`KEYS.playerName`）目前**没有写入入口**，只有读取，所以改了也不会保存。
+- `save_setting` 命令（`conector.yml` / `account.yml` 等分区）前端**无任何调用者**，
+  这些分区的设置界面已随 `MetaSettingSection.vue` 一起移除。
+
 ## 认证方案（2026-09-30 更新）
 
 ### 现状：客户端不含任何登录功能
