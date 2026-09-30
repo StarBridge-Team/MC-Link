@@ -51,7 +51,16 @@ fn init_plugin_subsystem(app: &tauri::App, data_dir: &std::path::Path) -> Result
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let context = tauri::generate_context!();
+
+    // 官方更新插件只有在配置了签名公钥时才有意义：它的签名校验不可关闭，
+    // 没填 pubkey 就根本无法完成校验。因此没配就不注册，避免启动阶段报错，
+    // 更新流程会自动回退到自研路径（见 update/plugin_updater.rs）。
+    let updater_configured = update::plugin_configured(&context.config().plugins);
+    // 记下来供"能否自动安装"与选资产使用：Linux/macOS 只有插件可用时才支持自更新
+    update::plugin_record_configured(updater_configured);
+
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -148,7 +157,13 @@ pub fn run() {
             }
 
             Ok(())
-        })
+        });
+
+    if updater_configured {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             minimize_window,
             maximize_window,
@@ -202,7 +217,7 @@ pub fn run() {
             plugin_set_blocked,
             plugin_reload,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {

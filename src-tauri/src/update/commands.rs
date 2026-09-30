@@ -10,6 +10,7 @@ use crate::mgr::AppMgr;
 
 use super::download::update_cache_dir;
 use super::install::{apply_update, is_auto_install_supported};
+use super::{install_via_plugin, plugin_available, plugin_preferred};
 use super::model::{
     CheckUpdateResult, DownloadUpdateResult, InstallUpdateResult, RuntimeInfo, UpdateAsset,
 };
@@ -59,23 +60,53 @@ pub(crate) async fn install_update_command(
 ) -> Result<InstallUpdateResult, String> {
     let data_dir = mgr.data_dir().clone();
 
-    // 复用下载结果：命中缓存时不会重新下载
+    // 安装版与非 Windows：优先交给官方更新插件——它能正确处理 NSIS / AppImage / macOS，
+    // 系统目录与注册表由官方实现打理。仅在配置了更新公钥时可用；
+    // 失败则回退到自研路径（Windows 安装版仍能装上），不让用户卡在"更新不了"。
+    if plugin_preferred() && plugin_available() {
+        match install_via_plugin(&app).await {
+            Ok(version) => {
+                // Windows 上插件会在安装前让应用自行退出；其他平台需要我们重启
+                restart_after_delay(app, !cfg!(windows));
+                return Ok(InstallUpdateResult {
+                    restarting: true,
+                    message: format!("已开始安装 {}，应用即将重启", version),
+                });
+            }
+            Err(e) => {
+                eprintln!("[更新] 官方插件落地失败，回退到自研路径: {}", e);
+            }
+        }
+    }
+
+    // 自研路径：便携版必然走这里（替换 exe）；Windows 安装版也作为插件的回退。
+    // 复用下载结果：命中缓存时不会重新下载。
     let downloaded = mgr.pull().download_update(asset.clone(), |_, _| {}).await?;
     let payload = update_cache_dir(&data_dir).join(&downloaded.file);
 
     let message = apply_update(&data_dir, &asset, &payload)?;
 
-    // 落地进程正在等待本进程退出；稍等片刻让前端先把"正在重启"渲染出来
-    let handle = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(EXIT_DELAY);
-        handle.exit(0);
-    });
-
+    // 落地进程（或安装器）正在等待本进程退出，稍等片刻让前端先把"正在重启"渲染出来
+    restart_after_delay(app, false);
     Ok(InstallUpdateResult {
         restarting: true,
         message,
     })
+}
+
+/// 延迟重启/退出：让 `invoke` 的返回值先送达前端。
+///
+/// `reexec = true` 时用 `restart()` 重新拉起（安装已由插件完成，需要换成新二进制）；
+/// `false` 时只退出——由后台的落地进程负责重新启动应用。
+fn restart_after_delay(app: tauri::AppHandle, reexec: bool) {
+    std::thread::spawn(move || {
+        std::thread::sleep(EXIT_DELAY);
+        if reexec {
+            app.restart();
+        } else {
+            app.exit(0);
+        }
+    });
 }
 
 /// 清理更新缓存。

@@ -32,10 +32,14 @@ const WAIT_EXIT_SECS: u64 = 120;
 
 /// 自动落地是否受支持。
 ///
-/// 目前只有 Windows 的两种发行方式能自更新：Linux 的 deb 需要包管理器与提权，
-/// macOS 需要签名校验，都不适合自行替换，强行做只会破坏系统上的安装记录。
+/// - **Windows**：始终支持——安装版交给 NSIS 安装器，便携版直接替换 exe；
+/// - **Linux / macOS**：只有当官方更新插件可用时（已配置签名公钥）才支持，
+///   且落地由插件完成。自行替换 deb/AppImage/`.app` 会破坏包管理器与 Gatekeeper
+///   的记录，因此没有插件时一律判定为不支持，界面只能引导手动下载。
+///
+/// 顺带决定"能否给用户一个可安装的资产"：返回 false 时选资产会得到 `None`。
 pub(crate) fn is_auto_install_supported() -> bool {
-    cfg!(windows)
+    cfg!(windows) || super::plugin_updater::available()
 }
 
 /// 安装日志路径：放在更新缓存目录里，用户反馈"更新后打不开"时可直接取证。

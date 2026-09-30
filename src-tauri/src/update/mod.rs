@@ -10,12 +10,17 @@
 //! | [`install`] | 落地：便携版替换 exe，安装版交给安装器，完成后重启 |
 //! | [`commands`] | 5 个 Tauri 命令 |
 //!
-//! # 两种安装形态
+//! # 两种安装形态与两条落地路径
 //!
-//! | 形态 | 数据目录 | 自动更新方式 |
+//! | 形态 / 平台 | 数据目录 | 落地方式 |
 //! |---|---|---|
-//! | 便携版 | exe 同目录 | 直接替换 exe，随后重启 |
-//! | 安装版 | 系统 app_data_dir | 交给 NSIS 安装器，装完重启 |
+//! | 便携版 | exe 同目录 | **自研**：直接替换 exe，随后重启（[`install`]） |
+//! | 安装版（Windows） | 系统 app_data_dir | **官方插件**优先，失败回退到自研的安装器拉起（[`plugin_updater`] → [`install`]） |
+//! | Linux / macOS | 系统目录 | **官方插件**（Linux 仅 AppImage 支持自动安装） |
+//!
+//! 官方插件之所以只能作为"安装版"的落地方式：它只认 NSIS/MSI/AppImage/`.app.tar.gz`，
+//! 对"exe 同目录即全部"的便携形态无能为力。反过来，插件需要签名公钥才能用，
+//! 未配置时安装版仍由自研路径兜底，不会出现"更新不了"。
 //!
 //! 形态判定在 [`crate::datadir::install_mode`]。清单按 `platform` + `kind` 同时提供两份资产，
 //! 客户端只挑与自身形态匹配的那一份，因此**同一份清单同时服务两种发行方式**。
@@ -44,6 +49,7 @@ mod download;
 mod fetch;
 mod install;
 mod model;
+pub(crate) mod plugin_updater;
 
 // 只导出模块外部真正用到的类型：其余由子模块内部按路径引用，避免污染上层命名空间
 pub(crate) use model::{CheckUpdateResult, DownloadUpdateResult, UpdateAsset};
@@ -52,3 +58,8 @@ pub(crate) use commands::*;
 pub(crate) use download::{clear_update_cache, download_asset};
 pub(crate) use fetch::check_update;
 pub(crate) use install::cleanup_leftovers;
+pub(crate) use plugin_updater::{
+    available as plugin_available, configured as plugin_configured, install_via_plugin,
+    preferred as plugin_preferred,
+};
+pub(crate) use plugin_updater::record_configured as plugin_record_configured;

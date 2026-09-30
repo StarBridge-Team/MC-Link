@@ -49,6 +49,7 @@ subtle = "2"
 # M3 (Material Design 3) 动态配色引擎：从种子颜色生成色调调色板、明暗主题映射与颜色角色分配
 # 成熟稳定的 Rust crate 实现：https://crates.io/crates/material-colors
 material-colors = "0.3"
+tauri-plugin-updater = "2.13.1"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

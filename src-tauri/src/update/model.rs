@@ -32,10 +32,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::datadir::InstallMode;
 
-/// 可自动落地的资产类型：安装版用安装器。
+/// 可自动落地的资产类型：Windows 安装版用 NSIS 安装器。
 pub const KIND_INSTALLER: &str = "installer";
 /// 可自动落地的资产类型：便携版用单文件 exe（直接替换自身）。
 pub const KIND_PORTABLE: &str = "portable";
+/// 可自动落地的资产类型：Linux AppImage（由官方更新插件安装；deb/rpm 插件不支持）。
+pub const KIND_APPIMAGE: &str = "appimage";
+/// 可自动落地的资产类型：macOS `.app.tar.gz`（由官方更新插件安装）。
+pub const KIND_MACOS_APP: &str = "macos-app";
 /// 仅用于手动下载的整包（便携 zip，含 `portable.txt`，供新用户首次下载）。
 pub const KIND_PORTABLE_ZIP: &str = "portable-zip";
 
@@ -182,13 +186,26 @@ pub(crate) fn version_greater(left: &str, right: &str) -> bool {
 }
 
 /// 某种安装形态可自动落地的资产类型（按优先级）。
+///
+/// "安装版"要按平台选不同的包形态，因为各平台的安装方式完全不同：
+/// Windows 交给 NSIS 安装器，Linux 只能自替换 AppImage，macOS 只能换 `.app`。
 fn auto_kinds(mode: InstallMode) -> &'static [&'static str] {
     match mode {
-        // 安装版必须由安装器覆盖系统目录并写注册表；直接替换 exe 会留下
-        // "文件已更新但安装记录没变"的不一致状态，卸载/修复都会出错。
-        InstallMode::Installed => &[KIND_INSTALLER],
         // 便携版反过来：目录里没有安装记录，替换 exe 就是全部。
         InstallMode::Portable => &[KIND_PORTABLE],
+        // 安装版必须由安装器/插件覆盖系统目录并更新安装记录；
+        // 直接替换二进制会留下"文件已变但记录没变"的不一致状态。
+        InstallMode::Installed => {
+            if cfg!(windows) {
+                &[KIND_INSTALLER]
+            } else if cfg!(target_os = "linux") {
+                &[KIND_APPIMAGE]
+            } else if cfg!(target_os = "macos") {
+                &[KIND_MACOS_APP]
+            } else {
+                &[]
+            }
+        }
     }
 }
 
@@ -327,6 +344,18 @@ mod tests {
         assert!(select_asset(&m, "windows-x86_64", InstallMode::Portable, true).is_none());
         // 但仍应给出手动下载地址，避免用户卡在"没有可用更新"上
         assert!(select_manual_asset(&m, "windows-x86_64", InstallMode::Portable).is_none());
+    }
+
+    #[test]
+    fn installed_mode_uses_the_platform_appropriate_kind() {
+        let kinds = auto_kinds(InstallMode::Installed);
+        if cfg!(windows) {
+            assert_eq!(kinds, &[KIND_INSTALLER]);
+        } else if cfg!(target_os = "linux") {
+            assert_eq!(kinds, &[KIND_APPIMAGE]);
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(kinds, &[KIND_MACOS_APP]);
+        }
     }
 
     #[test]

@@ -48,6 +48,13 @@
       "desktop": {
         "schemes": ["mclink"]
       }
+    },
+    "updater": {
+      "pubkey": "",
+      "endpoints": ["https://mclinkassets.xigo.top:54789/update/tauri.json"],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

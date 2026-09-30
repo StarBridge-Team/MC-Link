@@ -4,10 +4,24 @@
  * ------------------------------------------------------------------
  * 产出（全部落在 assets-server/Assets/update/，随后由 sync-assets.mjs 上传）：
  *
- *   MC-Link-<ver>-<platform>-setup.exe          安装版更新包（NSIS 安装器，带界面）
- *   MC-Link-<ver>-<platform>-portable.exe       便携版更新包（单文件，直接替换自身）
- *   MC-Link-<ver>-<platform>-portable.zip       便携整包（exe + portable.txt，供新用户首次下载）
- *   latest.json                                 更新清单
+ *   MC-Link-<ver>-<platform>-setup.exe       安装版更新包（NSIS 安装器）
+ *   MC-Link-<ver>-<platform>-portable.exe    便携版更新包（单文件，直接替换自身）
+ *   MC-Link-<ver>-<platform>-portable.zip    便携整包（exe + portable.txt，供新用户首次下载）
+ *   <...>.AppImage / <...>.app.tar.gz        Linux / macOS 产物（仅在该平台构建时存在）
+ *   latest.json                              我们的更新清单（版本判定以此为准）
+ *   tauri.json                               Tauri 官方更新插件的清单（需签名私钥）
+ *
+ * # 两条落地路径，两份清单
+ *
+ * | 场景 | 谁落地 | 读哪份清单 |
+ * |---|---|---|
+ * | Windows 便携版 | 本仓库自研（替换 exe） | latest.json |
+ * | Windows 安装版 / Linux / macOS | Tauri 官方更新插件 | tauri.json |
+ *
+ * 插件清单的格式与签名机制由插件自己规定（`platforms` + minisign `.sig`），
+ * 无法与我们的 latest.json 合并；但两者由同一次发布生成，版本与说明不会漂移。
+ * **没有 `TAURI_SIGNING_PRIVATE_KEY` 时不会生成 tauri.json**——插件的签名校验不可关闭，
+ * 生成一份通不过校验的清单只会让人误以为已经配好；此时 Windows 安装版走自研兜底。
  *
  * 为什么便携版要出两份：
  *   - 自动更新只需要**单个 exe**：客户端把它覆盖到自己的路径上即可，无需解压；
@@ -20,12 +34,12 @@
  *
  * 用法：
  *   node scripts/make-update.mjs [--platform windows-x86_64] [--mandatory]
+ * 环境变量：
+ *   TAURI_SIGNING_PRIVATE_KEY  插件签名私钥（不设则跳过 tauri.json）
+ *   ASSET_SERVER_URL           清单里下载地址的前缀（默认生产资源服务器）
  * 约定：
  *   - 版本号取自 package.json（tauri-build.mjs 已自增）
  *   - 更新说明取自仓库根目录的 release-notes.md（可选）
- *
- * 注意：旧版本的包不会自动清理，`Assets/update/` 会随版本累积；
- * 确认没有客户端还在下载旧版本后，可手动删除旧文件。
  */
 import {
   existsSync,
@@ -48,6 +62,7 @@ const ROOT = join(__dirname, "..");
 const TARGET_DIR = join(ROOT, "src-tauri", "target");
 const OUT_DIR = join(ROOT, "assets-server", "Assets", "update");
 const MANIFEST_PATH = join(OUT_DIR, "latest.json");
+const PLUGIN_MANIFEST_PATH = join(OUT_DIR, "tauri.json");
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -59,6 +74,9 @@ const valueOf = (name) => {
 /** 与客户端 `assets::adapter::current_platform()` 的取值保持一致。 */
 const PLATFORM = valueOf("--platform") || "windows-x86_64";
 const MANDATORY = flag("--mandatory");
+/** 清单里的下载地址必须是绝对的；默认取生产资源服务器（与客户端 release 构建一致）。 */
+const ASSET_BASE =
+  (process.env.ASSET_SERVER_URL || "https://mclinkassets.xigo.top:54789").replace(/\/+$/, "");
 
 const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const setupName = `MC-Link-${version}-${PLATFORM}-setup.exe`;
@@ -102,12 +120,20 @@ if (appExe) {
   console.warn("[make-update] 未找到应用可执行文件，本次不产出便携版资产");
 }
 
+// Linux / macOS 的产物：只有在对应平台上构建时才存在
+for (const extra of collectPlatformArtifacts(releaseDir)) {
+  copyFileSync(extra.source, join(OUT_DIR, extra.file));
+  produced.push({ file: extra.file, kind: extra.kind });
+  console.log(`[make-update] ${extra.kind} 产物: ${extra.file}`);
+}
+
 if (produced.length === 0) {
   console.error("[make-update] 未产出任何更新包，清单未更新");
   process.exit(1);
 }
 
 writeManifest(produced);
+writePluginManifest(produced);
 pruneLocalOldVersions();
 console.log(`[make-update] 清单已更新: ${MANIFEST_PATH}`);
 console.log("[make-update] 下一步: pnpm sync:assets（上传到资源服务器并回收旧包）");
@@ -166,6 +192,42 @@ function findAppExe(dir) {
   return loose ? join(dir, loose) : null;
 }
 
+/**
+ * 收集 Linux / macOS 的产物（只有在该平台上构建时才存在）。
+ *
+ * 插件能自动安装的形态：Linux 仅 AppImage（deb/rpm 不支持），macOS 为 `.app.tar.gz`。
+ */
+function collectPlatformArtifacts(dir) {
+  const found = [];
+  const arch = PLATFORM.split("-").slice(1).join("-") || "x86_64";
+
+  const appimageDir = join(dir, "bundle", "appimage");
+  if (existsSync(appimageDir)) {
+    const hit = readdirSync(appimageDir).find((f) => f.endsWith(".AppImage"));
+    if (hit) {
+      found.push({
+        source: join(appimageDir, hit),
+        file: `MC-Link-${version}-linux-${arch}-appimage.AppImage`,
+        kind: "appimage",
+      });
+    }
+  }
+
+  const macosDir = join(dir, "bundle", "macos");
+  if (existsSync(macosDir)) {
+    const hit = readdirSync(macosDir).find((f) => f.endsWith(".app.tar.gz"));
+    if (hit) {
+      found.push({
+        source: join(macosDir, hit),
+        file: `MC-Link-${version}-macos-${arch}-app.tar.gz`,
+        kind: "macos-app",
+      });
+    }
+  }
+
+  return found;
+}
+
 /** 生成便携整包：`MC Link.exe` + `portable.txt`（缺了它就不是便携模式）。 */
 function makePortableZip(appExe, zipPath) {
   // 暂存目录放在系统临时目录：避免被打包上传脚本当成资源收走
@@ -194,6 +256,11 @@ function makePortableZip(appExe, zipPath) {
 
 function sha256(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
+}
+
+function releaseNotes() {
+  const notesPath = join(ROOT, "release-notes.md");
+  return existsSync(notesPath) ? readFileSync(notesPath, "utf8").trim() : "";
 }
 
 function writeManifest(items) {
@@ -231,21 +298,127 @@ function writeManifest(items) {
       : a.platform.localeCompare(b.platform),
   );
 
-  const notesPath = join(ROOT, "release-notes.md");
-  const releaseNotes = existsSync(notesPath)
-    ? readFileSync(notesPath, "utf8").trim()
-    : "";
-
   const manifest = {
     manifest_version: 1,
     version,
     release_date: new Date().toISOString().slice(0, 10),
-    release_notes: releaseNotes,
+    release_notes: releaseNotes(),
     mandatory: MANDATORY,
     assets,
   };
 
   writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+}
+
+/**
+ * 生成 Tauri 官方更新插件所需的清单（`Assets/update/tauri.json`）。
+ *
+ * 没有 `TAURI_SIGNING_PRIVATE_KEY` 时直接跳过：插件签名校验不可关闭，
+ * 生成一份无法通过校验的清单只会造成"以为配好了却更新不了"。
+ */
+function writePluginManifest(items) {
+  if (!signingConfigured()) {
+    console.log(
+      "[make-update] 未配置签名私钥（TAURI_SIGNING_PRIVATE_KEY 或 _PATH），跳过 tauri.json" +
+        "（官方插件路径不可用；Windows 安装版仍走自研兜底）",
+    );
+    return;
+  }
+  const env = signingEnv();
+
+  // 插件只认安装器 / AppImage / .app.tar.gz，便携版单文件不在其中
+  const manageable = items.find(({ file }) =>
+    /-setup\.exe$|\.msi$|\.AppImage$|\.app\.tar\.gz$/.test(file),
+  );
+  if (!manageable) {
+    console.warn("[make-update] 没有可交给官方插件的产物，tauri.json 未生成");
+    return;
+  }
+
+  const full = join(OUT_DIR, manageable.file);
+  try {
+    signFile(full, env);
+  } catch (e) {
+    console.warn(`[make-update] 签名失败，tauri.json 未生成: ${e.message}`);
+    return;
+  }
+
+  const signature = readFileSync(`${full}.sig`, "utf8").trim();
+  const manifest = {
+    version,
+    notes: releaseNotes(),
+    pub_date: new Date().toISOString(),
+    platforms: {
+      [pluginPlatformKey(PLATFORM)]: {
+        signature,
+        url: `${ASSET_BASE}/update/${manageable.file}`,
+      },
+    },
+  };
+
+  writeFileSync(
+    PLUGIN_MANIFEST_PATH,
+    JSON.stringify(manifest, null, 2) + "\n",
+    "utf8",
+  );
+  console.log(`[make-update] 插件清单已生成: ${PLUGIN_MANIFEST_PATH}`);
+}
+
+/**
+ * 平台键转换：我们的平台标识用 `macos`，而插件要求 `darwin`。
+ *
+ * 其余（`windows-*` / `linux-*`）两边一致。
+ */
+function pluginPlatformKey(platform) {
+  return platform.replace(/^macos-/, "darwin-");
+}
+
+/**
+ * 归一化签名相关的环境变量。
+ *
+ * Tauri CLI 区分两个变量：`TAURI_SIGNING_PRIVATE_KEY_PATH` 收**文件路径**，
+ * `TAURI_SIGNING_PRIVATE_KEY` 收**密钥内容**。为了少踩坑，这里允许把路径也写在
+ * `_KEY` 里（只要它确实指向一个存在的文件），自动搬到正确的变量上。
+ */
+function signingEnv() {
+  const env = { ...process.env };
+  const keyPath = (env.TAURI_SIGNING_PRIVATE_KEY_PATH || "").trim();
+  const keyValue = (env.TAURI_SIGNING_PRIVATE_KEY || "").trim();
+
+  // 单行、且确实是个文件 → 当成路径（密钥内容是多行文本，不会命中）
+  if (!keyPath && keyValue && !keyValue.includes("\n") && existsSync(keyValue)) {
+    env.TAURI_SIGNING_PRIVATE_KEY_PATH = keyValue;
+    delete env.TAURI_SIGNING_PRIVATE_KEY;
+  }
+  return env;
+}
+
+/** 是否配置了可用于签名的私钥。 */
+function signingConfigured() {
+  const env = signingEnv();
+  return Boolean(
+    (env.TAURI_SIGNING_PRIVATE_KEY_PATH || "").trim() ||
+      (env.TAURI_SIGNING_PRIVATE_KEY || "").trim(),
+  );
+}
+
+/**
+ * 调用 Tauri CLI 给产物签名，生成同目录的 `<file>.sig`。
+ *
+ * 直接执行 CLI 的 JS 入口，而不是 `pnpm exec tauri`：在 Windows 上
+ * `execFileSync` 调用 `.cmd` 会因为 Node 的安全限制直接报 `EINVAL`
+ * （批处理必须由 shell 执行），而走 shell 又要处理路径里的空格与引号。
+ */
+function signFile(file, env) {
+  const cli = join(ROOT, "node_modules", "@tauri-apps", "cli", "tauri.js");
+  if (!existsSync(cli)) {
+    throw new Error(`未找到 Tauri CLI（${cli}），请先执行 pnpm install`);
+  }
+  execFileSync(process.execPath, [cli, "signer", "sign", file], {
+    cwd: ROOT,
+    stdio: "inherit",
+    env,
+  });
 }
 
 function psEscape(p) {
@@ -264,7 +437,15 @@ function psEscape(p) {
  */
 function pruneLocalOldVersions() {
   for (const name of readdirSync(OUT_DIR)) {
-    if (name === "latest.json" || !name.startsWith("MC-Link-")) continue;
+    if (name === "latest.json" || name === "tauri.json" || name.endsWith(".sig")) {
+      // 清单与签名文件随本次发布生成，不参与版本清理
+      if (name.endsWith(".sig") && !name.includes(`-${version}-`)) {
+        rmSync(join(OUT_DIR, name), { force: true });
+        console.log(`[make-update] 已清理旧签名: ${name}`);
+      }
+      continue;
+    }
+    if (!name.startsWith("MC-Link-")) continue;
     // 形如 MC-Link-<版本>-<平台>-<类型>.<扩展名>
     if (name.includes(`-${version}-`)) continue;
     rmSync(join(OUT_DIR, name), { force: true });

@@ -161,16 +161,72 @@ node scripts/make-update.mjs --platform windows-aarch64   # 其他架构，增�
 - `check()` 返回的 `build_channel` / `update_allowed` 与 `RuntimeInfo` 里的字段同义，
   界面应据此区分"已是最新版本"与"当前构建不参与自动更新"这两种情况
 
+### 两条落地路径（2026-09-30 起）
+
+| 场景 | 谁落地 | 读哪份清单 |
+|---|---|---|
+| Windows **便携版** | **自研**（`update/install.rs`：替换 exe + 外部进程重启） | `latest.json` |
+| Windows **安装版** | **官方插件**（`tauri-plugin-updater`，NSIS passive），失败回退自研 | `tauri.json` |
+| **Linux** | **官方插件**（仅 AppImage 支持自动安装；deb/rpm 不支持） | `tauri.json` |
+| **macOS** | **官方插件**（`.app.tar.gz`） | `tauri.json` |
+
+官方插件只能处理 NSIS/MSI/AppImage/`.app.tar.gz`，对"exe 同目录即全部"的便携形态无能为力，
+因此便携版必须留在自研路径。反过来，插件需要**签名公钥**才能用。
+
+**`pubkey` 就是插件路径的开关**：`tauri.conf.json` 的 `plugins.updater.pubkey` 为空（或仍是
+`REPLACE_ME` 占位符）时不注册插件、整条插件路径不可用，安装版自动回退到自研的安装器拉起。
+因此**没配密钥也不会出现"更新不了"**。
+
+### 启用官方插件需要做三件事（目前尚未配置）
+
+```powershell
+# 1. 生成密钥对（私钥务必妥善保管：丢了以后已安装的用户再也收不到更新）
+pnpm exec tauri signer generate -w $env:USERPROFILE\.tauri\mclink.key
+# 2. 把输出的公钥内容（不是路径）填进 src-tauri/tauri.conf.json 的 plugins.updater.pubkey
+# 3. 发布时提供私钥，脚本会自动签名并生成 tauri.json
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH = "$env:USERPROFILE\.tauri\mclink.key"
+pnpm build:release
+```
+
+注意 Tauri CLI 区分两个变量：`TAURI_SIGNING_PRIVATE_KEY_PATH` 收**路径**、
+`TAURI_SIGNING_PRIVATE_KEY` 收**内容**。`make-update.mjs` 两种写法都接受
+（把路径写进 `_KEY` 会自动纠正）。
+
+CI 里必须用**环境变量**提供私钥（`.env` 文件无效），并保持私钥在 secret 中。
+
+### 清单与产物的生成（`scripts/make-update.mjs`）
+
+- `latest.json`：我们的清单，**版本判定始终以它为准**（含 `mandatory`、`manual_url` 等）。
+- `tauri.json`：官方插件的清单（`platforms` + minisign 签名），只负责告诉插件"下载地址 + 签名"。
+  没有签名私钥时**不生成**——签名校验不可关闭，生成一份通不过校验的清单只会让人误以为配好了。
+- Linux/macOS 产物（`.AppImage` / `.app.tar.gz`）只在对应平台构建时才存在，脚本会自动发现。
+- 平台键差异：我们用 `macos-*`，插件要求 `darwin-*`，脚本里做转换。
+
 ### 已知取舍与限制
 
-- **仅 Windows 支持自动安装**。Linux（deb/appimage）与 macOS 返回 `asset: null`，只能手动下载。
-  这不是遗漏：deb 需要包管理器与提权，macOS 需要签名校验，自行替换会破坏系统安装记录。
+- **Linux 的 deb/rpm 不支持自动更新**（官方插件只认 AppImage），macOS 需要签名与 Gatekeeper。
+  这两类用户只能手动下载。
 - 便携版更新包用的是**未压缩的 exe**（当前约 17MB），而便携整包 zip 只有约 7MB。
-  换成 zip 需要引入解压依赖且要处理多文件覆盖，当前按"简单可靠"取舍；若带宽成为问题可再改。
-- `Assets/update/` 下的旧版本包不会自动清理，会随版本累积，确认无客户端在用后可手动删除。
-- `downloader/downloader.rs`（分片 + 断点续传下载器）目前**零调用方**：适配器与更新包都走
-  `downloader/verified.rs`。保留是因为其续传能力对弱网仍有价值，但按整洁规则需要二选一：
-  删除，或把续传并入 `verified`。**此项待用户决定**（见文件头的 `allow(dead_code)` 说明）。
+  换成 zip 需要引入解压依赖且要处理多文件覆盖，当前按"简单可靠"取舍（用户已确认先不管）。
+- **旧包会按版本回收**（客户端 + 服务端都做，见下节）；服务端保留最新两个版本。
+- 接入插件时 `wry` 被动升级 `0.55 → 0.57`（插件的传递依赖），已通过 `cargo build` 验证。
+
+### 更新相关缓存的回收（2026-09-30）
+
+三层，策略**刻意不同**：
+
+| 位置 | 策略 | 为什么 |
+|---|---|---|
+| 客户端 `Cache/Updates/` | 启动时删除**版本 ≤ 当前应用版本**的包与 `.tmp` 残留；认不出的文件名一律保留 | 装过的包已经用完；比当前版本新的包要留着（用户可能选了"稍后安装"） |
+| 本地 `assets-server/Assets/update/` | `make-update` 只保留**本次版本**（含其他架构） | 本地是上传源，留旧包只会每次重复上传；但同版本的其他架构必须保留，否则清单会指向缺失文件 |
+| 远端服务器 `Assets/update/` | `sync-assets` 上传后回收，保留**最新两个版本** | 远端是分发点，留一个旧版本作缓冲，避免正在下载旧版的客户端中断 |
+
+服务端为此新增两个端点：`GET /update/list`（列出文件名）与
+`POST /delete?path=<相对路径>&token=`（与上传同样是 token 保护 + 防路径穿越）。
+在此之前服务器**只有上传没有任何删除能力**，旧版本包（每版约 30MB）会永久堆积。
+
+- 客户端入口：`update::download::prune_cache`（由 `update::cleanup_leftovers` 在启动时调用，有单测）
+- 远端入口：`scripts/sync-assets.mjs` 的 `pruneRemoteUpdates`
 
 ## 持久化约定（2026-09-30 起强制执行）
 
