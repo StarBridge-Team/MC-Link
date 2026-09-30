@@ -1,7 +1,6 @@
 pub mod read;
 pub mod write;
 pub mod pull;
-pub mod connection;
 
 use std::path::PathBuf;
 use std::sync::Arc;

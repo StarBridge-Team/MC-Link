@@ -54,9 +54,6 @@ pub fn run() {
             let mgr = Arc::new(AppMgr::new(data_dir.clone())?);
             app.manage(mgr.clone());
 
-            // P2P 连接管理器（基于 wgp-core）
-            app.manage(Arc::new(mgr::connection::ConnectionManager::new()));
-
             if let Err(e) = config::check::check_config_version(&data_dir) {
                 eprintln!("[配置检查] {}", e);
             }
@@ -168,9 +165,6 @@ pub fn run() {
             get_setting_meta,
             get_setting_manifest,
             clear_setting_meta_cache_command,
-            start_p2p_connection,
-            stop_p2p_connection,
-            get_p2p_status,
             generate_m3_scheme,
         ])
         .run(tauri::generate_context!())
