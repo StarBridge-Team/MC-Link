@@ -41,10 +41,10 @@ node_modules_stale/
 node_modules_stale2/
 
 # 一次性/事故产物（归档包、类型检查输出）
+# 注意：gitignore 不支持引号语法，含特殊字符的文件名必须用通配符匹配
 *.tar
 tsc_err.txt
-tsc_out.txt
-"tsc_out.txt; Write-Host STDOUT"
+tsc_out*
 
 # assets-server 生成物：Assets 由 scripts/sync-assets.mjs 同步，Pages 由 vite.pages.config.ts 构建
 assets-server/Assets/
