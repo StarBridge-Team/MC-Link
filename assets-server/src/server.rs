@@ -125,14 +125,15 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
         }
 
         // 更新清单
-        "/update/latest.json" | "/updates/latest.json" => {
-            serve_file(&cfg.updates_dir(), "latest.json", &cfg.cors_origin)
-        }
+        "/update/latest.json" | "/updates/latest.json" => serve_update(&cfg, "latest.json"),
 
         // 更新包文件
         p if p.starts_with("/update/") || p.starts_with("/updates/") => {
-            let rel = p.trim_start_matches("/update/").trim_start_matches("/updates/");
-            serve_file(&cfg.updates_dir(), rel, &cfg.cors_origin)
+            let rel = p
+                .strip_prefix("/update/")
+                .or_else(|| p.strip_prefix("/updates/"))
+                .unwrap_or("");
+            serve_update(&cfg, rel)
         }
 
         // 设置项清单（列出所有可用的设置分区）
@@ -166,10 +167,38 @@ fn serve_file(dir: &Path, rel: &str, cors: &str) -> Response<std::io::Cursor<Vec
     if safe.as_os_str().is_empty() {
         return bad_request("无效路径");
     }
-    let full = dir.join(&safe);
-    match std::fs::read(&full) {
+    serve_abs(&dir.join(&safe), cors)
+}
+
+/// 提供更新包文件。
+///
+/// 优先从 `Assets/update/` 读取——**与上传端点 `POST /upload?path=update/...` 的布局一致**，
+/// 否则会出现"上传成功但下载 404"的静默不一致（历史实现读的是 `Updates/` 目录）。
+/// 同时兼容旧的 `Updates/` 目录，便于平滑迁移已部署的服务器。
+fn serve_update(cfg: &AssetsConfig, rel: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    let safe = sanitize_path(rel);
+    if safe.as_os_str().is_empty() {
+        return bad_request("无效路径");
+    }
+
+    let modern = cfg.assets_dir().join("update").join(&safe);
+    if modern.is_file() {
+        return serve_abs(&modern, &cfg.cors_origin);
+    }
+
+    let legacy = cfg.updates_dir().join(&safe);
+    if legacy.is_file() {
+        return serve_abs(&legacy, &cfg.cors_origin);
+    }
+
+    not_found()
+}
+
+/// 读取一个已知安全的绝对路径并按扩展名推断 MIME。
+fn serve_abs(full: &Path, cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    match std::fs::read(full) {
         Ok(bytes) => {
-            let mime = mime_guess::from_path(&full)
+            let mime = mime_guess::from_path(full)
                 .first_or_octet_stream()
                 .to_string();
             file_response(bytes, &mime, cors)

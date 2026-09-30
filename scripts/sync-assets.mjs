@@ -8,9 +8,13 @@
  *    adapter/manifest.json（客户端据此校验安装包，未通过校验不会安装）。
  *    该目录独立于 Assets 版本聚合，避免适配器升级触发客户端重下全部资源。
  * 3. 扫描 assets-server/Assets，重新生成 manifest.json：
- *      - version = 所有资源内容哈希（不含 adapter/，资源有变动才变）
+ *      - version = 所有资源内容哈希（不含 adapter/ 与 update/，资源有变动才变）
  *      - assets  = 完整文件清单（path + size）
  * 4. 通过资源服务器新增的 POST /upload 接口上传全部文件（各级 manifest 最后传）
+ *
+ * 目录特例（都在 version 聚合之外，避免客户端因为发版而重下字体/图标）：
+ *   - adapter/ 由 prepareAdapters() 生成，含第三方适配器包与其校验清单
+ *   - update/  由 scripts/make-update.mjs 生成，含本应用的更新包与 latest.json
  *
  * 环境变量 / 参数：
  *   ASSET_SERVER_URL      目标资源服务器（默认 http://localhost:54789）
@@ -65,9 +69,20 @@ const allFiles = [];
 collectFiles(ASSETS_DIR, ASSETS_DIR, allFiles);
 allFiles.sort((a, b) => a.rel.localeCompare(b.rel));
 
+// 适配器包与更新包都**独立于 Assets 版本聚合**：
+// 否则每次发版（或升级适配器）都会让所有客户端重下全部字体与图标。
 const isAdapter = (f) => f.rel.startsWith("adapter/");
+const isUpdate = (f) => f.rel.startsWith("update/");
 const adapterFiles = allFiles.filter(isAdapter);
-const files = allFiles.filter((f) => !isAdapter(f));
+const updateFiles = allFiles.filter(isUpdate);
+const files = allFiles.filter((f) => !isAdapter(f) && !isUpdate(f));
+
+const UPDATE_MANIFEST = join(ASSETS_DIR, "update", "latest.json");
+if (updateFiles.length > 0 && !existsSync(UPDATE_MANIFEST)) {
+  console.warn(
+    "[sync-assets] update/ 下有更新包但没有 latest.json：请先执行 node scripts/make-update.mjs",
+  );
+}
 
 const version = computeVersion(files);
 const manifest = {
@@ -92,9 +107,14 @@ if (SKIP) {
 // 4) 上传：内容文件先传，各级 manifest 最后传，避免客户端拉到半更新状态
 const ordered = [
   ...files.filter((f) => f.rel !== "manifest.json"),
+  // 更新包必须先于 update/latest.json 可见，否则客户端会拿到指向不存在文件的清单
+  ...updateFiles.filter((f) => f.rel !== "update/latest.json"),
   // 适配器包必须先于其清单可见，否则客户端会拿到指向不存在文件的清单
   ...adapterFiles.filter((f) => f.rel !== "adapter/manifest.json"),
   { rel: "adapter/manifest.json", full: join(ADAPTER_DIR, "manifest.json") },
+  ...(existsSync(UPDATE_MANIFEST)
+    ? [{ rel: "update/latest.json", full: UPDATE_MANIFEST }]
+    : []),
   { rel: "manifest.json", full: join(ASSETS_DIR, "manifest.json") },
 ];
 

@@ -2,12 +2,16 @@
 /**
  * pnpm tauri 包装脚本
  * ------------------------------------------------------------------
- * - `pnpm tauri build`            : 自动改版本号 + tauri build --ci + 重命名产物 + 上传资源到资源服务器
+ * - `pnpm tauri build`            : 自动改版本号 + tauri build --ci + 重命名产物 + 生成更新包与清单 + 上传资源
  * - `pnpm tauri build --minor`    : 次版本号 +1（--major / --patch 同理，默认 patch）
  * - `pnpm tauri build --no-bump`  : 不改版本号
  * - `pnpm tauri build --no-upload`: 跳过资源上传
+ * - `pnpm tauri build --mandatory`: 生成的更新清单标记为强制更新
  * - `pnpm tauri build --no-release`: 仅执行原生 tauri build（不做版本/上传）
  * - `pnpm tauri dev|icon|...`     : 透传给真实 tauri CLI
+ *
+ * 其他架构（如 arm64）的更新包，请单独执行：
+ *   node scripts/make-update.mjs --platform windows-aarch64
  *
  * 原生 tauri 通过 `pnpm exec tauri` 调用，避免递归调用本脚本。
  */
@@ -30,6 +34,7 @@ const KNOWN_BUILD_FLAGS = new Set([
   "--no-bump",
   "--no-upload",
   "--no-release",
+  "--mandatory",
 ]);
 
 if (cmd === "build" && !rest.includes("--no-release")) {
@@ -55,6 +60,11 @@ if (cmd === "build" && !rest.includes("--no-release")) {
 
   // 产物重命名（EXE/安装包加版本号）
   execSync("node rename-build.js", { cwd: ROOT, stdio: "inherit" });
+
+  // 生成应用更新包与更新清单（必须早于 sync-assets，否则清单与更新包不会被上传）
+  const makeUpdateArgs = ["scripts/make-update.mjs"];
+  if (rest.includes("--mandatory")) makeUpdateArgs.push("--mandatory");
+  execSync(`node ${makeUpdateArgs.join(" ")}`, { cwd: ROOT, stdio: "inherit" });
 
   // 资源上传到资源服务器
   if (!noUpload) {
