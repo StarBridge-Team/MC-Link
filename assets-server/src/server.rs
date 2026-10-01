@@ -41,28 +41,40 @@ pub fn run_server(config: AssetsConfig) {
         }
     };
 
-    loop {
-        let mut request = match server.recv() {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
+    // 多工作线程：单线程时一个慢客户端（或一次大文件传输）就能阻塞**全部**请求，
+    // 是现成的慢速 DoS。`tiny_http::Server` 是 Sync 的，多线程同时 recv 即可。
+    let server = Arc::new(server);
+    let mut workers = Vec::new();
+    for _ in 0..HTTP_WORKERS {
+        let server = server.clone();
+        let cfg = cfg.clone();
+        workers.push(std::thread::spawn(move || loop {
+            let mut request = match server.recv() {
+                Ok(r) => r,
+                // 连接中断之类不是错误，继续等下一个请求
+                Err(_) => continue,
+            };
 
-        if cfg.access_log {
-            // 脱敏后再打：URL 里的 `?token=` 会被写进 stdout、反向代理日志与 Referer
-            println!(
-                "[{}] {}",
-                request.method(),
-                redact_token(&request.url().to_string())
-            );
-        }
+            if cfg.access_log {
+                // 脱敏后再打：URL 里的 `?token=` 会被写进 stdout、反代日志与 Referer
+                println!(
+                    "[{}] {}",
+                    request.method(),
+                    redact_token(&request.url().to_string())
+                );
+            }
 
-        let response = route(&mut request, &cfg);
+            let response = route(&mut request, &cfg);
 
-        let _ = request.respond(response);
+            let _ = request.respond(response);
+        }));
+    }
+    for worker in workers {
+        let _ = worker.join();
     }
 }
 
-fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor<Vec<u8>>> {
+fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Resp {
     let method = req.method().clone();
     let url = req.url().to_string();
     let path = url.split('?').next().unwrap_or(&url);
@@ -199,6 +211,42 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
     }
 }
 
+/// 响应体类型。
+///
+/// 用 boxed reader 而不是 `Cursor<Vec<u8>>`：更新包有 30MB 量级，
+/// 整份读进内存再发，既吃内存又拖垮并发（连 Range 请求也要先把整包读满）。
+/// 文件类响应现在直接从磁盘流式发出，只把请求到的那一段读出来。
+type Body = Box<dyn std::io::Read + Send>;
+/// 本模块统一的响应类型。
+type Resp = Response<Body>;
+
+/// 用内存数据构造响应（装箱成流式体，并显式声明长度）。
+///
+/// `tiny_http::Response` 没有 `map`，所以这里必须直接构造；
+/// 显式给 `data_length` 是为了让响应一定带 `Content-Length`
+/// （客户端据此探测大小与续传，见 `file_response` 的注释）。
+fn data_response(data: Vec<u8>, status: u16) -> Resp {
+    let len = data.len();
+    Response::new(
+        StatusCode(status),
+        Vec::new(),
+        Box::new(std::io::Cursor::new(data)) as Body,
+        Some(len),
+        None,
+    )
+}
+
+/// 处理请求的工作线程数。
+///
+/// 单线程时一个慢客户端就能阻塞全部请求（慢速 DoS），而下载大包时这种阻塞很常见。
+const HTTP_WORKERS: usize = 4;
+
+/// 单次上传的体积上限。
+///
+/// 更新包约 30MB，留出余量；这里的意义是给"任何能连上的人"设一个天花板，
+/// 避免一次请求把内存与磁盘同时打满。
+const MAX_UPLOAD_BYTES: u64 = 256 * 1024 * 1024;
+
 /// 一次文件请求中与传输相关的上下文。
 ///
 /// 把 `Range` 与 CORS 一起往下传，是因为**续传必须由我们实现**：
@@ -211,7 +259,7 @@ struct ServeCtx<'a> {
 }
 
 /// 提供普通静态文件
-fn serve_file(dir: &Path, rel: &str, ctx: &ServeCtx) -> Response<std::io::Cursor<Vec<u8>>> {
+fn serve_file(dir: &Path, rel: &str, ctx: &ServeCtx) -> Resp {
     let safe = sanitize_path(rel);
     if safe.as_os_str().is_empty() {
         return bad_request("无效路径");
@@ -228,7 +276,7 @@ fn serve_file(dir: &Path, rel: &str, ctx: &ServeCtx) -> Response<std::io::Cursor
 /// 优先从 `Assets/update/` 读取——**与上传端点 `POST /upload?path=update/...` 的布局一致**，
 /// 否则会出现"上传成功但下载 404"的静默不一致（历史实现读的是 `Updates/` 目录）。
 /// 同时兼容旧的 `Updates/` 目录，便于平滑迁移已部署的服务器。
-fn serve_update(cfg: &AssetsConfig, rel: &str, ctx: &ServeCtx) -> Response<std::io::Cursor<Vec<u8>>> {
+fn serve_update(cfg: &AssetsConfig, rel: &str, ctx: &ServeCtx) -> Resp {
     let safe = sanitize_path(rel);
     if safe.as_os_str().is_empty() {
         return bad_request("无效路径");
@@ -251,24 +299,28 @@ fn serve_update(cfg: &AssetsConfig, rel: &str, ctx: &ServeCtx) -> Response<std::
 ///   客户端据此判断这份资源将来能否续传；
 /// - 合法且可满足的 `Range` → 206 + `Content-Range` + 对应切片；
 /// - 起点超出文件长度 → 416（RFC 9110 要求），客户端会退回整体下载。
-fn serve_abs(full: &Path, ctx: &ServeCtx) -> Response<std::io::Cursor<Vec<u8>>> {
-    let bytes = match std::fs::read(full) {
-        Ok(bytes) => bytes,
-        Err(_) => return not_found(),
+fn serve_abs(full: &Path, ctx: &ServeCtx) -> Resp {
+    // 只取元数据、不读内容：文件可能几十 MB，而我们要按区间从磁盘流式发出。
+    // （此前无论请求哪一段都先把整份读进内存，连 Range 请求也躲不掉。）
+    let total = match std::fs::metadata(full) {
+        Ok(m) if m.is_file() => m.len(),
+        _ => return not_found(),
     };
-    let total = bytes.len() as u64;
     let mime = mime_guess::from_path(full)
         .first_or_octet_stream()
         .to_string();
 
     match ctx.range.as_deref().map(|h| parse_range(h, total)) {
-        Some(RangeSpec::Partial(start, end)) => {
-            let slice = bytes[start as usize..=end as usize].to_vec();
-            file_response(slice, &mime, 206, Some(format!("bytes {}-{}/{}", start, end, total)), ctx.cors)
-        }
+        Some(RangeSpec::Partial(start, end)) => file_stream_response(
+            full,
+            &mime,
+            206,
+            Some(format!("bytes {}-{}/{}", start, end, total)),
+            (start, end - start + 1),
+            ctx.cors,
+        ),
         Some(RangeSpec::Unsatisfiable) => {
-            let mut resp = Response::from_string("416 Range Not Satisfiable")
-                .with_status_code(StatusCode(416));
+            let mut resp = data_response(b"416 Range Not Satisfiable".to_vec(), 416);
             // 416 必须带 `bytes */<总长>`，客户端据此知道该怎么调整请求
             if let Ok(h) = Header::from_bytes(
                 "Content-Range",
@@ -283,8 +335,62 @@ fn serve_abs(full: &Path, ctx: &ServeCtx) -> Response<std::io::Cursor<Vec<u8>>> 
             resp
         }
         // 无 Range 或该头无效：按整体响应（RFC 允许忽略无法解析的 Range）
-        _ => file_response(bytes, &mime, 200, None, ctx.cors),
+        _ => file_stream_response(full, &mime, 200, None, (0, total), ctx.cors),
     }
+}
+
+/// 从磁盘流式返回 `[start, start + len)` 这一段（200 全量或 206 分片）。
+///
+/// 数据源是文件 + `take(len)`，由 tiny_http 边读边发：30MB 的更新包不会整份驻留内存。
+/// 两个容易踩的点（改这段前先读一遍）：
+/// - **不要手工设置 `Content-Length`**：`tiny_http` 按数据源长度自行处理，
+///   手工设置反而可能让该头不出现（文档明确二者互斥）。这里通过 `data_length` 表达。
+/// - **关掉 chunked 阈值**：默认超过 32KB 就改用 chunked 传输，那样响应里没有
+///   `Content-Length`，客户端探测不到文件大小，分片与续传就永远启用不了。
+fn file_stream_response(
+    full: &Path,
+    mime: &str,
+    status: u16,
+    content_range: Option<String>,
+    range: (u64, u64),
+    cors: &str,
+) -> Resp {
+    let (start, len) = range;
+    let mut file = match std::fs::File::open(full) {
+        Ok(f) => f,
+        Err(_) => return not_found(),
+    };
+    if start > 0 {
+        use std::io::Seek;
+        if file.seek(std::io::SeekFrom::Start(start)).is_err() {
+            return not_found();
+        }
+    }
+
+    let body: Body = Box::new(file.take(len));
+    let mut resp = Response::new(
+        StatusCode(status),
+        Vec::new(),
+        body,
+        Some(len as usize),
+        None,
+    )
+    .with_chunked_threshold(usize::MAX);
+
+    if let Ok(h) = Header::from_bytes("Content-Type", mime.as_bytes()) {
+        resp.add_header(h);
+    }
+    // 无论 200 还是 206 都声明支持范围请求：客户端据此决定这份资源能否续传
+    if let Ok(h) = Header::from_bytes("Accept-Ranges", "bytes") {
+        resp.add_header(h);
+    }
+    if let Some(cr) = content_range {
+        if let Ok(h) = Header::from_bytes("Content-Range", cr.as_bytes()) {
+            resp.add_header(h);
+        }
+    }
+    add_cors(&mut resp, cors);
+    resp
 }
 
 /// 解析 `Range` 头的结果。
@@ -361,7 +467,7 @@ fn header_value(req: &Request, name: &str) -> Option<String> {
 }
 
 /// 提供元配置文件（同时返回 YAML 与说明 CORS 头）
-fn serve_meta(dir: &Path, file: &str, cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn serve_meta(dir: &Path, file: &str, cors: &str) -> Resp {
     let safe = sanitize_path(file);
     if safe.as_os_str().is_empty() {
         return bad_request("无效路径");
@@ -383,7 +489,7 @@ fn serve_meta(dir: &Path, file: &str, cors: &str) -> Response<std::io::Cursor<Ve
 }
 
 /// 列出 SettingMeta 目录下所有 section
-fn serve_meta_index(dir: &Path, cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn serve_meta_index(dir: &Path, cors: &str) -> Resp {
     let mut sections: Vec<String> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
@@ -400,60 +506,25 @@ fn serve_meta_index(dir: &Path, cors: &str) -> Response<std::io::Cursor<Vec<u8>>
     json_response(&body, cors)
 }
 
-/// 构造文件响应（200 全量或 206 分片）。
-///
-/// 两个容易踩的点：
-/// - **不要手工设置 `Content-Length`**：`tiny_http` 会按数据源长度自行处理，
-///   手工设置反而可能让该头不出现（文档明确二者互斥）。这里通过数据长度表达。
-/// - **关掉 chunked 阈值**：默认超过 32KB 就改用 chunked 传输，那样响应里没有
-///   `Content-Length`，客户端探测不到文件大小，分片与续传就永远启用不了。
-fn file_response(
-    bytes: Vec<u8>,
-    mime: &str,
-    status: u16,
-    content_range: Option<String>,
-    cors: &str,
-) -> Response<std::io::Cursor<Vec<u8>>> {
-    let mut resp = Response::from_data(bytes)
-        .with_status_code(StatusCode(status))
-        .with_chunked_threshold(usize::MAX);
 
-    if let Ok(h) = Header::from_bytes("Content-Type", mime.as_bytes()) {
-        resp.add_header(h);
-    }
-    // 无论 200 还是 206 都声明支持范围请求：客户端据此决定这份资源能否续传
-    if let Ok(h) = Header::from_bytes("Accept-Ranges", "bytes") {
-        resp.add_header(h);
-    }
-    if let Some(cr) = content_range {
-        if let Ok(h) = Header::from_bytes("Content-Range", cr.as_bytes()) {
-            resp.add_header(h);
-        }
-    }
-    add_cors(&mut resp, cors);
-    resp
-}
-
-fn json_response(body: &str, cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn json_response(body: &str, cors: &str) -> Resp {
     text_response(body, "application/json; charset=utf-8", cors)
 }
 
-fn text_response(body: &str, mime: &str, cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn text_response(body: &str, mime: &str, cors: &str) -> Resp {
     let bytes = body.as_bytes().to_vec();
-    let len = bytes.len();
-    let mut resp = Response::from_data(bytes).with_status_code(StatusCode(200));
+    // 长度由 `data_response` 通过 data_length 表达：手工设置 Content-Length
+    // 反而可能让该头不出现（tiny_http 文档明确二者互斥）
+    let mut resp = data_response(bytes, 200);
     if let Ok(h) = Header::from_bytes("Content-Type", mime.as_bytes()) {
-        resp.add_header(h);
-    }
-    if let Ok(h) = Header::from_bytes("Content-Length", len.to_string().as_bytes()) {
         resp.add_header(h);
     }
     add_cors(&mut resp, cors);
     resp
 }
 
-fn cors_preflight(cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
-    let mut resp = Response::from_string("").with_status_code(StatusCode(204));
+fn cors_preflight(cors: &str) -> Resp {
+    let mut resp = data_response(Vec::new(), 204);
     add_cors(&mut resp, cors);
     if let Ok(h) = Header::from_bytes("Access-Control-Allow-Headers", "Authorization, X-Token, Content-Type") {
         resp.add_header(h);
@@ -464,7 +535,7 @@ fn cors_preflight(cors: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     resp
 }
 
-fn add_cors(resp: &mut Response<std::io::Cursor<Vec<u8>>>, cors: &str) {
+fn add_cors(resp: &mut Resp, cors: &str) {
     if cors.is_empty() {
         return;
     }
@@ -473,16 +544,16 @@ fn add_cors(resp: &mut Response<std::io::Cursor<Vec<u8>>>, cors: &str) {
     }
 }
 
-fn not_found() -> Response<std::io::Cursor<Vec<u8>>> {
-    Response::from_string("404 Not Found").with_status_code(StatusCode(404))
+fn not_found() -> Resp {
+    data_response(b"404 Not Found".to_vec(), 404)
 }
 
-fn bad_request(msg: &str) -> Response<std::io::Cursor<Vec<u8>>> {
-    Response::from_string(msg).with_status_code(StatusCode(400))
+fn bad_request(msg: &str) -> Resp {
+    data_response(msg.as_bytes().to_vec(), 400)
 }
 
-fn method_not_allowed() -> Response<std::io::Cursor<Vec<u8>>> {
-    Response::from_string("405 Method Not Allowed").with_status_code(StatusCode(405))
+fn method_not_allowed() -> Resp {
+    data_response(b"405 Method Not Allowed".to_vec(), 405)
 }
 
 /// 清理路径，仅保留安全字符
@@ -534,7 +605,7 @@ fn handle_upload(
     req: &mut Request,
     cfg: &Arc<AssetsConfig>,
     query: &str,
-) -> Response<std::io::Cursor<Vec<u8>>> {
+) -> Resp {
     // 鉴权：必须提供匹配的令牌（未配置 token 的服务器一律拒绝写入）
     if let Some(resp) = require_token(req, cfg, query) {
         return resp;
@@ -550,9 +621,19 @@ fn handle_upload(
         None => return json_status(400, r#"{"ok":false,"error":"invalid path"}"#),
     };
 
-    // 读取请求体
+    // 先按 Content-Length 快速拒绝，再**边读边限长**（这个头本身不可信）
+    if let Some(len) = header_value(req, "Content-Length")
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
+        if len > MAX_UPLOAD_BYTES {
+            return json_status(413, r#"{"ok":false,"error":"payload too large"}"#);
+        }
+    }
+
+    // 读取请求体（带硬上限：此前是 read_to_end 全量入内存，配上"任何能连上的人
+    // 都能上传"就是一条现成的内存/磁盘打满路径）
     let body = {
-        let mut reader = req.as_reader();
+        let mut reader = req.as_reader().take(MAX_UPLOAD_BYTES + 1);
         let mut buf = Vec::new();
         match Read::read_to_end(&mut reader, &mut buf) {
             Ok(_) => buf,
@@ -561,6 +642,9 @@ fn handle_upload(
             }
         }
     };
+    if body.len() as u64 > MAX_UPLOAD_BYTES {
+        return json_status(413, r#"{"ok":false,"error":"payload too large"}"#);
+    }
 
     if let Some(parent) = target.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -579,7 +663,7 @@ fn handle_upload(
 ///
 /// 发布脚本据此回收旧版本包：它必须知道服务器上实际存在哪些文件，
 /// 而服务器没有目录浏览能力，所以单开一个只读清单端点。
-fn list_update_files(cfg: &AssetsConfig) -> Response<std::io::Cursor<Vec<u8>>> {
+fn list_update_files(cfg: &AssetsConfig) -> Resp {
     let dir = cfg.assets_dir().join("update");
     let mut files: Vec<String> = Vec::new();
 
@@ -608,7 +692,7 @@ fn handle_delete(
     req: &Request,
     cfg: &Arc<AssetsConfig>,
     query: &str,
-) -> Response<std::io::Cursor<Vec<u8>>> {
+) -> Resp {
     if let Some(resp) = require_token(req, cfg, query) {
         return resp;
     }
@@ -645,7 +729,7 @@ fn require_token(
     req: &Request,
     cfg: &AssetsConfig,
     query: &str,
-) -> Option<Response<std::io::Cursor<Vec<u8>>>> {
+) -> Option<Resp> {
     if cfg.upload_token.is_empty() {
         eprintln!("[鉴权] 拒绝写入：服务器未配置 upload_token（用 --token 或 ASSET_UPLOAD_TOKEN 设置）");
         return Some(json_status(
@@ -850,8 +934,8 @@ mod tests {
 }
 
 /// 返回 JSON 状态响应
-fn json_status(status: u16, body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
-    let mut resp = Response::from_string(body).with_status_code(StatusCode(status));
+fn json_status(status: u16, body: &str) -> Resp {
+    let mut resp = data_response(body.as_bytes().to_vec(), status);
     if let Ok(h) =
         Header::from_bytes("Content-Type", "application/json; charset=utf-8".as_bytes())
     {
