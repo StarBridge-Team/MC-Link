@@ -151,6 +151,56 @@ node scripts/make-update.mjs --platform windows-aarch64   # 其他架构，增�
 - `update/` 与 `adapter/` 一样**不参与** `Assets/manifest.json` 的版本聚合，
   否则每次发版都会让所有客户端重下字体与图标。
 
+### 更新签名密钥与发布前检查（2026-10-01）
+
+- **旧的 `.tauri/updater.key` 已泄露**：2026-06-07 的 `9ee632d` 把它提交进了仓库，
+  随仓库转移到了 StarBridge-Team，必须视为已公开。已作废并**轮换**：新密钥对在
+  `.tauri/mc-link-signer.key`（`.gitignore` 覆盖 `.tauri/` 与 `*.key`，绝不入库），
+  公钥写进 `tauri.conf.json` 的 `plugins.updater.pubkey`——此前是空字符串，
+  意味着官方插件路径一直处于"哑的"状态（安装版实际走的是自研兜底）。
+- 生成与同步：`pnpm signer:generate`（生成新密钥）/ `pnpm signer:sync`（只同步公钥）。
+  **刻意不做成发版时自动生成**：公钥是编译进已发布客户端的，私钥丢失后若由脚本
+  悄悄重新生成一对，老客户端会永久收不到更新，而发布日志看起来一切正常。
+- 私钥来源由 `scripts/signer-env.mjs` 统一处理：CI secrets 优先，否则回填本地
+  `.tauri/`（含 `.tauri/signer-password.txt`）。`tauri-build` 与 `make-update`
+  共用同一份实现，避免"检查用 A 密钥、签名用 B 密钥"。
+- **发布前检查**：公私钥不配对时**中断发布**——这类错误在运行时无法发现，
+  只会表现为所有客户端「更新不了」；无密钥时告警并说明后果。
+  CI 需配 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。
+
+### 系统 API 的选型原则（2026-10-01 用户定）
+
+**安装版优先 Tauri 官方插件，便携版优先成熟 crate**；官方没有就找成熟 crate，
+目标是跨平台可维护。现状：
+
+| 能力 | 现状 |
+|---|---|
+| 单实例 / 全局热键 / 打开外链 / 更新（安装版、Linux、macOS） | 官方 `tauri-plugin-*` |
+| 更新（便携版） | 自研替换 exe（待评估换 `self-replace`——rustup 抽出的自替换库，跨平台） |
+| 深链接登记 | 官方 `tauri-plugin-deep-link`，**按安装形态决定是否登记** |
+| 窗口效果 | 官方 `WebviewWindow::set_effects`（内部即 `window-vibrancy`），支持运行时切换 |
+| 托盘菜单定位 | 仍手写 `GetCursorPos`（非 Windows 恒返回 `(0,0)`，待换成熟 crate） |
+| 隐藏文件 / 0600 权限 | 两处重复实现（`plugin/launcher.rs` 与 `plugin/registry.rs`），待抽公共 helper |
+
+### 深链接与窗口效果的实现约定（2026-10-01）
+
+- **深链接登记**：`deep_link::should_register_scheme()` 判定后调用官方
+  `DeepLinkExt::register_all()`。规则：Linux 一律登记；Windows **仅便携版**登记；
+  Windows 安装版与 macOS 交给安装包与系统。两个已修的坑：
+  1. 自写注册项写成 `"<exe>" --deep-link "%1"`（两个参数）会被插件**丢弃**——
+     插件在 `init()` 里要求"命令行恰好一个 URL 参数"（插件 `lib.rs:81`）；
+  2. 无条件登记会让安装版与安装器打架，卸载或移动目录后残留指向失效路径的协议项。
+- **窗口效果**：`effect::effects_for()` 是"效果名 → 官方参数"的唯一映射处，
+  取值集合 `mica` / `acrylic` / `hud_window` / `none` 是**持久化契约**，不可改名；
+  未知取值一律**清空**（否则旧材质残留），有单测锁定。
+  保留唯一一处 `set_immersive_dark_mode` FFI：Tauri 没有等价 API，
+  而 Mica/Acrylic 的明暗由 `DWMWA_USE_IMMERSIVE_DARK_MODE` 决定。
+  **macOS 注意**：官方 `set_effects(None)` 在 macOS 上是 no-op（清空分支只对 Windows 生效），
+  故补了 macOS-only 依赖 `window-vibrancy` 做真正的移除；该分支只能在 macOS 上编译验证。
+- **自定义命令不受 capability 限制**（tauri-2.11 `webview/mod.rs:1819`：
+  "we only check ACL on plugin commands or if the app defined its ACL manifest"），
+  因此 `tray-menu` 窗口不列入 capability 也能调用应用命令。
+
 ### 前端契约
 
 - `src/lib/api/update.ts`：`checkUpdate` / `downloadUpdate` / `installUpdate` /
