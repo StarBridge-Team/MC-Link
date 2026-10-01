@@ -26,7 +26,12 @@ pub fn run_server(config: AssetsConfig) {
         }
         Err(e) => {
             eprintln!("[启动] 服务器绑定 {} 失败: {}", listen, e);
-            return;
+            eprintln!(
+                "       最常见的原因是有另一个实例仍在运行：先结束它，或换个端口（--port <端口>）"
+            );
+            // 必须以非零码退出：否则 `concurrently` / CI 会把"端口被占"当成正常结束，
+            // 前台只剩一句 vite 的端口冲突，真正的原因被淹没（实际排查时踩过）。
+            std::process::exit(1);
         }
     };
 
