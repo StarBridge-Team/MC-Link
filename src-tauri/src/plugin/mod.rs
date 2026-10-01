@@ -56,6 +56,7 @@ pub mod protocol;
 pub mod registry;
 pub mod router;
 pub mod session;
+pub mod trust;
 pub mod utils;
 
 pub use manager::PluginManager;

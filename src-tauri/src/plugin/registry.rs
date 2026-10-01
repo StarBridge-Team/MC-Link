@@ -96,24 +96,42 @@ struct RegistryState {
 struct RegistryEntryState {
     #[serde(default = "default_true")]
     enabled: bool,
-    /// `None` 表示未做用户授权决策（按清单声明放行到信任度上限）。
+    /// 用户是否**显式**启用/停用过该插件（由 `set_enabled` 置位）。
+    ///
+    /// 未验签插件必须由用户表过态才能运行：`enabled` 的默认值是 true（新装即启用），
+    /// 只看它的话，"往插件目录丢一个目录"就等于"核心会执行它"。
+    /// 见 [`PluginRegistry::reload`] 里的生效条件。
+    #[serde(default)]
+    enabled_by_user: bool,
+    /// `None` 表示未做用户授权决策，此时只放行自动放行集（见
+    /// [`crate::plugin::permission::PermissionSet::resolve`]）。
     #[serde(default)]
     granted: Option<Vec<Permission>>,
     #[serde(default)]
     blocked: bool,
+    /// 安装时是否通过**包验签**（见 `crate::plugin::trust`）。
+    ///
+    /// 这是外部插件提权到 `TrustLevel::Verified` 的唯一依据。它只能由安装器写入，
+    /// 插件自身（清单、运行时行为）无法影响它——否则又回到"自述即可信"。
+    #[serde(default)]
+    verified: bool,
 }
 
 impl Default for RegistryEntryState {
     fn default() -> Self {
         Self {
-            // 关键：默认必须是"启用"。
+            // 新装的插件在 registry.json 里还没有条目，这里若是 `enabled: false`
+            // 会表现为"装了但从来不生效"（`#[serde(default)]` 的规则决定了
+            // `Default::default()` 与字段级 default 是两条路径）。
             //
-            // `#[serde(default = "...")]` 只在反序列化缺字段时生效，`Default::default()`
-            // 并不会走它。新安装的插件在 registry.json 里还没有条目，如果这里返回
-            // `enabled: false`，插件会被静默禁用 —— 表现为"装了但从来不生效"。
+            // 但**真正决定能不能跑的是下面两项**：`enabled_by_user` 或验签通过。
+            // 单看 `enabled` 会让"往插件目录丢一个目录"变成"核心直接执行它"。
             enabled: true,
+            enabled_by_user: false,
             granted: None,
             blocked: false,
+            // 默认未验签：只有目录级验签通过（或用户显式启用）才拿得到更多权限。
+            verified: false,
         }
     }
 }
@@ -159,7 +177,8 @@ impl PluginRegistry {
     /// 返回非致命告警列表（坏清单会被跳过而不是让核心启动失败）。
     pub fn reload(&mut self, builtins: Vec<PluginRecord>) -> Vec<String> {
         let mut warnings = Vec::new();
-        let state = self.read_state();
+        let mut state = self.read_state();
+        let mut state_dirty = false;
         self.records.clear();
 
         for mut record in builtins {
@@ -195,19 +214,54 @@ impl PluginRegistry {
                 }
             };
             let st = state.entries.get(&manifest.id).cloned().unwrap_or_default();
+
+            // 目录级验签。刻意**每次扫描都做**，而不是只信持久化的 `verified` 标志：
+            // 标志只能证明"装进来的时候是好的"，证明不了"现在还是好的"。
+            let verdict = crate::plugin::trust::verify_directory(&dir);
+            if let crate::plugin::trust::Verdict::Invalid(reason) = &verdict {
+                // trust.rs 的约定：校验不通过必须拒绝，不允许降级成"未验签"
+                warnings.push(format!("插件 {} 验签未通过，已忽略: {}", manifest.id, reason));
+                continue;
+            }
+            let verified = verdict.grants_verified();
+            if verified != st.verified {
+                state
+                    .entries
+                    .entry(manifest.id.clone())
+                    .or_default()
+                    .verified = verified;
+                state_dirty = true;
+            }
+
             let trust = if st.blocked {
                 TrustLevel::Blocked
+            } else if verified {
+                TrustLevel::Verified
             } else {
-                manifest.declared_trust()
+                // 外部插件的信任等级**只能由验签结果决定**，清单自述不参与
+                TrustLevel::Unsigned
             };
             let permissions =
                 PermissionSet::resolve(&manifest.permissions, trust, st.granted.as_deref());
+
+            // 未验签的插件必须由用户**显式启用**才运行。
+            // 否则"能往插件目录写一个目录"就等于"核心会拉起并执行它"，
+            // 而这条路径不需要任何签名。
+            let enabled = st.enabled && (verified || st.enabled_by_user);
+            if st.enabled && !enabled {
+                // 必须说清"为什么装了却不生效"，否则会被当成 bug（或干脆被忽略）
+                warnings.push(format!(
+                    "插件 {} 未通过验签，保持停用；如需使用请在插件管理中显式启用（只会获得最小权限）",
+                    manifest.id
+                ));
+            }
+
             let record = PluginRecord {
                 manifest,
                 source: PluginSource::External,
                 dir,
                 trust,
-                enabled: st.enabled,
+                enabled,
                 permissions,
             };
             if self.records.contains_key(record.id()) {
@@ -218,6 +272,12 @@ impl PluginRegistry {
                 continue;
             }
             self.records.insert(record.id().to_string(), record);
+        }
+
+        if state_dirty {
+            if let Err(e) = self.write_state(&state) {
+                warnings.push(format!("写入插件注册表失败: {}", e));
+            }
         }
 
         warnings
@@ -246,9 +306,49 @@ impl PluginRegistry {
         let mut state = self.read_state();
         let entry = state.entries.entry(id.to_string()).or_default();
         entry.enabled = enabled;
+        // 记录"用户明确表过态"：未验签插件只有置位后才能运行（见 reload）
+        entry.enabled_by_user = enabled;
         self.write_state(&state)?;
         if let Some(r) = self.records.get_mut(id) {
             r.enabled = enabled;
+        }
+        Ok(())
+    }
+
+    /// 记录安装时的验签结果，并据此重算生效权限。
+    ///
+    /// **只能由安装器调用**：这是外部插件提权到 [`TrustLevel::Verified`] 的唯一入口。
+    /// 它不接收任何来自插件的内容，只接收安装器对整包验签的结论，
+    /// 因此插件无法通过清单或运行时行为影响这个结果。
+    pub fn set_verified(&mut self, id: &str, verified: bool) -> Result<(), String> {
+        let Some(record) = self.records.get(id) else {
+            return Err(format!("插件不存在: {}", id));
+        };
+        if record.source != PluginSource::External {
+            return Err(format!("{} 是内置插件，不参与验签", id));
+        }
+        let manifest = record.manifest.clone();
+
+        let mut state = self.read_state();
+        // 注意取的是**持久化的用户授权**，不是"当前生效权限"。
+        // 后者已被信任度上限裁剪过一遍，拿它当授权集会让权限越收越窄：
+        // 首次以未验签身份安装时被裁掉的项，之后即使验签通过也回不来。
+        let granted = {
+            let entry = state.entries.entry(id.to_string()).or_default();
+            entry.verified = verified;
+            entry.granted.clone()
+        };
+        self.write_state(&state)?;
+
+        let trust = if verified {
+            TrustLevel::Verified
+        } else {
+            TrustLevel::Unsigned
+        };
+        let permissions = PermissionSet::resolve(&manifest.permissions, trust, granted.as_deref());
+        if let Some(r) = self.records.get_mut(id) {
+            r.trust = trust;
+            r.permissions = permissions;
         }
         Ok(())
     }
@@ -347,6 +447,49 @@ mod tests {
         assert!(reg.by_kind(PluginKind::Adapter).len() == 1);
         reg.set_enabled("dev.mclink.builtin.test", false).unwrap();
         assert!(reg.by_kind(PluginKind::Adapter).is_empty());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// 未验签的外部插件默认**不启用**：往插件目录丢一个目录不再等于"核心会执行它"。
+    /// 用户显式启用后才生效，且只拿最小权限。
+    #[test]
+    fn unverified_external_plugin_stays_disabled_until_user_enables_it() {
+        let tmp = std::env::temp_dir().join(format!("mclink-reg-ext-{}", crypto::random_hex(6)));
+        let dir = tmp.join("Plugins").join("dev.example.adapter");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(crate::plugin::manifest::MANIFEST_FILE),
+            serde_json::json!({
+                "id": "dev.example.adapter",
+                "name": "示例适配器",
+                "version": "1.0.0",
+                "kind": "adapter",
+                "permissions": ["net_connect_any", "net_listen_local"]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let mut reg = PluginRegistry::new(&tmp);
+        let warnings = reg.reload(Vec::new());
+        assert!(
+            warnings.iter().any(|w| w.contains("未通过验签")),
+            "应给出可解释的告警，实际: {:?}",
+            warnings
+        );
+
+        let record = reg.get("dev.example.adapter").expect("目录应被登记");
+        assert!(!record.enabled, "未验签插件默认不启用");
+        assert_eq!(record.trust, TrustLevel::Unsigned);
+        // 未授权时只拿"最小集 ∩ 清单声明"：声明的 net_connect_any 不在其中
+        assert!(!record.permissions.contains(Permission::NetConnectAny));
+        assert!(record.permissions.contains(Permission::NetListenLocal));
+        // 清单没声明的项即使属于最小集也不会生效（生效权限始终是交集）
+        assert!(!record.permissions.contains(Permission::FsPluginData));
+
+        // 用户显式启用后才运行
+        reg.set_enabled("dev.example.adapter", true).unwrap();
+        assert!(reg.get("dev.example.adapter").unwrap().enabled);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

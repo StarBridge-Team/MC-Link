@@ -5,7 +5,14 @@
 
 use crate::plugin::game::GameRegistry;
 use crate::plugin::manifest::PluginKind;
-use crate::plugin::registry::PluginRegistry;
+use crate::plugin::permission::kind_baseline;
+use crate::plugin::registry::{PluginRegistry, PluginSource};
+
+/// 外部插件自述 `priority` 的允许范围（仅作同档内微调）。
+///
+/// 不限制时，任何插件写 `priority: 10000` 就能越过"游戏画像显式指定"(1000)
+/// 与"清单明确覆盖该游戏"(200) 两档，把自己变成全部游戏的首选适配器。
+const EXTERNAL_PRIORITY_LIMIT: i32 = 50;
 
 /// 一个候选插件及其入选理由。
 #[derive(Debug, Clone)]
@@ -53,7 +60,12 @@ impl RoutePlan {
 /// 3. 首选插件清单里声明的 `fallback` 链：`600 - 序号`；
 /// 4. 清单明确声明覆盖该游戏：`200`；
 /// 5. 清单用 `*` 通配覆盖：`100`；
-/// 6. 加上清单自带的 `priority` 作为同档内的微调。
+/// 6. 加上清单自带的 `priority` 作为同档内的微调
+///    —— 外部插件被夹在 ±[`EXTERNAL_PRIORITY_LIMIT`] 内，只能微调、不能越档。
+///
+/// 另外候选必须先满足**能力基线**（[`kind_baseline`]）：选中了却拿不到权限的插件
+/// 只会让调用失败。这条同时堵住"未验签插件靠清单自述当上首选适配器"——它默认
+/// 拿不到基线权限，因而进不了候选。
 pub fn plan(
     registry: &PluginRegistry,
     games: &GameRegistry,
@@ -84,6 +96,11 @@ pub fn plan(
 
     for record in registry.list() {
         if record.manifest.kind != kind || !record.enabled || !record.trust.is_runnable() {
+            continue;
+        }
+        // 能力基线：连基线权限都没有的插件不参与路由（选了也只会失败）。
+        // 未验签插件默认拿不到基线权限，于是天然不会成为首选。
+        if !record.permissions.contains(kind_baseline(kind)) {
             continue;
         }
         let id = record.id();
@@ -125,7 +142,14 @@ pub fn plan(
                 }
             },
         };
-        score += record.manifest.priority;
+        // 外部插件的 priority 是**清单自述**的，只允许同档微调
+        score += match record.source {
+            PluginSource::Builtin => record.manifest.priority,
+            PluginSource::External => record
+                .manifest
+                .priority
+                .clamp(-EXTERNAL_PRIORITY_LIMIT, EXTERNAL_PRIORITY_LIMIT),
+        };
 
         candidates.push(RouteCandidate {
             plugin_id: id.to_string(),
@@ -177,6 +201,8 @@ mod tests {
     }
 
     fn adapter(id: &str, games: &[&str], priority: i32) -> serde_json::Value {
+        // 真实适配器必须声明 net_connect_any（HOST_START/JOIN/PROBE 在
+        // `required_for` 里就要求它），否则连能力基线都过不了，压根不会被路由选中。
         serde_json::json!({
             "id": id,
             "name": id,
@@ -184,7 +210,7 @@ mod tests {
             "kind": "adapter",
             "games": games,
             "priority": priority,
-            "permissions": ["net_listen_local"]
+            "permissions": ["net_listen_local", "net_connect_any"]
         })
     }
 
@@ -266,5 +292,49 @@ mod tests {
     fn permission_type_is_used() {
         // 防止 `Permission` 被误删导致权限模型失去类型约束。
         let _ = Permission::GameScan;
+    }
+
+    /// 能力基线：拿不到基线权限的插件不参与路由。
+    ///
+    /// 未验签插件默认只有最小权限（不含 `net_connect_any`），因此不会成为首选适配器
+    /// ——这比"分值排序"更可靠，因为权限不来自清单自述。
+    #[test]
+    fn plugin_without_baseline_permission_is_not_routed() {
+        let tmp = std::env::temp_dir();
+        let reg = registry_with(vec![record(
+            adapter("dev.a.weak", &["*"], 0),
+            &tmp,
+            TrustLevel::Unsigned,
+        )]);
+        let games = GameRegistry::with_builtins();
+        assert!(plan(&reg, &games, PluginKind::Adapter, None).is_empty());
+    }
+
+    /// 外部插件的自述 `priority` 只能同档微调：写多大都压不过"明确覆盖该游戏"。
+    #[test]
+    fn external_priority_is_clamped_to_same_tier() {
+        let tmp = std::env::temp_dir();
+        let reg = registry_with(vec![
+            record(
+                adapter("dev.a.greedy", &["*"], 10_000),
+                &tmp,
+                TrustLevel::Verified,
+            ),
+            record(
+                adapter("dev.a.specific", &["terraria"], 0),
+                &tmp,
+                TrustLevel::Verified,
+            ),
+        ]);
+        let games = GameRegistry::with_builtins();
+        let p = plan(&reg, &games, PluginKind::Adapter, Some("terraria"));
+        assert_eq!(p.primary(), Some("dev.a.specific"));
+
+        let greedy = p
+            .candidates
+            .iter()
+            .find(|c| c.plugin_id == "dev.a.greedy")
+            .expect("通配插件仍应是候选（只是排在后面）");
+        assert_eq!(greedy.score, 100 + EXTERNAL_PRIORITY_LIMIT);
     }
 }

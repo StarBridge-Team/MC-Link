@@ -3,7 +3,11 @@
 //! 三条规则：
 //! 1. **清单声明**：插件必须在 `plugin.json` 里声明它需要的能力。
 //! 2. **信任度上限**：未签名插件的可申请权限被信任度封顶，签名不能自证。
-//! 3. **用户授权**：最终生效权限 = 清单声明 ∩ 信任度上限 ∩ 用户授予。
+//! 3. **用户授权**：最终生效权限 = 清单声明 ∩ 信任度上限 ∩（用户授予 或 自动放行集）。
+//!
+//! 第 3 条里的"或"是关键：**用户没做过授权决策（`None`）不等于全放行**。
+//! 未验签插件在用户尚未授权时只拿到 [`MINIMAL`]（回环通信 + 自身数据目录），
+//! 其余权限必须由用户在界面上显式授予。详见 [`PermissionSet::resolve`]。
 //!
 //! 核心侧在执行任何敏感 RPC 前都会调用 [`PermissionSet::require`]，插件无法
 //! 通过伪造请求绕过——权限判定发生在核心进程内，而非插件进程内。
@@ -102,7 +106,29 @@ pub enum TrustLevel {
     Blocked,
 }
 
+/// 用户**尚未做授权决策**时，未验签插件自动获得的权限。
+///
+/// 只包含"能跑起来、并且只跟核心说话"所必需的项：
+/// 回环监听（适配器/耦合器的常规形态）、连接回环、读写自身数据目录。
+///
+/// 刻意**不含** `NetConnectAny` / `NetUdp` / `FsReadGameDirs` / `ProcInspect` /
+/// `GameScan` 等——它们要么越过本机边界，要么触碰用户的其他数据，必须由用户显式授权。
+/// 改动这里等于改动未签名插件的默认能力，请同时更新 `插件开发规范.md` 的对照表。
+pub const MINIMAL: &[Permission] = &[
+    Permission::NetListenLocal,
+    Permission::NetConnectLocal,
+    Permission::FsPluginData,
+];
+
 impl TrustLevel {
+    /// 用户**未做授权决策**时，是否按清单声明直接放行。
+    ///
+    /// 官方内置与已验签插件的清单来自可信发布者，可以按声明放行（仍受上限约束）；
+    /// 未验签插件只给 [`MINIMAL`]——这正是"未授权 ≠ 全放行"的落点。
+    pub fn auto_grants_declared(&self) -> bool {
+        matches!(self, TrustLevel::Official | TrustLevel::Verified)
+    }
+
     /// 该信任度下允许申请的权限上限。
     pub fn ceiling(&self) -> &'static [Permission] {
         const LOCAL_ONLY: &[Permission] = &[
@@ -158,13 +184,27 @@ pub struct PermissionSet {
 }
 
 impl PermissionSet {
-    /// 计算生效权限：清单声明 ∩ 信任度上限 ∩ 用户授予。
+    /// 计算生效权限。
+    ///
+    /// | 用户是否做过授权决策 | 生效权限 |
+    /// |---|---|
+    /// | 做过（`Some`） | 用户授予 ∩ 信任度上限 —— 用户决策优先，因此**可撤销** |
+    /// | 没做过（`None`） | 清单声明 ∩ 信任度上限 ∩ 自动放行集 |
+    ///
+    /// 第二行是关键：`None` 曾被实现成"按清单声明放行到信任度上限"，于是
+    /// **"从未授权"等于"全放行"**，与最小权限原则相反，也让未验签插件的上限形同虚设。
+    /// 现在 `None` 只放行 [`TrustLevel::auto_grants_declared`] 允许的部分：
+    /// 官方/已验签插件按声明放行，未验签插件只拿到 [`MINIMAL`]。
+    ///
+    /// `denied_by_ceiling` 只记录**因信任度上限**被拒的项；因"等用户授权"而未生效的项
+    /// 不进这个列表——界面上它们是"待授权"，而不是"被核心封顶拒绝"。
     pub fn resolve(
         declared: &[Permission],
         trust: TrustLevel,
         user_granted: Option<&[Permission]>,
     ) -> Self {
         let ceiling = trust.ceiling();
+        let auto_grants = trust.auto_grants_declared();
         let mut granted = BTreeSet::new();
         let mut denied_by_ceiling = Vec::new();
 
@@ -173,12 +213,20 @@ impl PermissionSet {
                 denied_by_ceiling.push(*perm);
                 continue;
             }
-            if let Some(user) = user_granted {
-                if !user.contains(perm) {
-                    continue;
+            match user_granted {
+                // 用户已做过授权决策：完全以用户决策为准（这是"撤销权限"能生效的前提）
+                Some(user) => {
+                    if user.contains(perm) {
+                        granted.insert(*perm);
+                    }
+                }
+                // 用户未决策：只放行无需用户确认的部分
+                None => {
+                    if auto_grants || MINIMAL.contains(perm) {
+                        granted.insert(*perm);
+                    }
                 }
             }
-            granted.insert(*perm);
         }
 
         Self {
@@ -253,6 +301,22 @@ pub fn required_for(kind: PluginKind, method: &str) -> Permission {
     }
 }
 
+/// 某类插件"能干活"所必需的最低权限。
+///
+/// 路由用它排除"选中了也做不了事"的候选：未验签插件默认拿不到这些权限，
+/// 于是它们天然不会成为首选适配器——这比只靠分值排序更可靠
+/// （分值可以被清单自述影响，权限不能）。
+pub fn kind_baseline(kind: PluginKind) -> Permission {
+    match kind {
+        // 适配器的核心动作是打洞/直连，需要主动连出去
+        PluginKind::Adapter => Permission::NetConnectAny,
+        // 探测器要扫描本机游戏实例
+        PluginKind::Detector => Permission::GameScan,
+        // 耦合器要拉起游戏进程
+        PluginKind::Coupler => Permission::ProcSpawnGame,
+    }
+}
+
 /// 权限的稳定字符串名（与 serde 序列化保持一致，用于日志与前端展示）。
 pub fn perm_name(perm: Permission) -> &'static str {
     match perm {
@@ -277,14 +341,70 @@ pub fn perm_name(perm: Permission) -> &'static str {
 mod tests {
     use super::*;
 
+    const RISKY: &[Permission] = &[Permission::NetConnectAny, Permission::FsReadGameDirs];
+
     #[test]
     fn unsigned_plugin_cannot_get_public_listen() {
-        let declared = [Permission::NetListenPublic, Permission::NetConnectAny];
+        let declared = [Permission::NetListenPublic, Permission::NetUdp];
         let set = PermissionSet::resolve(&declared, TrustLevel::Unsigned, None);
         assert!(!set.contains(Permission::NetListenPublic));
-        assert!(set.contains(Permission::NetConnectAny));
+        assert!(!set.contains(Permission::NetUdp), "未授权时不得自动拿到 UDP");
         assert_eq!(set.denied_by_ceiling(), &[Permission::NetListenPublic]);
         assert!(set.require(Permission::NetListenPublic).is_err());
+    }
+
+    /// 核心回归：**"用户没做过授权决策"不等于"全放行"**。
+    ///
+    /// 旧实现在 `None` 时按清单声明放行到信任度上限，于是未验签插件只要在清单里
+    /// 声明 `net_connect_any` 就能自动拿到——最小权限原则形同虚设。
+    #[test]
+    fn no_user_decision_grants_only_minimal_for_unsigned() {
+        let set = PermissionSet::resolve(RISKY, TrustLevel::Unsigned, None);
+        assert!(
+            !set.contains(Permission::NetConnectAny),
+            "未验签插件不得自动拿到外连权限"
+        );
+        assert!(!set.contains(Permission::FsReadGameDirs));
+        // 这两项属于"等用户授权"，不是"被信任度封顶拒绝"，界面提示要能区分
+        assert!(set.denied_by_ceiling().is_empty());
+        assert!(set.require(Permission::NetConnectAny).is_err());
+    }
+
+    #[test]
+    fn minimal_set_is_auto_granted_even_for_unsigned() {
+        let declared = [Permission::NetListenLocal, Permission::FsPluginData];
+        let set = PermissionSet::resolve(&declared, TrustLevel::Unsigned, None);
+        assert!(set.contains(Permission::NetListenLocal));
+        assert!(set.contains(Permission::FsPluginData));
+    }
+
+    #[test]
+    fn verified_plugin_follows_its_manifest_without_user_decision() {
+        // 已验签插件的清单来自可信发布者，用户未决策时按声明放行
+        let set = PermissionSet::resolve(RISKY, TrustLevel::Verified, None);
+        assert!(set.contains(Permission::NetConnectAny));
+        assert!(set.contains(Permission::FsReadGameDirs));
+    }
+
+    #[test]
+    fn user_can_revoke_everything() {
+        let set = PermissionSet::resolve(RISKY, TrustLevel::Verified, Some(&[]));
+        assert!(set.allowed().is_empty(), "用户全部撤销后不得有任何生效权限");
+    }
+
+    #[test]
+    fn user_grant_cannot_exceed_ceiling() {
+        let granted = [Permission::NetListenPublic];
+        let set = PermissionSet::resolve(&granted, TrustLevel::Unsigned, Some(&granted));
+        assert!(!set.contains(Permission::NetListenPublic));
+        assert_eq!(set.denied_by_ceiling(), &[Permission::NetListenPublic]);
+    }
+
+    #[test]
+    fn baseline_permission_per_kind() {
+        assert_eq!(kind_baseline(PluginKind::Adapter), Permission::NetConnectAny);
+        assert_eq!(kind_baseline(PluginKind::Detector), Permission::GameScan);
+        assert_eq!(kind_baseline(PluginKind::Coupler), Permission::ProcSpawnGame);
     }
 
     #[test]

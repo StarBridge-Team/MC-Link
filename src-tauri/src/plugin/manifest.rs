@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
-use crate::plugin::permission::{Permission, TrustLevel};
+use crate::plugin::permission::Permission;
 
 /// 清单文件名。
 pub const MANIFEST_FILE: &str = "plugin.json";
@@ -156,16 +156,14 @@ impl Default for LimitsSpec {
     }
 }
 
-/// 签名信息。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SignatureSpec {
-    /// 签名算法，当前支持 `ed25519`。
-    pub algorithm: String,
-    /// 发布者公钥（hex）。
-    pub public_key: String,
-    /// 对清单规范化摘要的签名（hex）。
-    pub signature: String,
-}
+// 这里曾有一个 `SignatureSpec`（`algorithm` / `public_key` / `signature`），
+// 让清单自带"我已被签名"的声明。那等于把"自述即可信"写进权限模型：任何人填一对
+// 假公钥假签名就能拿到 `Verified` 的权限上限。
+//
+// 信任必须来自**外部**：客户端内置发布者公钥，对**整个插件包**验签，见
+// [`crate::plugin::trust`]。清单里的任何字段都不再影响信任等级。
+// 注意 serde 默认忽略未知字段，因此旧清单里残留的 `signature` 字段会被静默忽略，
+// 既不会报错也不会产生任何效果——这正是我们想要的。
 
 /// 插件清单。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,8 +196,6 @@ pub struct PluginManifest {
     /// 同种类回退链，供路由在首选插件不可用时降级。
     #[serde(default)]
     pub fallback: Vec<String>,
-    #[serde(default)]
-    pub signature: Option<SignatureSpec>,
     /// 清单要求的协议版本。
     #[serde(default = "default_protocol_version")]
     pub protocol_version: u16,
@@ -278,31 +274,6 @@ impl PluginManifest {
         Ok(())
     }
 
-    /// 可信度判定。
-    ///
-    /// # 为什么这里永远返回 `Unsigned`
-    ///
-    /// 签名校验（ed25519 验签 + 发布者白名单）尚未实现。如果仅凭清单里*存在*
-    /// `signature` 字段就返回 [`TrustLevel::Verified`]，那么任何插件只要随手填一个
-    /// 假的 `public_key` / `signature` 就能拿到 `Verified` 的权限上限——包括
-    /// `net_listen_public`、`proc_spawn_game`、`registry_read` 这些高风险权限。
-    /// 那等于把"自述即可信"写进了权限模型。
-    ///
-    /// 在验签落地之前，签名信息只是**待校验的输入**，不产生任何信任。
-    /// [`crate::plugin::registry`] 在加载阶段通过 [`Self::has_signature`] 判断是否
-    /// 需要走验签流程；验签失败或未验签的插件一律停留在 `Unsigned`。
-    pub fn declared_trust(&self) -> TrustLevel {
-        TrustLevel::Unsigned
-    }
-
-    /// 清单是否携带完整的签名信息（是否需要走验签流程）。
-    pub fn has_signature(&self) -> bool {
-        match &self.signature {
-            Some(sig) => !sig.signature.trim().is_empty() && !sig.public_key.trim().is_empty(),
-            None => false,
-        }
-    }
-
     /// 该插件是否覆盖指定游戏。
     pub fn covers_game(&self, game_id: &str) -> bool {
         self.games.iter().any(|g| g == "*" || g.eq_ignore_ascii_case(game_id))
@@ -368,6 +339,7 @@ pub fn is_safe_relative_path(p: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin::permission::TrustLevel;
 
     fn sample() -> serde_json::Value {
         serde_json::json!({
@@ -390,29 +362,33 @@ mod tests {
         let m = PluginManifest::parse(&sample().to_string()).unwrap();
         assert_eq!(m.kind, PluginKind::Adapter);
         assert_eq!(m.games, vec!["*"]);
-        assert_eq!(m.declared_trust(), TrustLevel::Unsigned);
-        assert!(!m.has_signature());
     }
 
-    /// 回归保护：仅凭"填了签名字段"不得获得任何信任提升，否则等于自述即可信。
+    /// 回归保护：清单里写什么都不能影响信任。
+    ///
+    /// 早期版本让清单自带 `signature` 字段并据此提权，那是"自述即可信"。现在
+    /// 该字段已从结构体移除，serde 会静默忽略它——本用例锁死这个行为：即使插件
+    /// 声明了 `permissions` 里的高权限、又伪造了签名字段，也只能拿到 `Unsigned`
+    /// 的权限上限。
     #[test]
-    fn forged_signature_does_not_raise_trust() {
+    fn manifest_cannot_self_declare_trust() {
         let m = parse(sample(), |v| {
+            v["permissions"] = serde_json::json!(["net_listen_public", "proc_spawn_game"]);
             v["signature"] = serde_json::json!({
                 "algorithm": "ed25519",
                 "public_key": "deadbeef",
                 "signature": "cafebabe"
             });
         })
-        .unwrap();
-        assert!(m.has_signature());
-        assert_eq!(m.declared_trust(), TrustLevel::Unsigned);
+        .expect("未知字段应被静默忽略，而不是解析失败");
+
         let set = crate::plugin::permission::PermissionSet::resolve(
             &m.permissions,
-            m.declared_trust(),
+            TrustLevel::Unsigned,
             None,
         );
         assert!(!set.contains(crate::plugin::permission::Permission::ProcSpawnGame));
+        assert!(!set.contains(crate::plugin::permission::Permission::NetListenPublic));
     }
 
     #[test]
