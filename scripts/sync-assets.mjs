@@ -183,10 +183,9 @@ function computeVersion(files) {
 
 function uploadFile(rel, buf) {
   return new Promise((resolve) => {
-    const url = new URL(
-      `${SERVER_URL}/upload?path=${encodeURIComponent(rel)}` +
-        (TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : ""),
-    );
+    // 令牌走 Authorization 头，不进 URL：URL 会被写进服务器访问日志、
+    // 反向代理日志与 Referer，等于把令牌散出去（服务器侧也对日志做了脱敏）。
+    const url = new URL(`${SERVER_URL}/upload?path=${encodeURIComponent(rel)}`);
     const lib = url.protocol === "https:" ? httpsRequest : httpRequest;
     const req = lib(
       {
@@ -197,6 +196,7 @@ function uploadFile(rel, buf) {
         headers: {
           "Content-Type": "application/octet-stream",
           "Content-Length": buf.length,
+          ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
         },
       },
       (res) => {
@@ -377,10 +377,7 @@ function httpGetJson(url) {
 /** 请求服务器删除一个已上传的文件；404 视为"已经清理过"。 */
 function postDelete(rel) {
   return new Promise((resolve, reject) => {
-    const url = new URL(
-      `${SERVER_URL}/delete?path=${encodeURIComponent(rel)}` +
-        (TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : ""),
-    );
+    const url = new URL(`${SERVER_URL}/delete?path=${encodeURIComponent(rel)}`);
     const lib = url.protocol === "https:" ? httpsRequest : httpRequest;
     const req = lib(
       {
@@ -388,7 +385,10 @@ function postDelete(rel) {
         hostname: url.hostname,
         port: url.port,
         path: url.pathname + url.search,
-        headers: { "Content-Length": 0 },
+        headers: {
+          "Content-Length": 0,
+          ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+        },
       },
       (res) => {
         res.resume();

@@ -26,12 +26,20 @@ pub struct AssetsConfig {
     #[serde(default = "default_true")]
     pub access_log: bool,
 
-    /// 上传接口令牌（留空表示关闭鉴权，任何人可上传；也可通过环境变量 ASSET_UPLOAD_TOKEN 设置）
+    /// 上传接口令牌。
+///
+/// **留空 = 一律拒绝写入**（不是"关闭鉴权"）：留空时 `/upload` 与 `/delete`
+/// 返回 503，服务器退化为只读。也可通过环境变量 `ASSET_UPLOAD_TOKEN` 设置。
     #[serde(default)]
     pub upload_token: String,
 }
 
-fn default_bind() -> String { "0.0.0.0".to_string() }
+/// 默认只绑回环。
+///
+/// 历史默认是 `0.0.0.0`：本机开发时也能从局域网访问，看起来"方便"，
+/// 但那意味着整个内网都能探测/读取这份资源目录。生产环境要对外提供下载时，
+/// 请显式配置 `bind`（或放在反向代理后面）。
+fn default_bind() -> String { "127.0.0.1".to_string() }
 fn default_port() -> u16 { 8090 }
 fn default_root_dir() -> PathBuf { PathBuf::from(".") }
 fn default_true() -> bool { true }

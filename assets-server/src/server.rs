@@ -20,6 +20,12 @@ pub fn run_server(config: AssetsConfig) {
             println!("===========================================");
             println!("  监听: http://{}", listen);
             println!("  根目录: {}", cfg.root_dir.display());
+            // 启动时把写入模式说清楚：否则"上传一直 503"会被当成 bug 排查半天
+            if cfg.upload_token.is_empty() {
+                println!("  写入: 已禁用（未配置 upload_token，/upload 与 /delete 一律拒绝）");
+            } else {
+                println!("  写入: 已启用（需要 Authorization: Bearer <token>）");
+            }
             println!("===========================================");
             println!();
             s
@@ -42,7 +48,12 @@ pub fn run_server(config: AssetsConfig) {
         };
 
         if cfg.access_log {
-            println!("[{}] {}", request.method(), request.url());
+            // 脱敏后再打：URL 里的 `?token=` 会被写进 stdout、反向代理日志与 Referer
+            println!(
+                "[{}] {}",
+                request.method(),
+                redact_token(&request.url().to_string())
+            );
         }
 
         let response = route(&mut request, &cfg);
@@ -72,7 +83,7 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Response<std::io::Cursor
         if method != Method::Post {
             return method_not_allowed();
         }
-        return handle_delete(cfg, query);
+        return handle_delete(req, cfg, query);
     }
 
     // 仅允许 GET / HEAD / OPTIONS
@@ -205,7 +216,11 @@ fn serve_file(dir: &Path, rel: &str, ctx: &ServeCtx) -> Response<std::io::Cursor
     if safe.as_os_str().is_empty() {
         return bad_request("无效路径");
     }
-    serve_abs(&dir.join(&safe), ctx)
+    // 先算安全路径再读：`dir.join(&safe)` 单独用是不够的（见 sanitize_path 的注释）
+    match resolve_within(dir, &safe) {
+        Some(full) => serve_abs(&full, ctx),
+        None => not_found(),
+    }
 }
 
 /// 提供更新包文件。
@@ -219,14 +234,11 @@ fn serve_update(cfg: &AssetsConfig, rel: &str, ctx: &ServeCtx) -> Response<std::
         return bad_request("无效路径");
     }
 
-    let modern = cfg.assets_dir().join("update").join(&safe);
-    if modern.is_file() {
-        return serve_abs(&modern, ctx);
+    if let Some(full) = resolve_within(&cfg.assets_dir().join("update"), &safe) {
+        return serve_abs(&full, ctx);
     }
-
-    let legacy = cfg.updates_dir().join(&safe);
-    if legacy.is_file() {
-        return serve_abs(&legacy, ctx);
+    if let Some(full) = resolve_within(&cfg.updates_dir(), &safe) {
+        return serve_abs(&full, ctx);
     }
 
     not_found()
@@ -480,16 +492,38 @@ fn sanitize(input: &str) -> String {
         .collect()
 }
 
-/// 防止路径穿越：去除 `..`、绝对前缀、反斜杠
+/// 防止路径穿越：把相对路径规整为安全的分段序列。
+///
+/// 必须同时处理三类逃逸（历史实现只按 `/` 切分，注释却写着"已处理反斜杠"）：
+/// - Windows 上 `\` 也是分隔符：`..\..\Windows\win.ini` 不会被 `/` 切开；
+/// - 盘符/前缀：`C:\Windows\win.ini` 经 `PathBuf::push` 会**整体替换**已有路径；
+/// - 因此还叠一层 [`resolve_within`] 做 canonicalize + 包含性校验，本函数只做粗筛。
 fn sanitize_path(input: &str) -> PathBuf {
     let mut out = PathBuf::new();
-    for part in input.split('/') {
-        if part.is_empty() || part == "." || part == ".." {
+    for part in input.replace('\\', "/").split('/') {
+        if part.is_empty() || part == "." || part == ".." || part.contains(':') {
             continue;
         }
         out.push(part);
     }
     out
+}
+
+/// 把 `rel` 解析到 `base` 之内，并确认结果**确实落在 base 里**。
+///
+/// 返回 `None` 表示越界或不存在，调用方一律按 404 处理（不区分二者，
+/// 免得把目录结构变成探测信号）。
+///
+/// 用 `canonicalize` 而非字符串前缀判断，是为了连符号链接一起挡掉：
+/// 光比字符串挡不住"在 base 内放一个指向 `C:\Windows` 的软链接"。
+fn resolve_within(base: &Path, rel: &Path) -> Option<PathBuf> {
+    let real_base = base.canonicalize().ok()?;
+    let real = real_base.join(rel).canonicalize().ok()?;
+    if real.starts_with(&real_base) {
+        Some(real)
+    } else {
+        None
+    }
 }
 
 /// 处理文件上传：`POST /upload?path=<Assets相对路径>&token=<可选>`
@@ -501,12 +535,9 @@ fn handle_upload(
     cfg: &Arc<AssetsConfig>,
     query: &str,
 ) -> Response<std::io::Cursor<Vec<u8>>> {
-    // 鉴权：配置了 upload_token 时必须提供匹配的 ?token=
-    if !cfg.upload_token.is_empty() {
-        let provided = query_param(query, "token").unwrap_or_default();
-        if provided != cfg.upload_token {
-            return json_status(401, r#"{"ok":false,"error":"unauthorized"}"#);
-        }
+    // 鉴权：必须提供匹配的令牌（未配置 token 的服务器一律拒绝写入）
+    if let Some(resp) = require_token(req, cfg, query) {
+        return resp;
     }
 
     let rel = match query_param(query, "path") {
@@ -573,12 +604,13 @@ fn list_update_files(cfg: &AssetsConfig) -> Response<std::io::Cursor<Vec<u8>>> {
 /// 存在的理由：只有上传没有删除时，旧版本更新包会永久堆积（每版约 30MB）且无法回收。
 /// 与上传同样受 token 保护；`safe_join` 保证只能删 `Assets/` 目录内的文件。
 /// 文件不存在返回 404——调用方应把它当作"已经清理过"，而不是错误。
-fn handle_delete(cfg: &Arc<AssetsConfig>, query: &str) -> Response<std::io::Cursor<Vec<u8>>> {
-    if !cfg.upload_token.is_empty() {
-        let provided = query_param(query, "token").unwrap_or_default();
-        if provided != cfg.upload_token {
-            return json_status(401, r#"{"ok":false,"error":"unauthorized"}"#);
-        }
+fn handle_delete(
+    req: &Request,
+    cfg: &Arc<AssetsConfig>,
+    query: &str,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    if let Some(resp) = require_token(req, cfg, query) {
+        return resp;
     }
 
     let rel = match query_param(query, "path") {
@@ -601,6 +633,74 @@ fn handle_delete(cfg: &Arc<AssetsConfig>, query: &str) -> Response<std::io::Curs
             json_status(200, r#"{"ok":true}"#)
         }
         Err(e) => json_status(500, &format!("{{\"ok\":false,\"error\":\"delete: {}\"}}", e)),
+    }
+}
+
+/// 写入类接口的鉴权。
+///
+/// **未配置 token 时直接拒绝**（fail-closed）。历史行为是"token 为空 = 关闭鉴权"，
+/// 于是按仓库自带配置启动的服务器允许任何人覆盖 `update/latest.json` 与更新包
+/// —— 等于把"给全体客户端投毒"的能力开放给整个网络。
+fn require_token(
+    req: &Request,
+    cfg: &AssetsConfig,
+    query: &str,
+) -> Option<Response<std::io::Cursor<Vec<u8>>>> {
+    if cfg.upload_token.is_empty() {
+        eprintln!("[鉴权] 拒绝写入：服务器未配置 upload_token（用 --token 或 ASSET_UPLOAD_TOKEN 设置）");
+        return Some(json_status(
+            503,
+            r#"{"ok":false,"error":"upload disabled: no upload_token configured"}"#,
+        ));
+    }
+    let provided = token_from_header(req).or_else(|| query_param(query, "token"));
+    match provided {
+        Some(t) if constant_time_eq(t.as_bytes(), cfg.upload_token.as_bytes()) => None,
+        _ => Some(json_status(401, r#"{"ok":false,"error":"unauthorized"}"#)),
+    }
+}
+
+/// 从请求头取令牌：`Authorization: Bearer <t>` 优先，其次 `X-Token: <t>`。
+///
+/// 令牌走 URL 会进访问日志、反向代理日志与 Referer，头传递才是正确姿势；
+/// query 形式仅为兼容既有发布脚本而保留（日志里会脱敏）。
+fn token_from_header(req: &Request) -> Option<String> {
+    for name in ["Authorization", "X-Token"] {
+        if let Some(h) = req.headers().iter().find(|h| h.field.equiv(name)) {
+            let v = h.value.as_str().trim();
+            let v = v.strip_prefix("Bearer ").unwrap_or(v).trim();
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+/// 常量时间比较，避免用 `!=` 逐字节短路泄漏令牌前缀。
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// 访问日志脱敏：把 `token=...` 换成 `token=***`。
+fn redact_token(url: &str) -> String {
+    match url.split_once('?') {
+        None => url.to_string(),
+        Some((path, query)) => {
+            let cleaned: Vec<String> = query
+                .split('&')
+                .map(|pair| match pair.split_once('=') {
+                    Some((k, _)) if k.eq_ignore_ascii_case("token") => "token=***".to_string(),
+                    _ => pair.to_string(),
+                })
+                .collect();
+            format!("{}?{}", path, cleaned.join("&"))
+        }
     }
 }
 
@@ -657,6 +757,76 @@ mod tests {
         assert_eq!(parse_range("bytes=-10", 100), Partial(90, 99));
         // 后缀长度超过文件长度 → 整个文件
         assert_eq!(parse_range("bytes=-500", 100), Partial(0, 99));
+    }
+
+    /// 路径穿越：只按 `/` 切分的旧实现会把 `..\..\Windows\win.ini` 原样放行。
+    #[test]
+    fn path_sanitization_blocks_windows_traversal() {
+        let p = sanitize_path(r"..\..\..\Windows\win.ini");
+        assert!(
+            !p.to_string_lossy().contains(".."),
+            "反斜杠穿越未被拦下: {:?}",
+            p
+        );
+        assert!(!p.is_absolute());
+
+        let p2 = sanitize_path(r"C:\Windows\win.ini");
+        assert!(!p2.is_absolute(), "盘符未被拦下: {:?}", p2);
+        assert!(!p2.to_string_lossy().contains(':'));
+
+        assert_eq!(
+            sanitize_path("fonts/a.woff2"),
+            PathBuf::from("fonts").join("a.woff2")
+        );
+    }
+
+    /// 包含性校验：越界与不存在都要被拦，正常路径要放行。
+    #[test]
+    fn resolve_within_rejects_escape_and_missing() {
+        let tmp = std::env::temp_dir().join(format!("mclink-assets-{}", std::process::id()));
+        std::fs::create_dir_all(tmp.join("sub")).unwrap();
+        std::fs::write(tmp.join("sub/ok.txt"), b"hi").unwrap();
+
+        assert!(resolve_within(&tmp, Path::new("sub/ok.txt")).is_some());
+        assert!(resolve_within(&tmp, Path::new("sub/none.txt")).is_none());
+
+        // 目录外真实存在的文件也必须被拦（这才是真的逃逸测试）
+        let outside = tmp
+            .parent()
+            .unwrap()
+            .join(format!("mclink-outside-{}.txt", std::process::id()));
+        std::fs::write(&outside, b"x").unwrap();
+        let rel = PathBuf::from("..").join(outside.file_name().unwrap());
+        assert!(
+            resolve_within(&tmp, &rel).is_none(),
+            "越界路径未被拦下: {:?}",
+            rel
+        );
+
+        let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn token_compare_is_constant_time() {
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"ab"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn access_log_redacts_token() {
+        let red = redact_token("/upload?path=update/latest.json&token=SECRET");
+        assert!(!red.contains("SECRET"), "日志里仍带令牌: {}", red);
+        assert!(red.contains("token=***"));
+        // 无关查询参数原样保留
+        assert_eq!(
+            redact_token("/upload?path=a&x=1"),
+            "/upload?path=a&x=1"
+        );
+        // 无查询串时不改动
+        assert_eq!(redact_token("/fonts/a.woff2"), "/fonts/a.woff2");
     }
 
     #[test]
