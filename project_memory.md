@@ -364,6 +364,41 @@ region: CN           # 同上
 - `useSetup` 的 `completed` 初值为 `true`：读不到状态时进正常界面，
   不把用户困在一个"存不下去"的引导页里（那样应用会完全不可用）
 
+### OOBE 三步与 EULA 由后端裁决（2026-10-01 实现）
+
+**步骤由状态推导，不存"当前第几步"**：`get_setup_state_command` 返回
+`steps: {language, eula, game}`，界面据此决定从哪一步继续；每步可独立保存、中断可续。
+
+| 命令 | 作用 |
+|---|---|
+| `legal_fetch_command(language)` | 拉条款清单与正文，返回 `{eula, attachments, accepted, needs_consent, fallback_url, error}` |
+| `accept_eula_command(language)` | **后端自己取正文、自己算 sha256、自己生成时间戳**再落盘；前端伪造不了"同意的是哪一版" |
+| `set_first_game_command(game_id)` | 校验 id 合法后写入 `setup.yml` 的 `game` |
+| `game_recommend_command(game_id)` | 复用路由引擎，一次返回适配/检测/耦合三类推荐（含候选与理由） |
+| `complete_setup_command(language, region)` | **闸门**：语言 + 已同意 EULA + 已选游戏，缺一即报错且不写 `completed` |
+
+**拉不到条款时（用户定的行为）**：不报错、也不允许跳过——返回 `fallback_url`
+（`legal::EULA_FALLBACK_URL`，编译期常量）与 `error`，界面只提示「请同意软件最终许可协议（EULA）」
+并给出官网链接。此路径下产生的同意记录如实标注 `version/sha256 = unfetched`，不假装知道正文内容。
+
+另外两条决定：开发构建（`debug_assertions && !test`）跳过引导并视为已同意；
+条款版本变化时**只在 OOBE 内强制重同意**（看 `needs_consent`），日常启动仅提示；
+`reset_setup_command` 连同意记录与游戏选择一起清。
+
+条款文本放在资源服务器（`/legal/manifest.json` + `/legal/<file>`，由 `sync-assets` 的
+`prepareLegal` 生成，含 GPLv3 全文）；`legal/EULA-*.md` 目前是**占位稿**，带
+`PLACEHOLDER-NOT-FOR-RELEASE` 标记会被拒绝上传——这正是客户端"拉不到"分支的触发条件。
+
+### 插件清单的三个筛选维度（2026-10-01 实现）
+
+`platforms` / `methods`（`bundled`|`p2p`|`relay`|`port-mapping`）/ `tags`（开发者自定义，不设白名单）。
+**未知取值一律丢弃并留痕，绝不让插件加载失败**（写错一个词不该让插件变砖）；`tags` 只做
+去重 / 截长 24 / 限量 12，允许中文。
+
+`plugin_list` 支持 `query/kinds/methods/platforms/tags/gameId/enabledOnly`，返回里带 `facets`
+（每个维度的计数以**其它**维度筛选结果为分母，避免用户组合出空结果）与 `currentPlatform`；
+`game_list` 支持 `query/methods`，游戏的 `methods` 由插件声明派生，同一事实只写一处。
+
 ### 新增语言的步骤（三处同改，漏一处就会出现"能选但没翻译"）
 
 1. `src-tauri/src/setup.rs` 的 `SUPPORTED_LANGUAGES`
