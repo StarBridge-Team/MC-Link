@@ -1,0 +1,68 @@
+# 提交检查：格式、clippy、类型与测试。
+#
+# 与 release.yml 分开的理由：检查要快、每次 push/PR 都跑；发布要慢、只在打 tag 时跑。
+# 原先两者混在一个 build.yml 里，导致"检查"其实在构建安装包，既慢又跑不起来。
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    # 用 Windows runner：本应用的主目标是 Windows，且 Linux 跑 Tauri 需要
+    # webkit2gtk 等一堆系统依赖，检查阶段没必要引入这些变量。
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 缓存 Rust 构建产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      # 先构建前端：`tauri-build` 会检查 frontendDist（../dist）是否存在，
+      # 没构建过的话后面的 cargo 命令会直接失败。顺带完成 vue-tsc 类型检查。
+      - name: 类型检查与前端构建
+        run: pnpm build
+
+      - name: 格式检查
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      # 警告即失败：此前 adapter/terracotta 的 5 处死代码警告长期没人看，
+      # 而它们恰好指向了真实问题（命令层另有一份实现）。
+      - name: Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: 单元测试（客户端）
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: 单元测试（资源服务器）
+        run: cargo test --manifest-path assets-server/Cargo.toml
+
+      - name: 架构守卫
+        run: node scripts/check-arch.mjs
