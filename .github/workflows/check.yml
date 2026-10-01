@@ -27,10 +27,11 @@ jobs:
         with:
           node-version: "20"
 
+      # 不能同时写 `version:`：package.json 里有 `packageManager: pnpm@10.14.x+sha1...`，
+      # 两处都声明会让 action-setup 直接报「Multiple versions of pnpm specified」而失败。
+      # 省略 version 时它会读 packageManager —— 顺带保证 CI 用的版本与 lockfile 一致。
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable

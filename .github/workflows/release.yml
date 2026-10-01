@@ -32,10 +32,10 @@ jobs:
         with:
           node-version: "20"
 
+      # 同 check.yml：不能与 package.json 的 packageManager 重复声明版本，
+      # 否则 action-setup 会以「Multiple versions of pnpm specified」直接失败。
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: 安装 Rust
         uses: dtolnay/rust-toolchain@stable
