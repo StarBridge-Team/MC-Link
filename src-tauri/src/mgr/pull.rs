@@ -46,4 +46,15 @@ impl<'a> PullMgr<'a> {
         crate::update::download_asset(self.mgr.data_dir(), self.mgr.http(), &asset, on_progress)
             .await
     }
+
+    /// 清理更新缓存。
+    ///
+    /// 与 [`Self::download_update`] 共用 `update_lock`：两者操作同一个
+    /// `Cache/Updates` 目录，用不同的锁会让"边下载边清理"直接把正在写的分片删掉
+    /// （下载失败，或留下半截文件）。此前它走的是 `write_lock`——那是设置类写入的锁，
+    /// 与下载毫不互斥。
+    pub async fn clear_update_cache(&self) -> Result<(), String> {
+        let _guard = self.mgr.update_lock.lock().await;
+        crate::update::clear_update_cache(self.mgr.data_dir())
+    }
 }

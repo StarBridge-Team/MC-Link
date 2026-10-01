@@ -80,8 +80,17 @@ impl PluginManager {
     pub(super) async fn launch_external(&self, record: &PluginRecord) -> Result<(), ErrorInfo> {
         let (endpoint, token) = self.gateway_endpoint()?;
         let runtime_dir = self.inner.data_dir.join("Plugins").join("runtime");
-        let (pid, session) = launcher::spawn(record, &endpoint, &token, &runtime_dir)
+        let (child, session) = launcher::spawn(record, &endpoint, &token, &runtime_dir)
             .map_err(|e| ErrorInfo::new(error_code::INTERNAL, e))?;
+        let pid = child.id();
+
+        // 同一插件若已有进程，先收掉旧的。正常情况下不会走到（`provider` 已串行化），
+        // 但"先 kill 再存"的顺序能保证表里永远只有一个句柄，不会漏掉孤儿。
+        self.reap_child(record.id(), "重复拉起");
+        if let Ok(mut children) = self.inner.children.write() {
+            children.insert(record.id().to_string(), child);
+        }
+
         println!(
             "[插件] 已启动 {} (pid {}), 会话文件 {}",
             record.id(),
@@ -89,6 +98,24 @@ impl PluginManager {
             session.display()
         );
         Ok(())
+    }
+
+    /// 结束并回收指定插件的进程（若存在）。
+    ///
+    /// 三处都需要它：握手超时、插件被停用/拉黑、核心退出。少了它会分别表现为
+    /// "握手失败的进程永远挂着"、"停用了插件却还在跑"、"退出后进程残留 / Unix 僵尸"。
+    pub(super) fn reap_child(&self, plugin_id: &str, why: &str) {
+        let child = self
+            .inner
+            .children
+            .write()
+            .ok()
+            .and_then(|mut map| map.remove(plugin_id));
+        if let Some(mut child) = child {
+            let _ = child.kill();
+            let _ = child.wait();
+            println!("[插件] 已结束 {} 的进程（{}）", plugin_id, why);
+        }
     }
 
     /// 等待插件完成握手并注册为可用提供者。

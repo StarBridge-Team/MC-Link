@@ -97,18 +97,76 @@ pub(crate) fn get_background_file_url(
     mgr: tauri::State<'_, Arc<AppMgr>>,
     filename: String,
 ) -> Result<String, String> {
-    let bg_dir = background_dir(mgr.data_dir());
-    let full_path = bg_dir.join(&filename);
-    if full_path.exists() {
-        return Ok(full_path.to_string_lossy().to_string());
-    }
+    // 只接受纯文件名。这个命令的参数来自前端，而它会把路径回传给
+    // `convertFileSrc` 去渲染（CSP 的 `asset:` 源对任意绝对路径都成立），
+    // 所以不收口就等于开了一条任意文件读取通道：`../../Windows/win.ini`
+    // 或 `C:\Windows\win.ini` 都能被回传出去。
+    let name = sanitize_background_name(&filename)?;
 
-    if let Some(old_bg) = old_background_dir() {
-        let old_path = old_bg.join(&filename);
-        if old_path.exists() {
-            return Ok(old_path.to_string_lossy().to_string());
+    for dir in [Some(background_dir(mgr.data_dir())), old_background_dir()]
+        .into_iter()
+        .flatten()
+    {
+        let full = dir.join(&name);
+        // canonicalize + 包含性校验：连"目录里放了指向别处的软链接"一起挡掉
+        if let (Ok(real), Ok(base)) = (full.canonicalize(), dir.canonicalize()) {
+            if real.is_file() && real.starts_with(&base) {
+                return Ok(real.to_string_lossy().to_string());
+            }
         }
     }
 
-    Err(format!("文件不存在: {}", filename))
+    Err(format!("文件不存在: {}", name))
+}
+
+/// 校验背景图文件名：必须是纯文件名（不含分隔符、盘符、`..`）。
+fn sanitize_background_name(filename: &str) -> Result<String, String> {
+    let name = filename.trim();
+    let plain = std::path::Path::new(name)
+        .file_name()
+        .map(|f| f == name)
+        .unwrap_or(false);
+    let ok = !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name.contains(':')
+        && plain;
+    if !ok {
+        return Err(format!("非法的背景文件名: {}", filename));
+    }
+    Ok(name.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_background_name;
+
+    #[test]
+    fn background_name_rejects_traversal_and_absolute_paths() {
+        // 该参数来自前端，且会被回传给 convertFileSrc 渲染 —— 不收口就是任意文件读取
+        assert!(sanitize_background_name("../../Windows/win.ini").is_err());
+        assert!(sanitize_background_name(r"..\..\win.ini").is_err());
+        assert!(sanitize_background_name(r"C:\Windows\win.ini").is_err());
+        assert!(sanitize_background_name("/etc/passwd").is_err());
+        assert!(sanitize_background_name("sub/dir/a.png").is_err());
+        assert!(sanitize_background_name("").is_err());
+        assert!(sanitize_background_name("   ").is_err());
+        assert!(sanitize_background_name(".").is_err());
+        assert!(sanitize_background_name("..").is_err());
+    }
+
+    #[test]
+    fn background_name_accepts_plain_file_names() {
+        assert_eq!(
+            sanitize_background_name("背景图.png").unwrap(),
+            "背景图.png"
+        );
+        assert_eq!(sanitize_background_name("  a.jpg  ").unwrap(), "a.jpg");
+        assert_eq!(
+            sanitize_background_name("b (1).webp").unwrap(),
+            "b (1).webp"
+        );
+    }
 }

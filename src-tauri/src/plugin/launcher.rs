@@ -65,7 +65,7 @@ pub fn spawn(
     endpoint: &str,
     token: &str,
     runtime_dir: &Path,
-) -> Result<(u32, PathBuf), String> {
+) -> Result<(std::process::Child, PathBuf), String> {
     if record.source != PluginSource::External {
         return Err(format!("{} 不是外部插件，无需启动进程", record.id()));
     }
@@ -131,7 +131,10 @@ pub fn spawn(
     let child = cmd
         .spawn()
         .map_err(|e| format!("启动插件进程失败 {}: {}", exe.display(), e))?;
-    Ok((child.id(), session))
+    // 把 `Child` 交回调用方保管，而不是只给一个 pid：句柄被丢弃后
+    // 既无法 `wait` 回收（Unix 上留下僵尸进程），也无法在超时/退出时 `kill`
+    // （Windows 上应用退出后插件进程会继续残留）。见 manager 的 `children` 表。
+    Ok((child, session))
 }
 
 fn substitute(template: &str, endpoint: &str, session_file: &Path) -> String {

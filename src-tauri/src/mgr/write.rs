@@ -30,14 +30,6 @@ impl<'a> WriteMgr<'a> {
         crate::config::write::write_personalization(self.mgr.data_dir(), settings)
     }
 
-    pub fn clear_update_cache(&self) -> Result<(), String> {
-        let _guard = self
-            .mgr
-            .write_lock
-            .lock()
-            .map_err(|e| format!("获取写锁失败: {}", e))?;
-        crate::update::clear_update_cache(self.mgr.data_dir())
-    }
 
     pub fn clear_setting_meta_cache(&self) -> Result<(), String> {
         let _guard = self

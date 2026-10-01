@@ -29,8 +29,14 @@ pub fn parse_seed(seed: &str) -> Option<Argb> {
             out
         }
         6 => s.to_string(),
-        // 8 位视为 AARRGGBB，仅取 RGB 部分
-        8 => s[2..].to_string(),
+        // 8 位视为 AARRGGBB，仅取 RGB 部分。
+        //
+        // 不能用 `s[2..]`：`s.len()` 是**字节**长度，若下标 2 落在多字节字符中间
+        // （例如 "€abcde" = 3 + 5 字节）会直接 panic。`get` 取不到就按非法处理。
+        8 => match s.get(2..) {
+            Some(rest) => rest.to_string(),
+            None => return None,
+        },
         _ => return None,
     };
     if rgb.len() != 6 || !rgb.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -67,5 +73,32 @@ pub fn variant_to_str(v: &Variant) -> &'static str {
         Variant::Content => "content",
         Variant::Rainbow => "rainbow",
         Variant::FruitSalad => "fruit_salad",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_seed_accepts_documented_forms() {
+        assert!(parse_seed("#abc").is_some(), "3 位简写应展开为 6 位");
+        assert!(parse_seed("#6750A4").is_some());
+        assert!(parse_seed("6750A4").is_some());
+        assert!(parse_seed("#FF6750A4").is_some(), "8 位按 AARRGGBB 取 RGB");
+    }
+
+    /// 回归：8 字节的**多字节**输入曾经会 panic。
+    ///
+    /// `s.len()` 是字节长度，`s[2..]` 一旦让下标 2 落在字符中间就直接 panic
+    /// （例如 "€abcde" = 3 + 5 = 8 字节，或 "🎨🎨" = 4 + 4 = 8 字节）。
+    /// 现在应当返回 `None`，而不是把命令线程打挂。
+    #[test]
+    fn parse_seed_never_panics_on_multibyte_input() {
+        assert!(parse_seed("€abcde").is_none());
+        assert!(parse_seed("🎨🎨").is_none());
+        assert!(parse_seed("中中中").is_none());
+        assert!(parse_seed("").is_none());
+        assert!(parse_seed("#").is_none());
     }
 }

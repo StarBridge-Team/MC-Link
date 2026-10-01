@@ -43,6 +43,16 @@ struct Inner {
     games: RwLock<GameRegistry>,
     /// 已就绪的能力提供者（内置 + 已握手的远程插件）。
     providers: RwLock<HashMap<String, Provider>>,
+    /// 已拉起的外部插件进程。
+    ///
+    /// **必须持有 `Child`**：只记 pid 的话，既无法 `wait` 回收（Unix 上留下僵尸进程），
+    /// 也无法在退出或握手超时时 `kill`（Windows 上应用退了插件还在跑）。
+    children: RwLock<HashMap<String, std::process::Child>>,
+    /// "拉起插件 + 等握手"的串行锁。
+    ///
+    /// 两个并发 invoke 若各自 spawn，会得到两个进程：后者覆盖 `providers` 里的前者，
+    /// 前者就成了没人管的孤儿。加锁后重查一次缓存即可（双检），不必引入更重的东西。
+    launch_lock: tokio::sync::Mutex<()>,
     gateway: RwLock<Option<Arc<Gateway>>>,
     auth: AuthTable,
     inbound_tx: InboundTx,
@@ -76,6 +86,8 @@ impl PluginManager {
             registry: RwLock::new(registry),
             games: RwLock::new(games),
             providers: RwLock::new(providers),
+            children: RwLock::new(HashMap::new()),
+            launch_lock: tokio::sync::Mutex::new(()),
             gateway: RwLock::new(None),
             auth: Arc::new(RwLock::new(HashMap::new())),
             inbound_tx,
@@ -154,6 +166,15 @@ impl PluginManager {
                 builtin.shutdown();
             }
         }
+        // 结束仍存活的外部插件进程：只 `close` 会话是不够的——插件可以不理会，
+        // 或者根本没握手成功。Windows 上它们会活过本进程，Unix 上会成为僵尸。
+        if let Ok(mut children) = self.inner.children.write() {
+            for (id, mut child) in children.drain() {
+                let _ = child.kill();
+                let _ = child.wait();
+                println!("[插件] 已结束 {} 的进程（核心退出）", id);
+            }
+        }
         if let Ok(mut slot) = self.inner.gateway.write() {
             *slot = None;
         }
@@ -208,7 +229,9 @@ impl PluginManager {
                     p.close("插件已被停用");
                 }
                 providers.remove(plugin_id);
-            }
+                }
+                // 进程也要收掉：只关会话时插件可以选择不理会，进程会继续跑
+                self.reap_child(plugin_id, "插件已被停用");
         }
         Ok(())
     }
@@ -333,8 +356,23 @@ impl PluginManager {
             ));
         }
 
+        // 串行化"拉起 + 等握手"：并发 invoke 各自 spawn 的话，后来的会覆盖
+        // providers 里的前一个，前一个即成为无人管理的孤儿进程。
+        let _launch_guard = self.inner.launch_lock.lock().await;
+        // 双检：等锁期间可能已有别的调用把它拉起来并握手完成了
+        if let Some(existing) = self.cached_provider(plugin_id) {
+            return Ok(existing);
+        }
+
         self.launch_external(&record).await?;
-        self.wait_ready(plugin_id).await
+        match self.wait_ready(plugin_id).await {
+            Ok(provider) => Ok(provider),
+            Err(e) => {
+                // 握手没成功就把刚拉起的进程收掉，否则它会一直挂着等一个不会来的连接
+                self.reap_child(plugin_id, "握手未完成");
+                Err(e)
+            }
+        }
     }
 
     fn cached_provider(&self, plugin_id: &str) -> Option<Provider> {

@@ -110,11 +110,15 @@ fn restart_after_delay(app: tauri::AppHandle, reexec: bool) {
 }
 
 /// 清理更新缓存。
+///
+/// 走 `pull()` 而不是 `write()`：它与"下载更新包"操作同一个目录，
+/// 必须共用 `update_lock` 才能与下载互斥。用 `write_lock` 的话，
+/// 边下载边点清理会把正在写的分片删掉（下载失败或留下半截文件）。
 #[tauri::command]
-pub(crate) fn clear_update_cache_command(
+pub(crate) async fn clear_update_cache_command(
     mgr: tauri::State<'_, Arc<AppMgr>>,
 ) -> Result<(), String> {
-    mgr.write().clear_update_cache()
+    mgr.pull().clear_update_cache().await
 }
 
 /// 查询当前运行环境（安装形态 + 构建渠道 + 自更新许可）。
