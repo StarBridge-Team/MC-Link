@@ -15,18 +15,11 @@ impl<'a> PullMgr<'a> {
         crate::assets::pull::sync_assets(self.mgr.data_dir(), self.mgr.http()).await
     }
 
-    pub async fn page_manifest(&self) -> Result<crate::page::PageManifest, String> {
-        let _guard = self.mgr.pull_lock.lock().await;
-        crate::page::pull::fetch_page_manifest(self.mgr.data_dir(), self.mgr.http()).await
-    }
-
-    pub async fn page_content(&self, name: &str) -> Result<String, String> {
-        let _guard = self.mgr.pull_lock.lock().await;
-        crate::page::pull::fetch_page_content(self.mgr.data_dir(), name, self.mgr.http()).await
-    }
-
+    /// 检查更新。
+    ///
+    /// **不持锁**：它只发一个几 KB 的清单请求，既不写文件也不碰其它拉取的缓存，
+    /// 加锁反而会让它被一次大下载挡住（用户点"检查更新"却一直转圈）。
     pub async fn check_update(&self) -> Result<crate::update::CheckUpdateResult, String> {
-        let _guard = self.mgr.pull_lock.lock().await;
         crate::update::check_update(self.mgr.data_dir(), self.mgr.http()).await
     }
 
@@ -40,12 +33,16 @@ impl<'a> PullMgr<'a> {
         crate::setting_meta::fetch_setting_manifest(self.mgr.data_dir(), self.mgr.http()).await
     }
 
+    /// 下载更新包。
+    ///
+    /// 用**独立的 `update_lock`**：更新包动辄十几 MB，若与资产/页面/设置元共用
+    /// `pull_lock`，下载期间那些拉取会被整体堵死（用户会感觉界面卡住）。
     pub async fn download_update(
         &self,
         asset: crate::update::UpdateAsset,
         on_progress: impl FnMut(u64, u64) + Send,
     ) -> Result<crate::update::DownloadUpdateResult, String> {
-        let _guard = self.mgr.pull_lock.lock().await;
+        let _guard = self.mgr.update_lock.lock().await;
         crate::update::download_asset(self.mgr.data_dir(), self.mgr.http(), &asset, on_progress)
             .await
     }

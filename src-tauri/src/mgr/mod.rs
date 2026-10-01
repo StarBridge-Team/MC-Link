@@ -12,11 +12,19 @@ use std::time::Duration;
 ///
 /// 统一持有数据目录、共享 HTTP 客户端，并对写操作与网络拉取操作加锁，
 /// 避免并发读写同一文件或重复下载相同资源。
+///
+/// # 为什么拉取锁有两把
+///
+/// `pull_lock` 是"快操作"（清单、页面、设置元，都是几 KB 的请求）；
+/// `update_lock` 单独留给更新包下载——它要传十几 MB 甚至更多，
+/// 若和快操作共用一把锁，用户点"下载更新"期间资产同步与页面加载会全部被堵住。
+/// 两把锁覆盖的资源互不重叠，分开不会引入竞争。
 pub struct AppMgr {
     data_dir: PathBuf,
     http: reqwest::Client,
     write_lock: Arc<SyncMutex<()>>,
     pull_lock: Arc<AsyncMutex<()>>,
+    update_lock: Arc<AsyncMutex<()>>,
 }
 
 impl AppMgr {
@@ -30,6 +38,7 @@ impl AppMgr {
             http,
             write_lock: Arc::new(SyncMutex::new(())),
             pull_lock: Arc::new(AsyncMutex::new(())),
+            update_lock: Arc::new(AsyncMutex::new(())),
         })
     }
 
