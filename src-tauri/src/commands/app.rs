@@ -69,12 +69,16 @@ pub(crate) async fn prepare_app(
     let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
     let tauri_version = get_tauri_version();
 
-    // sync_assets 内部对比 manifest.version：一致则跳过，不一致则清理重下
+    // 清单驱动：逐个资源按 sha256 判定，缺失/损坏才下载，就绪的复用本地缓存。
+    // 失败不再静默——错误信息随返回值交给前端展示，否则用户只会看到"图标莫名不见了"。
     let outcome = match mgr.pull().sync_assets().await {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("[prepare_app] sync_assets 失败: {}", e);
-            SyncOutcome::default()
+            eprintln!("[prepare_app] 资源同步失败: {}", e);
+            SyncOutcome {
+                failures: vec![e],
+                ..Default::default()
+            }
         }
     };
 
@@ -83,8 +87,10 @@ pub(crate) async fn prepare_app(
         default_effect,
         app_version,
         tauri_version,
-        bootstrap_icons_ready: outcome.bi_ready,
-        fonts_ready: outcome.fonts_ready,
-        icon_ready: outcome.icon_ready,
+        asset_version: outcome.version.clone(),
+        assets_ready: outcome.all_ready(),
+        assets: outcome.assets,
+        asset_failures: outcome.failures,
+        assets_offline: outcome.offline,
     })
 }

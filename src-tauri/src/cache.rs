@@ -30,19 +30,9 @@ pub fn ensure_cache_dir(dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("创建缓存目录失败: {}", e))
 }
 
-/// 清除指定缓存目录下所有内容（谨慎使用）。
-pub fn clear_cache(dir: &Path) -> Result<(), String> {
-    if !dir.exists() {
-        return Ok(());
-    }
-    for entry in std::fs::read_dir(dir).map_err(|e| format!("读取缓存目录失败: {}", e))? {
-        let entry = entry.map_err(|e| format!("读取缓存项失败: {}", e))?;
-        let path = entry.path();
-        if path.is_dir() {
-            std::fs::remove_dir_all(&path).map_err(|e| format!("删除缓存目录失败: {}", e))?;
-        } else {
-            std::fs::remove_file(&path).map_err(|e| format!("删除缓存文件失败: {}", e))?;
-        }
-    }
-    Ok(())
-}
+// 这里曾经有一个 `clear_cache(dir)`：整目录清空。
+//
+// 它被用于"资源版本不一致 → 清掉整个 Assets/ 再重下"。问题是前端此刻可能正通过
+// `asset://` 引用里面的文件，清空会让图标/字体凭空消失；半途失败还会留下一个被删残的
+// 缓存。资源同步已改为逐文件校验 + 原子覆盖 + 成功后回收陈旧文件（见 `assets/pull.rs`），
+// 这个能力不再需要，随之删除——留着它只会诱使下一处调用再踩同一个坑。

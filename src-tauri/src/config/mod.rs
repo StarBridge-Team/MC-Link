@@ -60,9 +60,16 @@ pub struct PrepareAppData {
     pub default_effect: String,
     pub app_version: String,
     pub tauri_version: String,
-    pub bootstrap_icons_ready: bool,
-    pub fonts_ready: bool,
-    pub icon_ready: bool,
+    /// 资源清单版本（诊断用）。
+    pub asset_version: String,
+    /// 是否全部远程资源就绪（就绪才可注入对应 CSS）。
+    pub assets_ready: bool,
+    /// 每个资源的就绪状态，前端据此决定注入哪些 CSS、缺哪些。
+    pub assets: Vec<crate::assets::pull::AssetState>,
+    /// 失败原因，已去掉内部细节，可直接展示给用户。
+    pub asset_failures: Vec<String>,
+    /// 是否处于离线降级（未能拉到远程清单，仅用本地缓存判定）。
+    pub assets_offline: bool,
 }
 
 #[derive(Serialize)]

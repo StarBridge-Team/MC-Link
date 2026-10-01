@@ -73,9 +73,15 @@ allFiles.sort((a, b) => a.rel.localeCompare(b.rel));
 // 否则每次发版（或升级适配器）都会让所有客户端重下全部字体与图标。
 const isAdapter = (f) => f.rel.startsWith("adapter/");
 const isUpdate = (f) => f.rel.startsWith("update/");
+// manifest.json 必须排除在资源集合之外，有两个原因：
+//   1. 它会被算进版本哈希，而版本号就写在它自己里面 → 版本永远无法收敛，
+//      每次 sync 都会生成新版本号，逼所有客户端全量重下；
+//   2. 客户端无法自校验它（哈希不可能包含自身），列进去只会引入鸡生蛋问题。
+// 它由客户端自己按远程清单重建本地副本。
+const isManifest = (f) => f.rel === "manifest.json";
 const adapterFiles = allFiles.filter(isAdapter);
 const updateFiles = allFiles.filter(isUpdate);
-const files = allFiles.filter((f) => !isAdapter(f) && !isUpdate(f));
+const files = allFiles.filter((f) => !isAdapter(f) && !isUpdate(f) && !isManifest(f));
 
 const UPDATE_MANIFEST = join(ASSETS_DIR, "update", "latest.json");
 if (updateFiles.length > 0 && !existsSync(UPDATE_MANIFEST)) {
@@ -84,11 +90,16 @@ if (updateFiles.length > 0 && !existsSync(UPDATE_MANIFEST)) {
   );
 }
 
+// 每个文件先算出自己的 sha256：客户端据此逐个校验本地缓存，
+// 只重下缺失或损坏的那几个，而不是整包重来。
+for (const f of files) {
+  f.sha256 = createHash("sha256").update(readFileSync(f.full)).digest("hex");
+}
 const version = computeVersion(files);
 const manifest = {
   version,
   server: SERVER_URL,
-  assets: files.map((f) => ({ path: f.rel, size: f.size })),
+  assets: files.map((f) => ({ path: f.rel, size: f.size, sha256: f.sha256 })),
 };
 writeFileSync(
   join(ASSETS_DIR, "manifest.json"),
@@ -96,7 +107,7 @@ writeFileSync(
   "utf8",
 );
 console.log(
-  `[sync-assets] manifest version=${version}，${files.length} 个文件`,
+  `[sync-assets] manifest version=${version}，${files.length} 个文件（含 sha256）`,
 );
 
 if (SKIP) {
@@ -106,7 +117,7 @@ if (SKIP) {
 
 // 4) 上传：内容文件先传，各级 manifest 最后传，避免客户端拉到半更新状态
 const ordered = [
-  ...files.filter((f) => f.rel !== "manifest.json"),
+  ...files,
   // 更新包必须先于 update/latest.json 可见，否则客户端会拿到指向不存在文件的清单
   ...updateFiles.filter((f) => f.rel !== "update/latest.json"),
   // 适配器包必须先于其清单可见，否则客户端会拿到指向不存在文件的清单
@@ -160,12 +171,12 @@ function collectFiles(dir, base, out) {
   }
 }
 
+// 版本 = 全部资源「路径 + 内容哈希」的聚合。
+// 由于 manifest.json 已被排除，同一批文件内容不变则版本不变（幂等）。
 function computeVersion(files) {
   const h = createHash("sha256");
   for (const f of files) {
-    const content = readFileSync(f.full);
-    const fileHash = createHash("sha256").update(content).digest("hex");
-    h.update(`${f.rel}\u0000${fileHash}\u0000`);
+    h.update(`${f.rel}\u0000${f.sha256}\u0000`);
   }
   return h.digest("hex").slice(0, 16);
 }
