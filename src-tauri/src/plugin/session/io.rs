@@ -103,6 +103,10 @@ pub(super) async fn io_loop(ctx: IoContext) -> String {
                                 continue;
                             }
                         };
+                        // 这个计数是**连续**非法帧（错误文案也这么写），成功解析一次就清零。
+                        // 不清零的话，长会话里偶发几次解包失败累计到阈值就会断掉正常连接，
+                        // 表现为"莫名掉线"。
+                        violations = 0;
                         last_seen.store(now_millis(), Ordering::SeqCst);
                         match dispatch_inbound(
                             msg, &plugin_id, &mut limiter, &inbound, &pending, &mut replies,

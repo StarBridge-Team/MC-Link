@@ -45,14 +45,16 @@ impl PluginManager {
                 continue;
             }
             let psk = record.ensure_secret()?;
+            // 夹取到核心允许的范围：清单是插件自述的，不夹取等于把限流开关交给它
+            let limits = record.manifest.limits.clamped();
             table.insert(
                 record.manifest.id.clone(),
                 AuthEntry {
                     plugin_id: record.manifest.id.clone(),
                     psk,
                     permissions: record.permissions.clone(),
-                    limits: record.manifest.limits.clone(),
-                    max_auth_failures: record.manifest.limits.max_auth_failures,
+                    max_auth_failures: limits.max_auth_failures,
+                    limits,
                 },
             );
         }

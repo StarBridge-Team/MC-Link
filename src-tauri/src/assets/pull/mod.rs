@@ -20,6 +20,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -29,6 +30,11 @@ use crate::downloader::verify::sha256_file;
 use crate::persist;
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
+/// 单个资源的体积上限。
+///
+/// 字体/图标这类资源远小于它；这里的真正用处是掐掉"失陷或被劫持的资源服务器
+/// 在 20 秒超时内灌满内存"这条路径（`downloader::verified` 有同量级的上限）。
+const MAX_ASSET_BYTES: u64 = 64 * 1024 * 1024;
 const MANIFEST_TIMEOUT: Duration = Duration::from_secs(8);
 const LOCAL_MANIFEST_FILENAME: &str = "manifest.json";
 
@@ -337,10 +343,23 @@ async fn fetch_one(
     if !resp.status().is_success() {
         return Err(format!("下载失败: HTTP {}", resp.status()));
     }
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("读取响应失败: {}", e))?;
+    // 流式读取并在超限时立刻中止。
+    //
+    // 原先用 `resp.bytes()`：整个响应体先进内存，唯一的兜底是 20 秒总超时——
+    // 高速镜像足以在这段时间里灌进 GB 级内存把客户端打崩。而清单与包同源，
+    // 也就是说资源服务器一旦失陷或被劫持就能触发。
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("读取响应失败: {}", e))?;
+        bytes.extend_from_slice(&chunk);
+        if bytes.len() as u64 > MAX_ASSET_BYTES {
+            return Err(format!(
+                "资源 {} 超过体积上限 {} 字节，已中止",
+                entry.path, MAX_ASSET_BYTES
+            ));
+        }
+    }
 
     if let Some(size) = entry.size {
         if bytes.len() as u64 != size {

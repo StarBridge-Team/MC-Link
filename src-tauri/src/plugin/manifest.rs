@@ -156,6 +156,37 @@ impl Default for LimitsSpec {
     }
 }
 
+/// 核心侧的硬上限：插件清单只能在这些范围内"调参"。
+const RPC_PER_SEC_MAX: u32 = 256;
+const HEARTBEAT_MS_RANGE: (u64, u64) = (500, 60_000);
+const IDLE_TIMEOUT_MS_RANGE: (u64, u64) = (2_000, 300_000);
+const RPC_TIMEOUT_MS_RANGE: (u64, u64) = (1_000, 300_000);
+const MAX_AUTH_FAILURES_RANGE: (u32, u32) = (1, 10);
+
+impl LimitsSpec {
+    /// 夹取到核心允许的范围后返回。
+    ///
+    /// 清单是插件**自述**的，完全照用等于把限流开关交给插件：
+    /// 写 `max_rpc_per_sec: 1000000` 就能关掉核心侧限流（与"限流全部在核心侧
+    /// 强制执行"的设计相矛盾），写 `rpc_timeout_ms: 10^12` 能让核心的 RPC
+    /// 近乎永久挂起，写超大的 `idle_timeout_ms` 则让死连接永远判不出失联。
+    pub fn clamped(&self) -> Self {
+        let clamp = |v: u64, (lo, hi): (u64, u64)| v.clamp(lo, hi);
+        Self {
+            max_rpc_per_sec: self.max_rpc_per_sec.clamp(1, RPC_PER_SEC_MAX),
+            // 帧上限另有 `protocol::MAX_FRAME_BYTES` 兜底（会话侧会再取一次 min），
+            // 且 validate 已限制在 1B..64MB，这里不必重复夹取
+            max_frame_bytes: self.max_frame_bytes,
+            heartbeat_ms: clamp(self.heartbeat_ms, HEARTBEAT_MS_RANGE),
+            idle_timeout_ms: clamp(self.idle_timeout_ms, IDLE_TIMEOUT_MS_RANGE),
+            rpc_timeout_ms: clamp(self.rpc_timeout_ms, RPC_TIMEOUT_MS_RANGE),
+            max_auth_failures: self
+                .max_auth_failures
+                .clamp(MAX_AUTH_FAILURES_RANGE.0, MAX_AUTH_FAILURES_RANGE.1),
+        }
+    }
+}
+
 // 这里曾有一个 `SignatureSpec`（`algorithm` / `public_key` / `signature`），
 // 让清单自带"我已被签名"的声明。那等于把"自述即可信"写进权限模型：任何人填一对
 // 假公钥假签名就能拿到 `Verified` 的权限上限。

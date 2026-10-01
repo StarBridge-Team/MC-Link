@@ -18,6 +18,26 @@ use super::model::{
 /// 退出前的等待：让 invoke 的返回值先送达到前端，再关闭应用。
 const EXIT_DELAY: Duration = Duration::from_millis(600);
 
+/// 按当前安装形态与包类型，从服务器清单重新解析更新资产。
+///
+/// **只信 `kind`**：真实下载地址、文件名与 sha256 一律来自服务器清单
+/// （`check_update` 会按 `platform` + 安装形态挑出唯一匹配的那份），
+/// 前端传来的同名字段一律忽略。
+async fn resolve_asset(mgr: &Arc<AppMgr>, kind: &str) -> Result<UpdateAsset, String> {
+    let result = mgr.pull().check_update().await?;
+    let latest = result
+        .latest
+        .ok_or_else(|| "当前已是最新版本，没有可下载的更新包".to_string())?;
+    match latest.asset {
+        Some(asset) if asset.kind == kind => Ok(asset),
+        Some(asset) => Err(format!(
+            "当前安装形态对应的更新包是 {}，与请求的 {} 不符",
+            asset.kind, kind
+        )),
+        None => Err("没有与当前安装形态匹配的更新包（可能需要手动下载）".to_string()),
+    }
+}
+
 /// 检查更新。
 ///
 /// 返回结果里带上 `install_mode` 与 `platform`，界面无需再问一次当前是便携版还是安装版。
@@ -38,6 +58,8 @@ pub(crate) async fn download_update_command(
     mgr: tauri::State<'_, Arc<AppMgr>>,
     asset: UpdateAsset,
 ) -> Result<DownloadUpdateResult, String> {
+    // 传入的 asset 只当"想装哪一种包"的意图，地址与哈希由后端重新解析
+    let asset = resolve_asset(mgr.inner(), &asset.kind).await?;
     mgr.pull()
         .download_update(asset, move |downloaded, total| {
             let _ = app.emit(
@@ -80,6 +102,13 @@ pub(crate) async fn install_update_command(
     }
 
     // 自研路径：便携版必然走这里（替换 exe）；Windows 安装版也作为插件的回退。
+    //
+    // 资产必须由后端重新解析：这个命令最终会**覆盖主程序或运行安装器**，
+    // 若照单全收前端给的 urls/file/sha256，webview 一旦被注入（XSS、前端供应链）
+    // 就能让客户端装上攻击者的二进制 —— 而 SHA256 强校验在这里不提供任何真实性，
+    // 因为期望值同样来自那份不可信输入。
+    let asset = resolve_asset(mgr.inner(), &asset.kind).await?;
+
     // 复用下载结果：命中缓存时不会重新下载。
     let downloaded = mgr.pull().download_update(asset.clone(), |_, _| {}).await?;
     let payload = update_cache_dir(&data_dir).join(&downloaded.file);
