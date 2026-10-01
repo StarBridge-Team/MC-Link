@@ -27,13 +27,19 @@
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' asset: http://localhost:54789; media-src *; img-src 'self' data: blob: asset: http://localhost:54789; font-src 'self' data: asset: http://localhost:54789; frame-src *; connect-src 'self' http://localhost:54789",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "nsis"],
+    "targets": [
+      "deb",
+      "appimage",
+      "nsis"
+    ],
     "copyright": "© 2026 棱镜Prism工作室",
     "icon": [
       "icons/32x32.png",
@@ -46,12 +52,16 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["mclink"]
+        "schemes": [
+          "mclink"
+        ]
       }
     },
     "updater": {
-      "pubkey": "",
-      "endpoints": ["https://mclinkassets.xigo.top:54789/update/tauri.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ3NTRBMjI0Q0UwMkZFRTUKUldUbC9nTE9KS0pVUjg4R3R0S0xQL2pIZjRVSFRYUVE2S3l2WlpTL21CSURZL1RSVlp2VXpKZDgK",
+      "endpoints": [
+        "https://mclinkassets.xigo.top:54789/update/tauri.json"
+      ],
       "windows": {
         "installMode": "passive"
       }

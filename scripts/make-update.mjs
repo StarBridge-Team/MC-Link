@@ -57,6 +57,8 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
+import { signingEnv as loadSigningEnv } from "./signer-env.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const TARGET_DIR = join(ROOT, "src-tauri", "target");
@@ -376,21 +378,12 @@ function pluginPlatformKey(platform) {
 /**
  * 归一化签名相关的环境变量。
  *
- * Tauri CLI 区分两个变量：`TAURI_SIGNING_PRIVATE_KEY_PATH` 收**文件路径**，
- * `TAURI_SIGNING_PRIVATE_KEY` 收**密钥内容**。为了少踩坑，这里允许把路径也写在
- * `_KEY` 里（只要它确实指向一个存在的文件），自动搬到正确的变量上。
+ * 实现在 `scripts/signer-env.mjs`——**与发布前检查共用同一份**，
+ * 避免"检查时用的是 A 密钥、签名时用的是 B 密钥"这类两边漂移。
+ * 它会优先用环境变量（CI secrets），否则回填本地 `.tauri/` 下的密钥与密码。
  */
 function signingEnv() {
-  const env = { ...process.env };
-  const keyPath = (env.TAURI_SIGNING_PRIVATE_KEY_PATH || "").trim();
-  const keyValue = (env.TAURI_SIGNING_PRIVATE_KEY || "").trim();
-
-  // 单行、且确实是个文件 → 当成路径（密钥内容是多行文本，不会命中）
-  if (!keyPath && keyValue && !keyValue.includes("\n") && existsSync(keyValue)) {
-    env.TAURI_SIGNING_PRIVATE_KEY_PATH = keyValue;
-    delete env.TAURI_SIGNING_PRIVATE_KEY;
-  }
-  return env;
+  return loadSigningEnv();
 }
 
 /** 是否配置了可用于签名的私钥。 */

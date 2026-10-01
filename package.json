@@ -13,7 +13,9 @@
     "preview": "vite preview",
     "tauri": "node scripts/tauri-build.mjs",
     "build:release": "node scripts/tauri-build.mjs build",
-    "sync:assets": "node scripts/sync-assets.mjs"
+    "sync:assets": "node scripts/sync-assets.mjs",
+    "signer:generate": "node scripts/gen-signer.mjs",
+    "signer:sync": "node scripts/gen-signer.mjs --sync"
   },
   "dependencies": {
     "@fontsource/poppins": "^5.3.0",
