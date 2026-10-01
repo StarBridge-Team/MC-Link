@@ -47,6 +47,14 @@
 
 ## UI 重构期间的约定（2026-09-30 起，进行中）
 
+**2026-10-01 补充决定：前端（`src/**`）将整体重写，因此不再修前端的设计性问题。**
+已排查出的设计清单（D1 无单一数据源 / D2 `loadPersonalization` 是死代码 / D3 `KeepAlive` 被
+`:key` 抵消 / D4 设置清单拉取后未消费 / D5 `homepage_mode` 有存无渲染 / D6 i18n 未接线 /
+D7 `useUpdater`·`useSetup` 无界面入口 / D8 `App.vue` 职责过重 + 空 `provide` /
+D9 `public/tray-menu.html` 是架构守卫盲区 / D10 `Personalization` 与 `PersonalizationSettings`
+两份同形定义）**作为重写时的需求参考，不作为待办**；重写时优先解决 D1 与 D2/D3。
+**功能性缺陷仍照常修**（接口契约、构建配置、死命令调用等）；后端不在重写范围。
+
 **当前阶段**：用户正在做前端大面积 UI 重构；这轮**前端不接后端逻辑**，UI 完成后由 AI 负责把
 后端能力接上去（含插件系统接线与联机能力恢复）。
 
