@@ -53,7 +53,22 @@ const PROD_URL = "https://mclinkassets.xigo.top:54789";
 const SERVER_URL =
   process.env.ASSET_SERVER_URL ||
   (process.argv.includes("--prod") ? PROD_URL : "http://localhost:54789");
-const TOKEN = process.env.ASSET_UPLOAD_TOKEN || "";
+/**
+ * 上传令牌：环境变量优先（CI 用 secret），否则读本地
+ * `.tauri/asset-upload-token.txt`（与签名密钥同一套约定，见 `signer-env.mjs`）。
+ *
+ * 服务器侧必须配同一个值（`ASSET_UPLOAD_TOKEN` 环境变量或 `config.yml` 的
+ * `upload_token`）。注意**服务器新版起上传是 fail-closed**：没配令牌就一律 503，
+ * 而不是像旧版那样"留空即放行"。
+ */
+function localUploadToken() {
+  try {
+    return readFileSync(join(ROOT, ".tauri", "asset-upload-token.txt"), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+const TOKEN = process.env.ASSET_UPLOAD_TOKEN || localUploadToken();
 const SKIP =
   process.env.SKIP_ASSET_UPLOAD === "1" || process.argv.includes("--no-upload");
 const REQUIRED = process.env.ASSET_UPLOAD_REQUIRED === "1";
