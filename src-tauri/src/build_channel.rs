@@ -156,10 +156,14 @@ mod tests {
         assert_eq!(channel() == BuildChannel::Dev, cfg!(debug_assertions));
 
         // 两个输入都必须被 build.rs 转发进来，否则判定会悄悄退化成默认值
-        let profile = option_env!("MC_LINK_PROFILE").expect("build.rs 未转发 PROFILE");
+        //
+        // 不用 `option_env!(..).expect(..)`：那是编译期常量上的 expect，
+        // clippy 的 unconditional_panic 会（正确地）判定为必然恐慌点。
+        let profile = option_env!("MC_LINK_PROFILE");
+        assert!(profile.is_some(), "build.rs 未转发 PROFILE");
         assert!(
-            profile == "debug" || profile == "release",
-            "PROFILE 取值异常: {profile}"
+            matches!(profile, Some("debug") | Some("release")),
+            "PROFILE 取值异常: {profile:?}"
         );
         assert!(
             option_env!("MC_LINK_STAMPED_CHANNEL").is_some(),

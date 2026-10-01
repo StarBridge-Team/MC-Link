@@ -470,6 +470,8 @@ async fn preallocate(path: &Path, total: u64) -> Result<(), String> {
     let file = tokio::fs::OpenOptions::new()
         .write(true)
         .create(true)
+        // 显式声明不截断：续传必须保留已写入的分片
+        .truncate(false)
         .open(path)
         .await
         .map_err(|e| format!("创建临时文件失败: {}", e))?;
@@ -484,6 +486,8 @@ async fn write_at(path: &Path, offset: u64, bytes: &[u8]) -> Result<(), String> 
     let mut file = tokio::fs::OpenOptions::new()
         .write(true)
         .create(true)
+        // 各分片写的是互不重叠的区间，截断会把先到的分片抹掉
+        .truncate(false)
         .open(path)
         .await
         .map_err(|e| format!("打开目标文件失败: {}", e))?;

@@ -10,6 +10,9 @@ on:
   push:
     tags:
       - "v*"
+      # 排除带后缀的预发布/快照标签（如 v0.4.0-snapshot）：
+      # 否则推一个内部快照标签就会触发完整发布流程（构建 + 签名 + 上传更新资产）。
+      - "!v*-*"
 
 permissions:
   contents: read
