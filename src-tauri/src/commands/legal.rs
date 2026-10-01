@@ -192,7 +192,11 @@ pub(crate) fn game_recommend_command(
         .ok_or_else(|| format!("未知的游戏 id「{game_id}」"))?;
 
     let mut recommendations = Map::new();
-    for kind in [PluginKind::Adapter, PluginKind::Detector, PluginKind::Coupler] {
+    for kind in [
+        PluginKind::Adapter,
+        PluginKind::Detector,
+        PluginKind::Coupler,
+    ] {
         let plan = plugins.plan(kind, Some(game_id));
         recommendations.insert(
             kind.as_str().to_string(),

@@ -134,8 +134,7 @@ pub async fn fetch_manifest(
         .text()
         .await
         .map_err(|e| format!("读取法务清单失败: {e}"))?;
-    serde_json::from_str::<LegalManifest>(&text)
-        .map_err(|e| format!("解析法务清单失败: {e}"))
+    serde_json::from_str::<LegalManifest>(&text).map_err(|e| format!("解析法务清单失败: {e}"))
 }
 
 /// 取某文档某语言的正文。
@@ -205,7 +204,10 @@ mod tests {
     fn hash_matches_when_expected_is_given() {
         let text = "hello";
         let actual = sha256_hex(text.as_bytes());
-        assert_eq!(actual, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        assert_eq!(
+            actual,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
         assert!(verify_text(text, Some(&actual)).is_ok());
         // 大小写不敏感
         assert!(verify_text(text, Some(&actual.to_uppercase())).is_ok());
@@ -247,8 +249,14 @@ mod tests {
                 },
             ],
         };
-        assert_eq!(manifest.acceptance_document().map(|d| d.id.as_str()), Some("eula"));
-        assert_eq!(manifest.document("gpl").map(|d| d.version.as_str()), Some("3.0"));
+        assert_eq!(
+            manifest.acceptance_document().map(|d| d.id.as_str()),
+            Some("eula")
+        );
+        assert_eq!(
+            manifest.document("gpl").map(|d| d.version.as_str()),
+            Some("3.0")
+        );
     }
 
     #[test]
@@ -263,9 +271,14 @@ mod tests {
         ]}"#;
         let manifest: LegalManifest = serde_json::from_str(json).unwrap();
         assert_eq!(manifest.documents.len(), 2);
-        assert_eq!(manifest.acceptance_document().map(|d| d.id.as_str()), Some("eula"));
         assert_eq!(
-            manifest.document("eula").and_then(|d| d.files.get("zh-CN").map(String::as_str)),
+            manifest.acceptance_document().map(|d| d.id.as_str()),
+            Some("eula")
+        );
+        assert_eq!(
+            manifest
+                .document("eula")
+                .and_then(|d| d.files.get("zh-CN").map(String::as_str)),
             Some("EULA-zh-CN.md")
         );
     }
