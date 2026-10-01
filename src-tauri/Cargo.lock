@@ -2411,6 +2411,7 @@ dependencies = [
  "hmac",
  "local-ip-address",
  "material-colors",
+ "minisign-verify 0.3.0",
  "rand 0.8.6",
  "rand_core 0.6.4",
  "raw-window-handle",
@@ -2434,6 +2435,7 @@ dependencies = [
  "tracing",
  "uapi-sdk-rust",
  "uuid",
+ "window-vibrancy 0.6.0",
  "winreg 0.52.0",
  "zeroize",
 ]
@@ -2474,6 +2476,12 @@ name = "minisign-verify"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
+
+[[package]]
+name = "minisign-verify"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "871285dc19d8d0ebe0eef3d0e99a205f2a71363b122632cbbfa4a6c370a960ce"
 
 [[package]]
 name = "miniz_oxide"
@@ -4392,7 +4400,7 @@ dependencies = [
  "url",
  "webkit2gtk",
  "webview2-com",
- "window-vibrancy",
+ "window-vibrancy 0.8.1",
  "windows 0.62.2",
 ]
 
@@ -4561,7 +4569,7 @@ dependencies = [
  "http",
  "infer",
  "log",
- "minisign-verify",
+ "minisign-verify 0.2.5",
  "osakit",
  "percent-encoding",
  "reqwest 0.13.3",
@@ -5599,6 +5607,21 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "window-vibrancy"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9bec5a31f3f9362f2258fd0e9c9dd61a9ca432e7306cc78c444258f0dce9a9c"
+dependencies = [
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-foundation",
+ "raw-window-handle",
+ "windows-sys 0.59.0",
+ "windows-version",
+]
 
 [[package]]
 name = "window-vibrancy"

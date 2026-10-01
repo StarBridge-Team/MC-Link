@@ -50,6 +50,12 @@ subtle = "2"
 # 成熟稳定的 Rust crate 实现：https://crates.io/crates/material-colors
 material-colors = "0.3"
 tauri-plugin-updater = "2.13.1"
+minisign-verify = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# 与 Tauri 内部同款的材质库。目前只用于一件事：`set_effects(None)` 在 macOS 上
+# 是 no-op（Tauri 的 "清空材质" 分支只对 Windows 生效），需要请它来做真正的移除。
+window-vibrancy = "0.6"

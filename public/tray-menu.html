@@ -54,12 +54,6 @@ body { user-select: none; overflow: hidden; background: transparent; }
     </svg>
     打开 MC Link
   </button>
-  <button id="stopBtn" class="item" style="display:none">
-    <svg class="icon" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5"/>
-    </svg>
-    停止联机
-  </button>
   <button id="exitBtn" class="item">
     <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
       <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M10 11l3-3-3-3M13 8H6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -71,21 +65,16 @@ body { user-select: none; overflow: hidden; background: transparent; }
 <script>
 const invoke = window.__TAURI_INTERNALS__.invoke;
 
-invoke('get_latency').then(ms => {
-  const btn = document.getElementById('stopBtn');
-  if (ms > 0) btn.style.display = 'flex';
-}).finally(() => {
+// 菜单高度随内容变化，渲染完后再把窗口调到实际高度。
+// 此前这里靠 `invoke('get_latency')` 的 promise 来延后一帧，但该命令并不存在
+// （联机后端已断开），于是 set_tray_size 也一并失败——窗口尺寸永远不更新。
+window.addEventListener('load', () => {
   const height = document.getElementById('menu').offsetHeight;
   invoke('set_tray_size', { width: 180, height });
 });
 
 document.getElementById('openBtn').addEventListener('click', () => {
   invoke('show_main_window');
-});
-
-document.getElementById('stopBtn').addEventListener('click', () => {
-  invoke('stop_online');
-  window.close();
 });
 
 document.getElementById('exitBtn').addEventListener('click', () => {

@@ -16,31 +16,6 @@ fn get_cursor_pos() -> (i32, i32) {
     { (0, 0) }
 }
 
-fn try_set_window_backdrop(window: &tauri::WebviewWindow) {
-    #[cfg(windows)]
-    {
-        use raw_window_handle::HasWindowHandle;
-        if let Ok(handle) = window.window_handle() {
-            if let raw_window_handle::RawWindowHandle::Win32(win32) = handle.as_raw() {
-                let hwnd = win32.hwnd.get() as *mut std::ffi::c_void;
-                #[link(name = "dwmapi")]
-                extern "system" {
-                    fn DwmSetWindowAttribute(
-                        hwnd: *mut std::ffi::c_void,
-                        dwAttribute: u32,
-                        pvAttribute: *const std::ffi::c_void,
-                        cbAttribute: u32,
-                    ) -> i32;
-                }
-                let backdrop_type: u32 = 4;
-                unsafe {
-                    DwmSetWindowAttribute(hwnd, 38, &backdrop_type as *const _ as *const _, 4);
-                }
-            }
-        }
-    }
-}
-
 pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
@@ -88,7 +63,9 @@ pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Erro
                     .build()
                     .ok()
                     {
-                        try_set_window_backdrop(&window);
+                        // 材质交给官方 API（见 effect::apply_tray_menu_effect），
+                        // 这里不再自己写 DwmSetWindowAttribute
+                        crate::effect::apply_tray_menu_effect(&window);
                         let w = window.clone();
                         window.on_window_event(move |event| {
                             if let tauri::WindowEvent::Focused(false) = event {
