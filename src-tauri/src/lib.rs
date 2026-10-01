@@ -12,7 +12,6 @@ mod asset_server;
 mod datadir;
 mod cache;
 mod effect;
-mod page;
 mod update;
 mod config;
 mod mgr;
@@ -97,16 +96,16 @@ pub fn run() {
                 .unwrap_or_else(|_| effect::get_default_effect());
             effect::setup_window_effects(app, &effect_name);
 
-            // 注册 mclink:// 深度链接
-            let result = deep_link::register_scheme();
-            if !result.success {
-                eprintln!("[深度链接] {}", result.message);
-            }
-
-            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
-            {
+            // 登记 mclink:// 深链接。**是否登记由安装形态决定**（见 deep_link::should_register_scheme）：
+            // 安装版由安装器/系统登记，程序再写一遍会在卸载或挪动安装目录后残留失效的协议项；
+            // 便携版与 Linux 没有安装器可用，只能自己登记。
+            //
+            // 登记动作交给官方插件：它写的注册项是 `"<exe>" "%1"`，与插件自己解析命令行
+            // 参数的约定一致。此前自写的实现写的是 `"<exe>" --deep-link "%1"`（两个参数），
+            // 而插件只认"恰好一个 URL 参数"，便携版的深链接会被静默丢弃。
+            if deep_link::should_register_scheme() {
                 if let Err(e) = app.deep_link().register_all() {
-                    eprintln!("[深度链接] 插件注册失败: {}", e);
+                    eprintln!("[深链接] 协议登记失败: {}", e);
                 }
             }
 
@@ -196,10 +195,7 @@ pub fn run() {
             init_app,
             prepare_app,
             get_asset_url,
-            get_assets_server_url,
-            get_page_manifest,
-            get_page_content,
-            clear_page_cache_command,
+            read_asset_text,
             check_update_command,
             download_update_command,
             install_update_command,

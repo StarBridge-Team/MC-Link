@@ -28,51 +28,22 @@ pub fn handle_deep_link(app: &AppHandle, urls: &[tauri::Url]) {
     }
 }
 
-/// 在 Windows 注册表中注册 mclink:// URL 协议。
+/// 是否需要由程序自己登记 `mclink://` 协议。
 ///
-/// 仅 Windows 便携版需要（安装版由 NSIS 处理，Linux 由 .desktop 处理）。
-/// 写入 `HKCU\Software\Classes\mclink`，无需管理员/UAC 权限。
-/// 注册结果。
-#[derive(Clone, Serialize, Debug)]
-pub struct SchemeRegisterResult {
-    pub success: bool,
-    pub message: String,
-}
-
-#[cfg(windows)]
-pub fn register_scheme() -> SchemeRegisterResult {
-    let exe = match std::env::current_exe() {
-        Ok(e) => e,
-        Err(e) => return SchemeRegisterResult { success: false, message: format!("获取可执行文件路径失败: {}", e) },
-    };
-    let exe_path = exe.to_string_lossy().to_string();
-    let quoted = format!("\"{}\"", exe_path);
-
-    let key = match winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
-        .create_subkey(r"Software\Classes\mclink") {
-        Ok((k, _)) => k,
-        Err(e) => return SchemeRegisterResult { success: false, message: format!("注册表写入失败（可能权限不足）: {}", e) },
-    };
-
-    if let Err(e) = key.set_value("", &"URL:MC Link Protocol") {
-        return SchemeRegisterResult { success: false, message: format!("设置默认值失败: {}", e) };
+/// 登记动作交给官方插件（`DeepLinkExt::register_all`），这里只回答"该不该登记"。
+/// 为什么必须显式判定形态：安装版由安装器登记协议，程序再自己写一遍会与安装器
+/// 打架，且卸载或挪动安装目录后会**残留一个指向失效路径的协议项**。
+///
+/// - **Linux**：插件用 xdg-mime 写 `.desktop`，是唯一可行途径（AppImage 尤其需要）
+/// - **Windows 便携版**：没有安装器可用，只能由程序自己登记
+/// - **Windows 安装版 / macOS**：交给安装包与系统，程序不插手
+pub fn should_register_scheme() -> bool {
+    if cfg!(target_os = "linux") {
+        return true;
     }
-    if let Err(e) = key.set_value("URL Protocol", &"") {
-        return SchemeRegisterResult { success: false, message: format!("设置 URL Protocol 失败: {}", e) };
+    #[cfg(windows)]
+    if crate::datadir::install_mode() == crate::datadir::InstallMode::Portable {
+        return true;
     }
-
-    let shell = match key.create_subkey("shell\\open\\command") {
-        Ok((k, _)) => k,
-        Err(e) => return SchemeRegisterResult { success: false, message: format!("创建 command 子键失败: {}", e) },
-    };
-    if let Err(e) = shell.set_value("", &format!("{} --deep-link \"%1\"", quoted)) {
-        return SchemeRegisterResult { success: false, message: format!("设置 command 失败: {}", e) };
-    }
-
-    SchemeRegisterResult { success: true, message: "mclink:// 协议注册成功".into() }
-}
-
-#[cfg(not(windows))]
-pub fn register_scheme() -> SchemeRegisterResult {
-    SchemeRegisterResult { success: true, message: "当前平台无需注册".into() }
+    false
 }
