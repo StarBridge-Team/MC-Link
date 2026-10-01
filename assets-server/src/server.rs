@@ -611,7 +611,8 @@ fn handle_upload(
         return resp;
     }
 
-    let rel = match query_param(query, "path") {
+    // 必须解码：`%2F` 不解码会被当成字面量写进文件名（详见 percent_decode 注释）
+    let rel = match query_path(query, "path") {
         Some(p) if !p.is_empty() => p,
         _ => return json_status(400, r#"{"ok":false,"error":"missing path"}"#),
     };
@@ -697,7 +698,8 @@ fn handle_delete(
         return resp;
     }
 
-    let rel = match query_param(query, "path") {
+    // 与上传同理：路径是编码过的，不解码就删不到任何带目录的文件
+    let rel = match query_path(query, "path") {
         Some(p) if !p.is_empty() => p,
         _ => return json_status(400, r#"{"ok":false,"error":"missing path"}"#),
     };
@@ -801,6 +803,50 @@ fn query_param(query: &str, key: &str) -> Option<String> {
     None
 }
 
+/// 百分号解码（`%XX` → 对应字节）。
+///
+/// 发布脚本用 `encodeURIComponent` 编过路径再拼进 URL，服务端必须解回来：
+/// 不解码时 `bootstrap-icons%2Fbootstrap-icons.css` 里的 `%2F` 是**字面量**，
+/// 会被当成"一个文件名"直接写盘，而不是放进 `bootstrap-icons/` 目录。
+/// 后果是资源永远 404，而上传日志一片成功——现象与原因隔得很远，极难排查。
+///
+/// 只解 `%XX`，**不**把 `+` 当空格：`+` 在路径里是合法字符，那是 form 编码的
+/// 约定，不适用此处（客户端用的是 `encodeURIComponent`）。
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
+                out.push(hi << 4 | lo);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// 取查询参数**并解码**（用于 `path` 这类由客户端编码过的取值）。
+///
+/// 令牌**不能**走这条路径：令牌里也可能含 `%`，解码会把它破坏掉；
+/// `require_token` 用的是未解码的 `query_param`，这是刻意的。
+fn query_path(query: &str, key: &str) -> Option<String> {
+    query_param(query, key).map(|v| percent_decode(&v))
+}
+
 /// 防止路径穿越：仅允许在 base 目录内写入，拒绝 `..`、绝对路径、反斜杠
 fn safe_join(base: &Path, rel: &str) -> Option<PathBuf> {
     let rel = rel.replace('\\', "/");
@@ -841,6 +887,37 @@ mod tests {
         assert_eq!(parse_range("bytes=-10", 100), Partial(90, 99));
         // 后缀长度超过文件长度 → 整个文件
         assert_eq!(parse_range("bytes=-500", 100), Partial(0, 99));
+    }
+
+    /// 上传路径是 `encodeURIComponent` 编过的，必须解回目录分隔符。
+    ///
+    /// 不解时 `%2F` 是字面量 → 文件被写成 `bootstrap-icons%2F...css` 这种名字，
+    /// 服务端随后一律 404，而上传日志全部成功。
+    #[test]
+    fn percent_decode_restores_directory_separators() {
+        assert_eq!(
+            percent_decode("bootstrap-icons%2Fbootstrap-icons.css"),
+            "bootstrap-icons/bootstrap-icons.css"
+        );
+        assert_eq!(percent_decode("fonts/poppins.css"), "fonts/poppins.css");
+        assert_eq!(percent_decode("a%20b.txt"), "a b.txt");
+        // 非法转义原样保留，不吞掉字符
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("%2"), "%2");
+    }
+
+    /// 解码必须在 `safe_join` **之前**发生，否则 `%2e%2e%2f` 不会被识别为穿越。
+    #[test]
+    fn decoded_traversal_is_still_rejected() {
+        let base = std::path::Path::new(if cfg!(windows) {
+            "C:\\tmp\\mc-link-assets-test"
+        } else {
+            "/tmp/mc-link-assets-test"
+        });
+        assert!(safe_join(base, &percent_decode("..%2F..%2FWindows%2Fwin.ini")).is_none());
+        assert!(safe_join(base, &percent_decode("%2Fetc%2Fpasswd")).is_none());
+        // 正常的带目录路径必须放行（这正是修复前被误伤的场景）
+        assert!(safe_join(base, &percent_decode("bootstrap-icons%2Ficons.css")).is_some());
     }
 
     /// 路径穿越：只按 `/` 切分的旧实现会把 `..\..\Windows\win.ini` 原样放行。
