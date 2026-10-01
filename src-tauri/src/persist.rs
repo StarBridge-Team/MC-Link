@@ -60,7 +60,11 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     }
 
     let tmp = tmp_path(path);
-    {
+
+    // 任何一步失败都要清掉临时文件：此前只有 `rename` 失败才清理，
+    // 而"磁盘满 / IO 错误"会让 write_all 或 sync_all 提前返回，留下半截 `.tmp`
+    // 积在磁盘上（插件密钥、注册表这类文件都在走这条路）。
+    let written = (|| -> Result<(), String> {
         use std::io::Write;
         let mut file = std::fs::File::create(&tmp)
             .map_err(|e| format!("创建临时文件 {} 失败: {}", tmp.display(), e))?;
@@ -68,12 +72,14 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
             .map_err(|e| format!("写入临时文件 {} 失败: {}", tmp.display(), e))?;
         file.sync_all()
             .map_err(|e| format!("刷新临时文件 {} 失败: {}", tmp.display(), e))?;
-    }
+        std::fs::rename(&tmp, path)
+            .map_err(|e| format!("替换 {} 失败: {}", path.display(), e))
+    })();
 
-    std::fs::rename(&tmp, path).map_err(|e| {
+    if let Err(e) = written {
         let _ = std::fs::remove_file(&tmp);
-        format!("替换 {} 失败: {}", path.display(), e)
-    })?;
+        return Err(e);
+    }
 
     if cfg!(debug_assertions) {
         eprintln!("[persist] 已保存 {}（{} 字节）", path.display(), bytes.len());

@@ -241,12 +241,19 @@ impl PluginManager {
         plugin_id: &str,
         granted: Option<Vec<Permission>>,
     ) -> Result<(), String> {
-        let mut registry = self
-            .inner
-            .registry
-            .write()
-            .map_err(|_| "插件注册表锁不可用".to_string())?;
-        registry.set_grants(plugin_id, granted)
+        // 用块限界先放掉注册表写锁：`refresh_auth` 内部要读同一把锁，
+        // 持有写锁时调用会死锁（RwLock 不可重入）。
+        {
+            let mut registry = self
+                .inner
+                .registry
+                .write()
+                .map_err(|_| "插件注册表锁不可用".to_string())?;
+            registry.set_grants(plugin_id, granted)?;
+        }
+        // 必须刷新准入表：握手用的是准入表里的权限快照。不刷新的话"撤销权限"
+        // 对重连无效——插件只要重启自身进程就能拿回已被撤销的权限。
+        self.refresh_auth()
     }
 
     pub fn set_blocked(&self, plugin_id: &str, blocked: bool) -> Result<(), String> {

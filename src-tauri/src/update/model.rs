@@ -165,16 +165,33 @@ pub(crate) fn ensure_supported(manifest: &UpdateManifest) -> Result<(), String> 
     Ok(())
 }
 
-/// 比较两个语义化版本字符串，仅支持 `x.y.z`（允许前缀 `v`，缺位按 0 补）。
+/// 比较两个语义化版本字符串（`x.y.z`，允许前缀 `v`、`-pre` 后缀与 `+build` 元数据）。
+///
+/// 此前把非数字段直接丢弃，于是 `"1.0.0-rc.1"` 解析成 `[1,0,0,1]`，**大于**
+/// `"1.0.0"`：一个预发布版会被当成正式更新推给用户并允许自动落地
+/// （同一个函数还被缓存回收复用，判断结论同样会错）。
+/// 现在按 semver 规则：预发布版小于同版本的正式版，且逐段比较。
 pub(crate) fn version_greater(left: &str, right: &str) -> bool {
-    let parse = |s: &str| {
-        s.trim_start_matches('v')
+    let parse = |s: &str| -> (Vec<u32>, Vec<String>) {
+        // 构建元数据（`+` 之后）不参与比较
+        let s = s.trim().trim_start_matches('v');
+        let s = s.split('+').next().unwrap_or(s);
+        let (nums, pre) = match s.split_once('-') {
+            Some((n, p)) => (n, Some(p)),
+            None => (s, None),
+        };
+        let nums = nums
             .split('.')
-            .filter_map(|p| p.parse::<u32>().ok())
-            .collect::<Vec<_>>()
+            .map(|p| p.trim().parse::<u32>().unwrap_or(0))
+            .collect::<Vec<_>>();
+        let pre = pre
+            .map(|p| p.split('.').map(|x| x.to_string()).collect::<Vec<_>>())
+            .unwrap_or_default();
+        (nums, pre)
     };
-    let a = parse(left);
-    let b = parse(right);
+
+    let (a, a_pre) = parse(left);
+    let (b, b_pre) = parse(right);
     for i in 0..a.len().max(b.len()) {
         let av = a.get(i).copied().unwrap_or(0);
         let bv = b.get(i).copied().unwrap_or(0);
@@ -182,7 +199,40 @@ pub(crate) fn version_greater(left: &str, right: &str) -> bool {
             return av > bv;
         }
     }
-    false
+
+    // 数字段相同 → 由预发布后缀决定（semver §11）
+    match (a_pre.is_empty(), b_pre.is_empty()) {
+        (true, true) => false,
+        // 正式版 > 同版本预发布版
+        (true, false) => true,
+        (false, true) => false,
+        (false, false) => prerelease_greater(&a_pre, &b_pre),
+    }
+}
+
+/// 比较两个预发布标识符序列（`a > b`）。
+///
+/// 规则：逐段比较，数字段按数值比、字母段按字典序比，且**数字段小于字母段**；
+/// 前缀全等时，段数多的更大（`rc.1` > `rc`）。
+fn prerelease_greater(a: &[String], b: &[String]) -> bool {
+    for (x, y) in a.iter().zip(b.iter()) {
+        match (x.parse::<u64>().ok(), y.parse::<u64>().ok()) {
+            (Some(n), Some(m)) => {
+                if n != m {
+                    return n > m;
+                }
+            }
+            // 数字标识符优先级低于字母标识符
+            (Some(_), None) => return false,
+            (None, Some(_)) => return true,
+            (None, None) => {
+                if x != y {
+                    return x > y;
+                }
+            }
+        }
+    }
+    a.len() > b.len()
 }
 
 /// 某种安装形态可自动落地的资产类型（按优先级）。
@@ -316,6 +366,23 @@ mod tests {
         assert!(version_greater("0.5", "0.4.9"));
         assert!(!version_greater("0.4.0", "0.4.0"));
         assert!(!version_greater("0.4.0", "v0.4.1"));
+    }
+
+    /// 回归：预发布版**不得**被当作正式更新。
+    ///
+    /// 旧实现丢弃非数字段，于是 `1.0.0-rc.1` 解析为 `[1,0,0,1]`，比 `1.0.0` 还大。
+    #[test]
+    fn prerelease_is_older_than_the_release() {
+        assert!(!version_greater("1.0.0-rc.1", "1.0.0"));
+        assert!(version_greater("1.0.0", "1.0.0-rc.1"));
+        assert!(version_greater("1.0.0-rc.2", "1.0.0-rc.1"));
+        assert!(!version_greater("1.0.0-rc.1", "1.0.0-rc.2"));
+        assert!(version_greater("1.0.0-rc.10", "1.0.0-rc.2"), "数字段应按数值比较");
+        assert!(version_greater("1.0.0-rc.1", "1.0.0-beta.9"), "字母段按字典序");
+        assert!(version_greater("1.0.0-rc", "1.0.0-alpha"));
+        // 构建元数据不参与比较
+        assert!(!version_greater("1.0.0+build.2", "1.0.0+build.9"));
+        assert!(version_greater("1.0.1+build.1", "1.0.0"));
     }
 
     #[test]

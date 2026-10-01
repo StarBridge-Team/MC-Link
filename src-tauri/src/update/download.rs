@@ -138,7 +138,13 @@ mod tests {
 
     #[test]
     fn prune_removes_consumed_packages_and_tmp_only() {
-        let dir = update_cache_dir(&std::env::temp_dir().join("mc-link-prune-test"));
+        // 唯一目录：并发的 cargo test（或上次残留）不会互相干扰
+        let base = std::env::temp_dir().join(format!(
+            "mc-link-prune-{}-{}",
+            std::process::id(),
+            crate::plugin::crypto::random_hex(4)
+        ));
+        let dir = update_cache_dir(&base);
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
@@ -151,7 +157,7 @@ mod tests {
         write("download.exe.tmp"); // 残留 → 删
         write("install.log"); // 认不出 → 留
 
-        prune_cache(&std::env::temp_dir().join("mc-link-prune-test"));
+        prune_cache(&base);
 
         let left: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()

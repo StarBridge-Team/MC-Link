@@ -24,6 +24,17 @@ pub fn check_config_version(data_dir: &Path) -> Result<bool, String> {
         return Ok(true);
     }
 
+    // 本地配置版本**高于**当前程序支持的版本：说明用户跑过更新的构建。
+    // 这时既不能跑迁移（旧逻辑不知道新结构），更不能把版本号写小——
+    // 写小会让下次启动新构建时把所有迁移重跑一遍，可能把配置改坏。
+    if recorded > CONFIG_VERSION {
+        eprintln!(
+            "[配置] 本地配置版本 {} 高于当前程序支持的 {}，跳过迁移（请升级到较新的构建）",
+            recorded, CONFIG_VERSION
+        );
+        return Ok(true);
+    }
+
     run_migrations(data_dir, recorded)?;
     write_config_version(data_dir)?;
     Ok(true)

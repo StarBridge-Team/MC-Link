@@ -68,9 +68,28 @@ pub(crate) fn set_tray_size(window: tauri::Window, width: f64, height: f64) {
 
 #[tauri::command]
 pub(crate) fn resize_window(window: tauri::Window, width: f64, height: f64, min_width: Option<f64>, min_height: Option<f64>, center: bool) {
-    if let (Some(mw), Some(mh)) = (min_width, min_height) {
-        let _ = window.set_min_size(Some(tauri::LogicalSize::new(mw, mh)));
+    // 尺寸来自前端：NaN / 负数 / 0 会让窗口变成不可用状态（甚至直接消失），先挡住
+    let valid = |v: f64| v.is_finite() && (1.0..=100_000.0).contains(&v);
+    if !valid(width) || !valid(height) {
+        eprintln!("[窗口] 忽略非法尺寸 {}x{}", width, height);
+        return;
     }
+
+    // 最小尺寸支持**单边**设置：此前要求两边同时给出，只传一边会被静默忽略
+    let min_w = min_width.filter(|v| valid(*v));
+    let min_h = min_height.filter(|v| valid(*v));
+    if min_w.is_some() || min_h.is_some() {
+        // 未给出的那一边用当前实际尺寸兜底（这才是合理的下限）
+        let current = window
+            .inner_size()
+            .map(|s| (s.width as f64, s.height as f64))
+            .unwrap_or((width, height));
+        let _ = window.set_min_size(Some(tauri::LogicalSize::new(
+            min_w.unwrap_or(current.0),
+            min_h.unwrap_or(current.1),
+        )));
+    }
+
     let _ = window.set_size(tauri::LogicalSize::new(width, height));
     if center {
         let _ = window.center();

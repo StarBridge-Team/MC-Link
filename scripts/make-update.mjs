@@ -346,11 +346,29 @@ function writePluginManifest(items) {
   }
 
   const signature = readFileSync(`${full}.sig`, "utf8").trim();
+
+  // 与 latest.json 一样**合并**同版本的其它平台键。
+  // 不合并的话，按文档先跑 x64、再跑 `--platform windows-aarch64` 时，
+  // 第二次会把 x86_64 那段整块抹掉——那个平台的用户就再也收不到更新，
+  // 而且清单本身看起来完全正常。
+  let platforms = {};
+  if (existsSync(PLUGIN_MANIFEST_PATH)) {
+    try {
+      const prev = JSON.parse(readFileSync(PLUGIN_MANIFEST_PATH, "utf8"));
+      if (prev.version === version && prev.platforms) {
+        platforms = { ...prev.platforms };
+      }
+    } catch {
+      // 旧清单损坏：以本次生成的为准
+    }
+  }
+
   const manifest = {
     version,
     notes: releaseNotes(),
     pub_date: new Date().toISOString(),
     platforms: {
+      ...platforms,
       [pluginPlatformKey(PLATFORM)]: {
         signature,
         url: `${ASSET_BASE}/update/${manageable.file}`,

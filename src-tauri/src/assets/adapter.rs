@@ -178,9 +178,23 @@ mod tests {
         assert!(err.contains("linux-x86_64"), "错误应列出可用平台: {}", err);
     }
 
+    /// 每次调用都用一个唯一目录。
+    ///
+    /// 之前多个测试共用固定的 `mc-link-adapter-test`：并行执行时会互相看到对方的
+    /// 残留文件，表现为随机失败（"本地过、CI 红"的经典形态）。
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "mc-link-adapter-{}-{}",
+            name,
+            crate::plugin::crypto::random_hex(4)
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }
+
     #[tokio::test]
     async fn rejects_manifest_with_illegal_sha256() {
-        let dir = std::env::temp_dir().join("mc-link-adapter-test");
+        let dir = temp_dir("illegal_sha256");
         let _ = std::fs::create_dir_all(&dir);
         let client = reqwest::Client::new();
         let bad = entry("windows-x86_64", "not-a-hash");
@@ -192,7 +206,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_manifest_without_urls() {
-        let dir = std::env::temp_dir().join("mc-link-adapter-test");
+        let dir = temp_dir("no_urls");
         let _ = std::fs::create_dir_all(&dir);
         let client = reqwest::Client::new();
         let mut e = entry("windows-x86_64", &"a".repeat(64));

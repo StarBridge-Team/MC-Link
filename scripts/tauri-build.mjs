@@ -19,8 +19,8 @@
  *
  * 原生 tauri 通过 `pnpm exec tauri` 调用，避免递归调用本脚本。
  */
-import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,23 @@ import { preflight, signingEnv } from "./signer-env.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
+
+/**
+ * Tauri CLI 的 JS 入口。
+ *
+ * 一律用 `execFileSync(process.execPath, [cli, ...args])` 调用它，而不是拼
+ * `pnpm exec tauri ...` 字符串：后者走 shell，参数来自 `process.argv` 时
+ * 就是一处命令注入（`node scripts/tauri-build.mjs build "--x; rm -rf ."`），
+ * 且 Windows 上 execFileSync 直接调 `.cmd` 会因安全限制报 EINVAL。
+ */
+const TAURI_CLI = join(ROOT, "node_modules", "@tauri-apps", "cli", "tauri.js");
+
+function ensureTauriCli() {
+  if (!existsSync(TAURI_CLI)) {
+    console.error(`[tauri-build] 未找到 Tauri CLI（${TAURI_CLI}），请先执行 pnpm install`);
+    process.exit(1);
+  }
+}
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -70,19 +87,20 @@ if (cmd === "build" && !rest.includes("--no-release")) {
   const releaseEnv = { ...signingEnv(), MC_LINK_BUILD_CHANNEL: "official" };
 
   // 真实 tauri build（--ci 保证非交互）
-  execSync(`pnpm exec tauri build --ci ${extra.join(" ")}`.trim(), {
+  ensureTauriCli();
+  execFileSync(process.execPath, [TAURI_CLI, "build", "--ci", ...extra], {
     cwd: ROOT,
     stdio: "inherit",
     env: releaseEnv,
   });
 
   // 产物重命名（EXE/安装包加版本号）
-  execSync("node rename-build.js", { cwd: ROOT, stdio: "inherit" });
+  execFileSync(process.execPath, ["rename-build.js"], { cwd: ROOT, stdio: "inherit" });
 
   // 生成应用更新包与更新清单（必须早于 sync-assets，否则清单与更新包不会被上传）
   const makeUpdateArgs = ["scripts/make-update.mjs"];
   if (rest.includes("--mandatory")) makeUpdateArgs.push("--mandatory");
-  execSync(`node ${makeUpdateArgs.join(" ")}`, {
+  execFileSync(process.execPath, makeUpdateArgs, {
     cwd: ROOT,
     stdio: "inherit",
     env: releaseEnv,
@@ -90,14 +108,18 @@ if (cmd === "build" && !rest.includes("--no-release")) {
 
   // 资源上传到资源服务器
   if (!noUpload) {
-    execSync("node scripts/sync-assets.mjs", { cwd: ROOT, stdio: "inherit" });
+    execFileSync(process.execPath, ["scripts/sync-assets.mjs"], {
+      cwd: ROOT,
+      stdio: "inherit",
+    });
   }
 
   process.exit(0);
 }
 
 // 其余子命令（dev / icon / ...）原样透传
-execSync(`pnpm exec tauri ${args.join(" ")}`.trim(), {
+ensureTauriCli();
+execFileSync(process.execPath, [TAURI_CLI, ...args], {
   cwd: ROOT,
   stdio: "inherit",
 });

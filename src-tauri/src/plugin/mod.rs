@@ -46,6 +46,7 @@ pub mod builtin;
 pub mod capability;
 pub mod commands;
 pub mod crypto;
+pub mod fs_secure;
 pub mod game;
 pub mod gateway;
 pub mod launcher;

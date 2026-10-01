@@ -55,7 +55,7 @@ pub fn write_session_file(
         .map_err(|e| format!("序列化会话描述失败: {}", e))?;
     std::fs::write(&path, text).map_err(|e| format!("写入会话文件失败: {}", e))?;
     // 尽力而为地收紧权限；Windows 上退化为隐藏属性。
-    restrict(&path);
+    crate::plugin::fs_secure::restrict_to_current_user(&path);
     Ok(path)
 }
 
@@ -161,21 +161,6 @@ fn is_within(parent: &Path, child: &Path) -> bool {
     child.starts_with(&parent)
 }
 
-#[cfg(windows)]
-fn restrict(path: &Path) {
-    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-    use std::os::windows::fs::OpenOptionsExt;
-    let _ = std::fs::OpenOptions::new()
-        .write(true)
-        .attributes(FILE_ATTRIBUTE_HIDDEN)
-        .open(path);
-}
-
-#[cfg(not(windows))]
-fn restrict(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-}
 
 #[cfg(test)]
 mod tests {

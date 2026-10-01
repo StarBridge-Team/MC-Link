@@ -13,6 +13,12 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# 检查任务只需要读代码：显式收敛 token 权限。
+# 否则会继承仓库默认权限，而这个任务会跑 `pnpm install`（执行依赖的生命周期脚本），
+# 一旦供应链被投毒，过大权限就是放大器。
+permissions:
+  contents: read
+
 jobs:
   check:
     # 用 Windows runner：本应用的主目标是 Windows，且 Linux 跑 Tauri 需要

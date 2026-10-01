@@ -52,7 +52,12 @@ pub(crate) async fn get_ip_info(host: String) -> Result<IpInfo, String> {
 /// 仅加载配置（轻量快速，无网络请求）
 #[tauri::command]
 pub(crate) fn init_app(mgr: tauri::State<'_, Arc<AppMgr>>) -> Result<InitAppData, String> {
-    let pers = mgr.read().personalization().unwrap_or_default();
+    // 读取失败时不**静默**退回默认值：那会表现为"设置被重置"，用户和我们都没有线索；
+    // 也不把错误抛给前端——一次读取失败不该让应用起不来。
+    let pers = mgr.read().personalization().unwrap_or_else(|e| {
+        eprintln!("[配置] 读取个性化设置失败，本次以默认值启动: {}", e);
+        Default::default()
+    });
     let default_effect = crate::effect::get_default_effect();
     let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
     let tauri_version = get_tauri_version();
@@ -64,7 +69,11 @@ pub(crate) fn init_app(mgr: tauri::State<'_, Arc<AppMgr>>) -> Result<InitAppData
 pub(crate) async fn prepare_app(
     mgr: tauri::State<'_, Arc<AppMgr>>,
 ) -> Result<PrepareAppData, String> {
-    let pers = mgr.read().personalization().unwrap_or_default();
+    // 同上：记录原因后以默认值继续，而不是无声地换成默认值
+    let pers = mgr.read().personalization().unwrap_or_else(|e| {
+        eprintln!("[配置] 读取个性化设置失败，本次以默认值启动: {}", e);
+        Default::default()
+    });
     let default_effect = crate::effect::get_default_effect();
     let app_version = format!("v{}", env!("CARGO_PKG_VERSION"));
     let tauri_version = get_tauri_version();

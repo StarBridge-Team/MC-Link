@@ -17,9 +17,16 @@ fn get_cursor_pos() -> (i32, i32) {
 }
 
 pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    TrayIconBuilder::new()
-        .icon(app.default_window_icon().unwrap().clone())
-        .tooltip("MC Link")
+    let mut builder = TrayIconBuilder::new().tooltip("MC Link");
+    // 缺图标时不要 unwrap：那是**启动路径**上的 panic（打包配置漏了图标就变成开机崩溃），
+    // 退化成"没有图标的托盘"要好得多。
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    } else {
+        eprintln!("[托盘] 未找到应用图标，托盘将不显示图标");
+    }
+
+    builder
         .on_tray_icon_event(|tray, event| {
             let app_handle = tray.app_handle();
             match event {

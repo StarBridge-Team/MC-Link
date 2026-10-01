@@ -64,6 +64,36 @@ pub(crate) async fn download_adapter(
         .emit("app-log", "[下载] SHA256 校验通过，开始解压...".to_string())
         .ok();
 
+    // 解压前先核对展开体积与条目数。
+    //
+    // SHA256 只证明"包没被换过"，挡不住一个体积正常、展开后巨大（或条目极多）
+    // 的包把磁盘写满——而清单与包同源（信任锚点是资源服务器）。
+    // 代价是压缩包被读两遍，对一次性安装完全可以接受。
+    {
+        const MAX_EXTRACT_BYTES: u64 = 512 * 1024 * 1024;
+        const MAX_EXTRACT_ENTRIES: usize = 4096;
+
+        let file = std::fs::File::open(&archive_path)
+            .map_err(|e| format!("打开下载文件失败: {}", e))?;
+        let mut probe = tar::Archive::new(flate2::read::GzDecoder::new(file));
+        let mut total: u64 = 0;
+        let mut count: usize = 0;
+        for entry in probe
+            .entries()
+            .map_err(|e| format!("读取压缩包失败: {}", e))?
+        {
+            let entry = entry.map_err(|e| format!("读取压缩包条目失败: {}", e))?;
+            total = total.saturating_add(entry.header().size().unwrap_or(0));
+            count += 1;
+            if total > MAX_EXTRACT_BYTES || count > MAX_EXTRACT_ENTRIES {
+                return Err(format!(
+                    "适配器包展开后过大或条目过多（累计 {} 字节 / {} 项），已中止安装",
+                    total, count
+                ));
+            }
+        }
+    }
+
     let file = std::fs::File::open(&archive_path).map_err(|e| format!("打开下载文件失败: {}", e))?;
     let decoder = flate2::read::GzDecoder::new(file);
     let mut archive = tar::Archive::new(decoder);

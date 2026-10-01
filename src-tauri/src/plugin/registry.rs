@@ -78,7 +78,7 @@ impl PluginRecord {
         let raw = crypto::random_bytes(32);
         // 原子写入：插件密钥被截断会导致会话密钥派生失效
         crate::persist::atomic_write(&path, hex::encode(&raw).as_bytes())?;
-        restrict_permissions(&path);
+        crate::plugin::fs_secure::restrict_to_current_user(&path);
         let mut key = [0u8; 32];
         key.copy_from_slice(&raw);
         Ok(key)
@@ -389,26 +389,6 @@ impl PluginRegistry {
     }
 }
 
-/// Windows 上收紧密钥文件 ACL（尽力而为；失败不阻断流程）。
-#[cfg(windows)]
-fn restrict_permissions(path: &Path) {
-    use std::os::windows::fs::OpenOptionsExt;
-    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-    // 仅设置隐藏属性，避免依赖外部 crate 调整 DACL。
-    if let Ok(file) = std::fs::OpenOptions::new()
-        .write(true)
-        .attributes(FILE_ATTRIBUTE_HIDDEN)
-        .open(path)
-    {
-        drop(file);
-    }
-}
-
-#[cfg(not(windows))]
-fn restrict_permissions(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-}
 
 #[cfg(test)]
 mod tests {

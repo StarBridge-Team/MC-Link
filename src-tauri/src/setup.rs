@@ -204,19 +204,29 @@ pub(crate) mod detect {
     ///
     /// 支持 `zh-CN` / `en_US` / `ja-JP` 这类写法。
     pub(crate) fn region_from_locale(locale: &str) -> String {
-        let mut parts = locale.split(['-', '_']);
-        let _language = parts.next();
-        match parts.next().map(str::trim).filter(|r| !r.is_empty()) {
-            Some(region) => {
-                let upper = region.to_ascii_uppercase();
-                if SUPPORTED_REGIONS.contains(&upper.as_str()) {
+        // 语言子标签之后可能还有 **script**（`zh-Hans-CN` 里的 `Hans`）与地区：
+        // 只看第二段会把 `Hans` 当成地区，于是 `zh-Hans-CN` 被判成"其它地区"，
+        // 真实地区 `CN` 反而丢了。这里跳过 script，取第一个形状像地区的段。
+        const SCRIPT_TAGS: &[&str] = &[
+            "HANS", "HANT", "LATN", "CYRL", "ARAB", "GREK", "HEBR", "JPAN", "KORE", "DEVA", "THAI",
+        ];
+        for part in locale.split(['-', '_']).skip(1) {
+            let upper = part.trim().to_ascii_uppercase();
+            if upper.len() == 4 && SCRIPT_TAGS.contains(&upper.as_str()) {
+                continue;
+            }
+            let looks_like_region = (upper.len() == 2
+                && upper.chars().all(|c| c.is_ascii_alphabetic()))
+                || (upper.len() == 3 && upper.chars().all(|c| c.is_ascii_digit()));
+            if looks_like_region {
+                return if SUPPORTED_REGIONS.contains(&upper.as_str()) {
                     upper
                 } else {
                     REGION_OTHER.to_string()
-                }
+                };
             }
-            None => REGION_OTHER.to_string(),
         }
+        REGION_OTHER.to_string()
     }
 
     /// 检测不到可用语言时的兜底。
