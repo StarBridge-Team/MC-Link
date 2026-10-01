@@ -23,7 +23,128 @@ pub enum PluginKind {
     Detector,
     /// 耦合类：把具体游戏接入 MC Link 的统一调度流程。
     Coupler,
-}
+    }
+
+    /// 工作方式：插件靠什么把局域网暴露给对端。
+    ///
+    /// 与自由 `tags` 的区别在于**它必须可靠**——界面上的"按方式筛选"与 OOBE 的
+    /// 推荐展示都直接依赖它，所以这里是枚举而非字符串：写错的取值会在解析期被拒，
+    /// 不会变成筛选栏里第四个莫名的选项。
+    ///
+    /// 刻意与"具体用什么软件"解耦：`bundled` 只说明"打包了第三方本体"，
+    /// 具体是哪个软件由插件自己声明（`tags` / 清单其它字段）。
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum ConnectionMethod {
+    /// 捆绑第三方软件本体（把别人家的整包带进来）。
+    #[serde(rename = "bundled")]
+    Bundled,
+    /// P2P 打洞直连。
+    #[serde(rename = "p2p")]
+    P2p,
+    /// 中继转发。
+    #[serde(rename = "relay")]
+    Relay,
+    /// 内网映射 / 端口映射。
+    #[serde(rename = "port-mapping")]
+    PortMapping,
+    }
+
+    impl ConnectionMethod {
+    /// 全部取值，供筛选界面与校验使用。
+    pub const ALL: &'static [ConnectionMethod] = &[
+        ConnectionMethod::Bundled,
+        ConnectionMethod::P2p,
+        ConnectionMethod::Relay,
+        ConnectionMethod::PortMapping,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConnectionMethod::Bundled => "bundled",
+            ConnectionMethod::P2p => "p2p",
+            ConnectionMethod::Relay => "relay",
+            ConnectionMethod::PortMapping => "port-mapping",
+        }
+    }
+
+    /// 从字符串解析（大小写不敏感，接受下划线写法）。
+    pub fn parse(input: &str) -> Option<Self> {
+        let normalized = input.trim().to_ascii_lowercase().replace('_', "-");
+        ConnectionMethod::ALL
+            .iter()
+            .copied()
+            .find(|m| m.as_str() == normalized)
+    }
+    }
+
+    /// 已知平台取值。未知值在**展示层**被丢弃并留痕，但不会让插件加载失败——
+    /// 开发者写错一个平台名，不该让整个插件不可用。
+    pub const KNOWN_PLATFORMS: &[&str] = &["windows", "linux", "macos"];
+
+    /// 归一化平台取值：去空白、小写、去重，并丢掉不在 [`KNOWN_PLATFORMS`] 里的。
+    pub fn normalize_platforms(raw: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for item in raw {
+        let value = item.trim().to_ascii_lowercase();
+        if value.is_empty() {
+            continue;
+        }
+        if !KNOWN_PLATFORMS.contains(&value.as_str()) {
+            eprintln!("[插件] 未知平台「{value}」已忽略（可选：windows/linux/macos）");
+            continue;
+        }
+        if !out.contains(&value) {
+            out.push(value);
+        }
+    }
+    out
+    }
+
+    /// 归一化工作方式：丢掉未知取值并留痕。
+    ///
+    /// 与 [`normalize_platforms`] 同口径——写错的取值只影响这一项，不会让插件不可用。
+    pub fn normalize_methods(raw: &[String]) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for item in raw {
+            match ConnectionMethod::parse(item) {
+                Some(method) => {
+                    let value = method.as_str().to_string();
+                    if !out.contains(&value) {
+                        out.push(value);
+                    }
+                }
+                None => eprintln!(
+                    "[插件] 未知工作方式「{}」已忽略（可选：bundled/p2p/relay/port-mapping）",
+                    item.trim()
+                ),
+            }
+        }
+        out
+    }
+
+    /// 归一化自由标签：去空白、去重、限长限量。
+    ///
+    /// **不做白名单**（开发者可自定义，中文标签是允许的），只做防脏数据的清洗：
+    /// 一个插件写 200 个标签会让筛选栏彻底不可用。
+    pub fn normalize_tags(raw: &[String]) -> Vec<String> {
+    const MAX_TAGS: usize = 12;
+    const MAX_LEN: usize = 24;
+    let mut out: Vec<String> = Vec::new();
+    for item in raw {
+        let value = item.trim();
+        if value.is_empty() {
+            continue;
+        }
+        let value: String = value.chars().take(MAX_LEN).collect();
+        if !out.contains(&value) {
+            out.push(value);
+        }
+        if out.len() >= MAX_TAGS {
+            break;
+        }
+    }
+    out
+    }
 
 impl PluginKind {
     pub fn as_str(&self) -> &'static str {
@@ -214,6 +335,21 @@ pub struct PluginManifest {
     /// 覆盖的游戏 ID 列表；`["*"]` 表示与具体游戏无关（适配器通常如此）。
     #[serde(default)]
     pub games: Vec<String>,
+    /// 可运行的平台（`windows` / `linux` / `macos`）；空表示不限。
+    ///
+    /// 独立于自由标签：这是界面用来给用户**屏蔽跑不了的插件**的可靠维度。
+    #[serde(default)]
+    pub platforms: Vec<String>,
+    /// 工作方式（P2P / 中继 / 端口映射 / 捆绑第三方本体）；空表示未声明。
+    ///
+    /// 存字符串而非 [`ConnectionMethod`] 枚举：**枚举在反序列化期遇到未知取值会直接
+    /// 报错，让整个插件加载失败**——开发者写错一个词就不该让插件变砖。
+    /// 取值由 [`normalize_methods`] 在展示层过滤并留痕，与 `platforms` 口径一致。
+    #[serde(default)]
+    pub methods: Vec<String>,
+    /// 开发者自定义标签，用于长尾筛选与展示。
+    #[serde(default)]
+    pub tags: Vec<String>,
     /// 声明需要的权限。
     #[serde(default)]
     pub permissions: Vec<Permission>,
@@ -461,5 +597,81 @@ mod tests {
     #[test]
     fn rejects_absurd_frame_limit() {
         assert!(parse(sample(), |v| v["limits"]["max_frame_bytes"] = 0.into()).is_err());
+    }
+
+    /// 平台：未知取值丢弃、大小写归一、去重，但**不影响插件加载**。
+    #[test]
+    fn platform_normalization_drops_unknown_values() {
+        let out = normalize_platforms(&[
+            "Windows".to_string(),
+            " windows ".to_string(),
+            "linux".to_string(),
+            "solaris".to_string(),
+            String::new(),
+        ]);
+        assert_eq!(out, vec!["windows".to_string(), "linux".to_string()]);
+    }
+
+    /// 标签是开发者自定义的：不设白名单（中文允许），但要去重、截长、限量。
+    #[test]
+    fn tag_normalization_is_lenient_but_bounded() {
+        let out = normalize_tags(&[
+            "免登录".to_string(),
+            "免登录".to_string(),
+            "x".repeat(200),
+        ]);
+        assert_eq!(out.len(), 2, "重复标签必须合并: {out:?}");
+        assert_eq!(out[0], "免登录");
+        assert_eq!(out[1].chars().count(), 24, "超长标签必须截断");
+
+        let many: Vec<String> = (0..50).map(|i| format!("tag-{i}")).collect();
+        assert_eq!(normalize_tags(&many).len(), 12, "标签数量必须封顶");
+    }
+
+    /// 工作方式的字符串表示必须稳定（筛选界面直接依赖），解析要宽容。
+    #[test]
+    fn connection_method_parsing_is_tolerant_and_stable() {
+        assert_eq!(ConnectionMethod::P2p.as_str(), "p2p");
+        assert_eq!(ConnectionMethod::PortMapping.as_str(), "port-mapping");
+        assert_eq!(ConnectionMethod::parse(" P2P "), Some(ConnectionMethod::P2p));
+        assert_eq!(
+            ConnectionMethod::parse("port_mapping"),
+            Some(ConnectionMethod::PortMapping)
+        );
+        assert_eq!(ConnectionMethod::parse("telepathy"), None);
+        assert_eq!(ConnectionMethod::ALL.len(), 4);
+    }
+
+    /// 写错的工作方式只应被丢掉，不能让插件加载失败（与平台同口径）。
+    #[test]
+    fn unknown_method_is_dropped_not_fatal() {
+        let m = parse(sample(), |v| {
+            v["methods"] = serde_json::json!(["p2p", "telepathy", "relay"]);
+        })
+        .expect("未知工作方式不应导致解析失败");
+        assert_eq!(
+            normalize_methods(&m.methods),
+            vec!["p2p".to_string(), "relay".to_string()]
+        );
+    }
+
+    /// 声明了三个新维度的清单要能完整解析出来。
+    #[test]
+    fn parses_platforms_methods_and_tags() {
+        let m = parse(sample(), |v| {
+            v["platforms"] = serde_json::json!(["windows", "linux"]);
+            v["methods"] = serde_json::json!(["p2p", "relay"]);
+            v["tags"] = serde_json::json!(["低延迟"]);
+        })
+        .unwrap();
+        assert_eq!(
+            normalize_platforms(&m.platforms),
+            vec!["windows".to_string(), "linux".to_string()]
+        );
+        assert_eq!(
+            normalize_methods(&m.methods),
+            vec!["p2p".to_string(), "relay".to_string()]
+        );
+        assert_eq!(normalize_tags(&m.tags), vec!["低延迟".to_string()]);
     }
 }

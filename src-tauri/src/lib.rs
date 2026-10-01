@@ -19,6 +19,7 @@ mod downloader;
 mod deep_link;
 mod setting_meta;
 mod setup;
+mod legal;
 mod m3;
 use m3::commands::*;
 
@@ -205,6 +206,10 @@ pub fn run() {
             complete_setup_command,
             update_setup_command,
             reset_setup_command,
+            legal_fetch_command,
+            accept_eula_command,
+            set_first_game_command,
+            game_recommend_command,
             get_setting_meta,
             get_setting_manifest,
             clear_setting_meta_cache_command,

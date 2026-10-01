@@ -49,6 +49,24 @@ const ADAPTER_VERSION = "0.4.2";
 const ADAPTER_FILE = `terracotta-${ADAPTER_VERSION}-${ADAPTER_PLATFORM}-pkg.tar.gz`;
 const ADAPTER_URL = `https://gitee.com/burningtnt/Terracotta/releases/download/v${ADAPTER_VERSION}/${ADAPTER_FILE}`;
 
+// ------------------------------------------------------------------
+// 法务文件（EULA 与许可证全文）
+// ------------------------------------------------------------------
+//
+// `EULA_VERSION` 是**条款版本**：条款实质变更时必须递增，客户端据此要求用户重新同意。
+// 只改错别字/排版**不要**递增——那样会把全体用户重新拉回引导页。
+const EULA_VERSION = "1.0";
+
+/// 带这个标记的文件视为"未定稿"：跳过上传并告警。
+///
+/// 这是刻意的：宁可让客户端走"拉不到条款 → 只提示请同意 EULA + 官网链接"的分支，
+/// 也不要把一份写着"待补充"的假条款当成正式文本发给用户签字。
+const LEGAL_PLACEHOLDER_MARK = "PLACEHOLDER-NOT-FOR-RELEASE";
+
+/// 法务文案源目录与 GPLv3 全文位置（仓库根 LICENSE，GitHub 也能识别）。
+const LEGAL_SRC_DIR = join(ROOT, "legal");
+const GPL_SRC = join(ROOT, "LICENSE");
+
 const PROD_URL = "https://mclinkassets.xigo.top:54789";
 const SERVER_URL =
   process.env.ASSET_SERVER_URL ||
@@ -78,6 +96,8 @@ syncFromNpm();
 
 // 2) 准备适配器包与校验清单（须在扫描前完成，否则不会被收集与上传）
 await prepareAdapters();
+// 法务文件必须在扫描 Assets 之前落盘，否则不会被收集进上传清单
+prepareLegal();
 
 // 3) 扫描并生成 manifest；adapter/ 独立维护，不参与 Assets 版本聚合
 const allFiles = [];
@@ -238,6 +258,81 @@ function uploadFile(rel, buf) {
 }
 
 // 下载上游适配器发布包，计算 SHA256 并生成校验清单（客户端据此校验后才安装）
+/**
+ * 生成法务文件到 `Assets/legal/`，并产出 `manifest.json`。
+ *
+ * 放在资源服务器而不是编译进客户端，是为了**条款更新不必重新发版**。
+ *
+ * 三条刻意行为：
+ * - 带占位标记的文件**拒绝上传**——宁可让客户端走"拉不到条款"分支，
+ *   也不把一份写着"待补充"的假条款发给用户签字；
+ * - 缺 `LICENSE` 只告警不失败：GPLv3 第 4/5 条要求随包附全文，
+ *   但本地开发不该因此跑不起来（正式发布前必须补上，告警里已写明）；
+ * - 每个文件的 `sha256` 进清单，客户端据此核对"我看到的就是服务端发的那份"。
+ */
+function prepareLegal() {
+  const out = join(ASSETS_DIR, "legal");
+  mkdirSync(out, { recursive: true });
+  const sha256 = (data) => createHash("sha256").update(data).digest("hex");
+  const documents = [];
+
+  // GPLv3 全文：只展示，不要求"同意"
+  if (existsSync(GPL_SRC)) {
+    const buf = readFileSync(GPL_SRC);
+    const name = "GPL-3.0.txt";
+    writeFileSync(join(out, name), buf);
+    documents.push({
+      id: "gpl",
+      version: "3.0",
+      title: "GNU General Public License v3",
+      requiresAcceptance: false,
+      files: { "en-US": name },
+      sha256: { "en-US": sha256(buf) },
+    });
+  } else {
+    console.warn("[sync-assets] 缺少 LICENSE（GPLv3 全文）：未随包分发，正式发布前必须补上");
+  }
+
+  // EULA：需要用户显式同意，因此占位稿一律跳过
+  const eulaFiles = {};
+  const eulaHashes = {};
+  for (const lang of ["zh-CN", "en-US"]) {
+    const src = join(LEGAL_SRC_DIR, `EULA-${lang}.md`);
+    if (!existsSync(src)) continue;
+    const text = readFileSync(src, "utf8");
+    if (text.includes(LEGAL_PLACEHOLDER_MARK)) {
+      console.warn(
+        `[sync-assets] EULA-${lang}.md 仍是占位稿，跳过上传（客户端将提示「请同意 EULA」并给出官网链接）`
+      );
+      continue;
+    }
+    const name = `EULA-${lang}.md`;
+    writeFileSync(join(out, name), text);
+    eulaFiles[lang] = name;
+    eulaHashes[lang] = sha256(text);
+  }
+  if (Object.keys(eulaFiles).length > 0) {
+    documents.push({
+      id: "eula",
+      version: EULA_VERSION,
+      title: "End User License Agreement",
+      requiresAcceptance: true,
+      files: eulaFiles,
+      sha256: eulaHashes,
+    });
+  } else {
+    console.warn("[sync-assets] 未生成 EULA 文档：客户端会走「拉不到条款」分支");
+  }
+
+  writeFileSync(
+    join(out, "manifest.json"),
+    JSON.stringify({ documents }, null, 2) + "\n"
+  );
+  console.log(
+    `[sync-assets] 法务清单已生成：${documents.map((d) => `${d.id}@${d.version}`).join("、") || "（空）"}`
+  );
+}
+
 async function prepareAdapters() {
   mkdirSync(ADAPTER_DIR, { recursive: true });
   const pkgPath = join(ADAPTER_DIR, ADAPTER_FILE);

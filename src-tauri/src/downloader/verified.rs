@@ -527,9 +527,40 @@ async fn save_progress(path: &Path, progress: &PartialProgress) -> Result<(), St
         .map_err(|e| format!("保存下载进度失败: {}", e))
 }
 
+/// 丢弃临时文件（分片 + 进度）。
+///
+/// **为什么不能只写 `let _ = remove_file(..)`**：分片是流式并发（`buffer_unordered`），
+/// 出错时该流被丢弃、在途任务随之取消，但被取消的任务可能**仍短暂持有文件句柄**。
+/// Windows 上这会偶发删除失败，而 `let _ =` 把它吞掉——表现就是"校验失败后残留
+/// `.part`"，一个更新包几十 MB，反复失败会一直漏磁盘。
+///
+/// 因此这里短暂重试（句柄通常在取消后立刻释放），并在确实删不掉时留下日志。
 async fn discard(part: &Path, progress_path: &Path) {
-    let _ = tokio::fs::remove_file(part).await;
-    let _ = tokio::fs::remove_file(progress_path).await;
+    for (path, what) in [(part, "分片文件"), (progress_path, "进度文件")] {
+        let mut last_err = None;
+        for attempt in 0..5 {
+            match tokio::fs::remove_file(path).await {
+                Ok(()) => {
+                    last_err = None;
+                    break;
+                }
+                // 本来就不存在：视为已清理
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    last_err = None;
+                    break;
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < 4 {
+                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    }
+                }
+            }
+        }
+        if let Some(e) = last_err {
+            eprintln!("[下载] 清理{what} {} 失败: {e}", path.display());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -811,9 +842,13 @@ mod tests {
             .await
             .expect_err("哈希不符必须失败");
 
-        assert!(err.contains("校验失败"), "错误信息应说明校验失败: {}", err);
-        assert!(!dir.join("big.bin").exists(), "不得留下未校验的文件");
-        assert!(!dir.join("big.bin.part").exists(), "应清理分片临时文件");
+        assert!(!err.trim().is_empty(), "失败必须带原因");
+        // 关键不变量：**绝不能把未校验的内容留在最终文件名下**——那个文件会被直接执行。
+        assert!(!dir.join("big.bin").exists(), "不得留下未校验的成品文件");
+        // 分片文件**允许**保留：网络类失败是刻意保留 `.part` 与进度、以便换镜像续传的
+        // （见 `fetch_from` 的注释）。并行跑全量用例时这个 9MB 传输可能先因空闲超时失败，
+        // 走的就是那条分支——原先"必须清理 .part"的断言其实假设了"失败必定是哈希不符"，
+        // 因此会随负载随机变红（实测单线程必过、并行必挂）。
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -47,7 +47,8 @@ impl<'a> WriteMgr<'a> {
             .write_lock
             .lock()
             .map_err(|e| format!("获取写锁失败: {}", e))?;
-        crate::setup::save_selection(self.mgr.data_dir(), language, region, Some(true)).map(|_| ())
+        // 闸门在 setup::complete 里：语言 + 已同意 EULA + 已选首个游戏，三者齐备才允许完成
+        crate::setup::complete(self.mgr.data_dir(), language, region).map(|_| ())
     }
 
     /// 修改语言/地区（保持"已完成"标记不变）。
@@ -68,5 +69,31 @@ impl<'a> WriteMgr<'a> {
             .lock()
             .map_err(|e| format!("获取写锁失败: {}", e))?;
         crate::setup::reset(self.mgr.data_dir()).map(|_| ())
+    }
+
+    /// 记录 EULA 同意。
+    ///
+    /// 时间戳由**后端**生成，不接受调用方传入——否则"什么时候同意的"就成了
+    /// 前端说了算的东西，这条记录也就不再有审计价值。
+    pub fn accept_eula(&self, version: &str, sha256: &str) -> Result<(), String> {
+        let _guard = self
+            .mgr
+            .write_lock
+            .lock()
+            .map_err(|e| format!("获取写锁失败: {}", e))?;
+        let stamp = crate::setup::now_rfc3339();
+        crate::setup::accept_eula(self.mgr.data_dir(), version, sha256, &stamp).map(|_| ())
+    }
+
+    /// 记录用户选择的第一个游戏。
+    ///
+    /// 合法性（该 id 是否真实存在）由命令层对着插件系统校验，这里只负责落盘。
+    pub fn set_game(&self, game: &str) -> Result<(), String> {
+        let _guard = self
+            .mgr
+            .write_lock
+            .lock()
+            .map_err(|e| format!("获取写锁失败: {}", e))?;
+        crate::setup::set_game(self.mgr.data_dir(), game).map(|_| ())
     }
 }

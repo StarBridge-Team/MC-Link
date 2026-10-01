@@ -207,6 +207,24 @@ fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Resp {
             serve_meta_index(&cfg.setting_meta_dir(), &cfg.cors_origin)
         }
 
+        // 法务文件：EULA 与许可证全文（GPLv3 等）。
+        //
+        // 放在资源服务器而不是编译进客户端，是为了**不重新发版就能更新条款文本**；
+        // 客户端拉取后缓存，供首次引导与"关于"页离线展示。
+        // 与 adapter 一样置于 Assets/ 之下，这样发布脚本不必改上传逻辑即可送达。
+        "/legal/manifest.json" => {
+            serve_file(&cfg.assets_dir().join("legal"), "manifest.json", &ctx)
+        }
+
+        p if p.starts_with("/legal/") => {
+            let rel = p.trim_start_matches("/legal/");
+            let safe = sanitize(rel);
+            if safe.is_empty() {
+                return bad_request("无效的文件名");
+            }
+            serve_file(&cfg.assets_dir().join("legal"), &safe, &ctx)
+        }
+
         _ => not_found(),
     }
 }

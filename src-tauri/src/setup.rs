@@ -40,6 +40,44 @@ pub const SUPPORTED_REGIONS: &[&str] = &[
 /// 未选择/未列出时的地区占位。
 pub const REGION_OTHER: &str = "OTHER";
 
+/// EULA 同意记录。
+///
+/// **为什么由后端记而不是前端**:同意是一个法律事实，必须落盘、可追溯，
+/// 且"是否同意过"不能由界面自己判断——界面只负责展示。
+///
+/// 同时存 `sha256`（**后端自己算的正文哈希**）而不只存版本号：
+/// 只存版本号挡不住"版本号没变、内容被换掉"的情况。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct EulaConsent {
+    /// 条款版本（来自资源服务器清单）。
+    #[serde(default)]
+    pub version: String,
+    /// 条款正文的 SHA256（小写十六进制）。
+    #[serde(default)]
+    pub sha256: String,
+    /// 同意时间，RFC3339。
+    #[serde(default)]
+    pub accepted_at: String,
+}
+
+impl EulaConsent {
+    /// 是否已经同意过（空时间戳即"没同意过"）。
+    pub fn is_accepted(&self) -> bool {
+        !self.accepted_at.trim().is_empty()
+    }
+}
+
+/// OOBE 各步骤的就绪情况。
+///
+/// 刻意**不存"当前第几步"**：那会与三个字段构成两份状态源，必然漂移。
+/// 由这些布尔值推导步骤，中断后再进来自然落在缺失的那一步。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SetupSteps {
+    pub language: bool,
+    pub eula: bool,
+    pub game: bool,
+}
+
 /// `Setting/setup.yml` 的内容。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SetupSettings {
@@ -52,6 +90,12 @@ pub struct SetupSettings {
     /// 用户选择的地区；空表示"还没选"。
     #[serde(default)]
     pub region: String,
+    /// 已同意的 EULA；`accepted_at` 为空表示尚未同意。
+    #[serde(default)]
+    pub eula: EulaConsent,
+    /// 用户选择的第一个游戏 id（来自插件系统的游戏画像）；空表示尚未选择。
+    #[serde(default)]
+    pub game: String,
 }
 
 /// 面向界面的引导状态。
@@ -71,6 +115,46 @@ pub struct SetupState {
     pub supported_languages: Vec<String>,
     /// 可选地区。
     pub supported_regions: Vec<String>,
+    /// 每一步是否就绪：界面据此决定从哪一步继续。
+    pub steps: SetupSteps,
+    /// EULA 同意记录；`None` 表示尚未同意。
+    pub eula_accepted: Option<EulaConsent>,
+    /// 已选择的游戏 id；空串表示未选。
+    pub game: String,
+    /// 本次运行是否处于"开发构建跳过引导"状态（界面可据此提示）。
+    pub dev_skip: bool,
+}
+
+/// 当前 UTC 时间的 RFC3339 形式（形如 `2026-10-01T23:00:00Z`）。
+///
+/// 为什么自带而不引依赖：项目没有 chrono/time，而**法律记录里的时间必须人可读、
+/// 且不随本机时区变化**——存 Unix 秒在审计时得再换算一次，很容易看错。
+/// 这是 Howard Hinnant 的 civil_from_days 算法的最小实现，不含闰秒（审计足够）。
+pub(crate) fn now_rfc3339() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    rfc3339_from_unix(secs)
+}
+
+/// Unix 秒 → RFC3339（UTC）。
+fn rfc3339_from_unix(secs: i64) -> String {
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    let (hour, minute, second) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { yoe + era * 400 + 1 } else { yoe + era * 400 };
+
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
 /// 引导设置的落盘路径（`Setting/setup.yml`）。
@@ -88,20 +172,109 @@ pub(crate) fn write(data_dir: &Path, settings: &SetupSettings) -> Result<(), Str
     persist::save_yaml(&setup_path(data_dir)?, settings)
 }
 
+/// 开发构建是否跳过 OOBE 并视为已同意 EULA。
+///
+/// 两处都要判断，缺一不可：
+/// - `debug_assertions`：只有开发构建豁免，release 一律要走真流程；
+/// - `test`：单元测试必须在 debug 下检验**真实**的引导逻辑，否则
+///   "全新安装未完成引导"这类断言会被开发期豁免静默改成通过。
+fn dev_skip_oobe() -> bool {
+    cfg!(debug_assertions) && !cfg!(test)
+}
+
 /// 组装面向界面的状态。
 pub(crate) fn state(data_dir: &Path) -> Result<SetupState, String> {
     let settings = read(data_dir)?;
     let detected = detect::locale();
+    let dev_skip = dev_skip_oobe();
+    let accepted = settings.eula.is_accepted();
 
     Ok(SetupState {
-        completed: settings.completed,
+        completed: settings.completed || dev_skip,
         language: effective_language(&settings.language, &detected),
         region: effective_region(&settings.region, &detected),
         detected_language: detect::language_from_locale(&detected),
         detected_region: detect::region_from_locale(&detected),
         supported_languages: SUPPORTED_LANGUAGES.iter().map(|s| s.to_string()).collect(),
         supported_regions: SUPPORTED_REGIONS.iter().map(|s| s.to_string()).collect(),
+        steps: SetupSteps {
+            language: !settings.language.trim().is_empty(),
+            // 开发构建视为已同意：否则每次清数据后都要手点一遍条款
+            eula: accepted || dev_skip,
+            game: !settings.game.trim().is_empty(),
+        },
+        eula_accepted: accepted.then(|| settings.eula.clone()),
+        game: settings.game.clone(),
+        dev_skip,
     })
+}
+
+/// 记录 EULA 同意。
+///
+/// `version` 与 `sha256` 由命令层在**核对服务端清单之后**传入；这里拒绝空值，
+/// 避免写出一条"同意过、但不知道同意了什么"的记录。
+pub(crate) fn accept_eula(
+    data_dir: &Path,
+    version: &str,
+    sha256: &str,
+    accepted_at: &str,
+) -> Result<SetupSettings, String> {
+    let version = version.trim();
+    let sha256 = sha256.trim();
+    let accepted_at = accepted_at.trim();
+    if version.is_empty() || sha256.is_empty() || accepted_at.is_empty() {
+        return Err("EULA 的版本/哈希/时间不完整，拒绝记录同意".into());
+    }
+    let mut settings = read(data_dir)?;
+    settings.eula = EulaConsent {
+        version: version.to_string(),
+        sha256: sha256.to_string(),
+        accepted_at: accepted_at.to_string(),
+    };
+    write(data_dir, &settings)?;
+    Ok(settings)
+}
+
+/// 记录用户选择的第一个游戏。
+///
+/// 合法性（该 id 是否真实存在）由命令层对着插件系统校验——这里只负责落盘。
+pub(crate) fn set_game(data_dir: &Path, game: &str) -> Result<SetupSettings, String> {
+    let game = game.trim();
+    if game.is_empty() {
+        return Err("游戏 id 不能为空".into());
+    }
+    let mut settings = read(data_dir)?;
+    settings.game = game.to_string();
+    write(data_dir, &settings)?;
+    Ok(settings)
+}
+
+/// 完成引导（**带闸门**）。
+///
+/// 必须同时满足三条：语言已选、**EULA 已同意**、首个游戏已选。任一不满足就报错
+/// 且**不写 `completed`**——这样即便前端漏做某一步（或被绕过、被改），
+/// 引导也完成不了。"同意"因此成为后端事实，而不是界面上的一个勾选框。
+pub(crate) fn complete(
+    data_dir: &Path,
+    language: &str,
+    region: &str,
+) -> Result<SetupSettings, String> {
+    let language = normalize_language(language)?;
+    let region = normalize_region(region)?;
+
+    let mut settings = read(data_dir)?;
+    if !settings.eula.is_accepted() {
+        return Err("尚未同意最终用户许可协议（EULA），无法完成引导".into());
+    }
+    if settings.game.trim().is_empty() {
+        return Err("尚未选择首个游戏，无法完成引导".into());
+    }
+
+    settings.language = language;
+    settings.region = region;
+    settings.completed = true;
+    write(data_dir, &settings)?;
+    Ok(settings)
 }
 
 /// 保存语言与地区选择。
@@ -377,6 +550,94 @@ mod tests {
         assert!(!state.completed);
         assert_eq!(read(&dir).unwrap(), SetupSettings::default());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 闸门一：没同意 EULA 不能完成引导。
+    #[test]
+    fn complete_requires_eula_consent() {
+        let dir = temp_dir("gate-eula");
+        save_selection(&dir, "zh-CN", "CN", None).unwrap();
+        set_game(&dir, "minecraft-java").unwrap();
+
+        let err = complete(&dir, "zh-CN", "CN").unwrap_err();
+        assert!(err.contains("EULA"), "报错要指明缺的是哪一步: {err}");
+        assert!(
+            !read(&dir).unwrap().completed,
+            "闸门未过时绝不能写入 completed"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 闸门二：没选首个游戏不能完成引导。
+    #[test]
+    fn complete_requires_first_game() {
+        let dir = temp_dir("gate-game");
+        accept_eula(&dir, "1.0", "abc", "2026-10-01T00:00:00Z").unwrap();
+
+        let err = complete(&dir, "zh-CN", "CN").unwrap_err();
+        assert!(err.contains("游戏"), "报错要指明缺的是哪一步: {err}");
+        assert!(!read(&dir).unwrap().completed);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 三步齐备后完成，且同意记录持久化（模拟重启后仍在）。
+    #[test]
+    fn complete_succeeds_after_all_steps_and_persists_consent() {
+        let dir = temp_dir("gate-ok");
+        save_selection(&dir, "zh-CN", "CN", None).unwrap();
+        set_game(&dir, "minecraft-java").unwrap();
+        accept_eula(&dir, "1.0", "deadbeef", "2026-10-01T12:00:00Z").unwrap();
+
+        complete(&dir, "en-US", "US").unwrap();
+
+        let reloaded = read(&dir).unwrap();
+        assert!(reloaded.completed);
+        assert_eq!(reloaded.language, "en-US");
+        assert_eq!(reloaded.game, "minecraft-java");
+        assert_eq!(reloaded.eula.version, "1.0");
+        assert_eq!(reloaded.eula.sha256, "deadbeef");
+        assert!(reloaded.eula.is_accepted());
+
+        let state = state(&dir).unwrap();
+        assert!(state.steps.language && state.steps.eula && state.steps.game);
+        assert!(!state.dev_skip, "测试环境不得启用开发期豁免");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 残缺的同意记录必须被拒绝：不能写出"同意过但不知道同意了什么"。
+    #[test]
+    fn accept_eula_rejects_incomplete_records() {
+        let dir = temp_dir("eula-empty");
+        assert!(accept_eula(&dir, "", "abc", "2026-10-01T00:00:00Z").is_err());
+        assert!(accept_eula(&dir, "1.0", "   ", "2026-10-01T00:00:00Z").is_err());
+        assert!(accept_eula(&dir, "1.0", "abc", "").is_err());
+        assert!(!read(&dir).unwrap().eula.is_accepted());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 重置引导必须连同意记录与游戏选择一起清掉，否则"重新走一遍"是假的。
+    #[test]
+    fn reset_clears_eula_and_game() {
+        let dir = temp_dir("reset-eula");
+        accept_eula(&dir, "1.0", "abc", "2026-10-01T00:00:00Z").unwrap();
+        set_game(&dir, "minecraft-java").unwrap();
+        reset(&dir).unwrap();
+
+        let settings = read(&dir).unwrap();
+        assert!(!settings.eula.is_accepted());
+        assert!(settings.game.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 时间戳必须是 UTC 且格式正确（法律记录不随本机时区变化）。
+    #[test]
+    fn rfc3339_formatting_is_utc() {
+        assert_eq!(rfc3339_from_unix(0), "1970-01-01T00:00:00Z");
+        assert_eq!(rfc3339_from_unix(1_000_000_000), "2001-09-09T01:46:40Z");
+        // 闰日
+        assert_eq!(rfc3339_from_unix(1_582_934_400), "2020-02-29T00:00:00Z");
+        // 2100-01-01 的前一秒（能被 100 整除但不能被 400 整除的年份不是闰年）
+        assert_eq!(rfc3339_from_unix(4_102_444_799), "2099-12-31T23:59:59Z");
     }
 
     #[test]
