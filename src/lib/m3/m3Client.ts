@@ -7,7 +7,7 @@
 //      使用前端 TS 镜像引擎生成等价方案，保证 UI 始终可用。
 //   3. 配置同步 —— 通过 `loadM3Scheme` 直接载入后端导出的 JSON 配置。
 
-import { invoke } from "@tauri-apps/api/core";
+import { generateM3Scheme as invokeGenerateM3Scheme } from "../api/m3";
 import { generateM3Scheme } from "./engine";
 import type { M3GenerateOptions, M3Scheme } from "./types";
 
@@ -30,11 +30,7 @@ export async function generateM3SchemeSynced(
 ): Promise<{ scheme: M3Scheme; source: "backend" | "frontend" }> {
   if (isTauri()) {
     try {
-      const result = await invoke<M3Scheme>("generate_m3_scheme", {
-        seed,
-        variant: options.variant,
-        contrast: options.contrast,
-      });
+      const result = await invokeGenerateM3Scheme(seed, options);
       return { scheme: result, source: "backend" };
     } catch (e) {
       console.warn("[M3] 后端命令调用失败，回退到前端引擎：", e);

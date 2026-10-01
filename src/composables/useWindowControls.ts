@@ -1,6 +1,6 @@
 import { ref, onUnmounted, onDeactivated } from "vue";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { closeWindow, dragWindow, resizeWindow } from "../lib/api/window";
 import { local, KEYS } from "../lib/persist";
 
 interface WindowState {
@@ -41,7 +41,13 @@ export function useWindowControls() {
     if (!s) return false;
     try {
       if (s.width < 100 || s.height < 100) return false;
-      await invoke("resize_window", { width: s.width, height: s.height, minWidth: 700, minHeight: 500, center: false });
+      await resizeWindow({
+        width: s.width,
+        height: s.height,
+        minWidth: 700,
+        minHeight: 500,
+        center: false,
+      });
       const window = getCurrentWindow();
       await window.setPosition(new LogicalPosition(s.x, s.y));
       return true;
@@ -52,7 +58,13 @@ export function useWindowControls() {
   }
 
   async function setDefaultWindowSize() {
-    await invoke("resize_window", { width: 900, height: 650, minWidth: 700, minHeight: 500, center: true });
+    await resizeWindow({
+      width: 900,
+      height: 650,
+      minWidth: 700,
+      minHeight: 500,
+      center: true,
+    });
     await saveWindowState();
   }
 
@@ -63,7 +75,8 @@ export function useWindowControls() {
   }
 
   function startDrag() {
-    invoke("drag_window");
+    // 拖动失败不影响后续交互，只记录
+    void dragWindow().catch((e) => console.warn("[窗口] 拖动失败:", e));
     isDragging.value = true;
     setTimeout(() => (isDragging.value = false), 200);
   }
@@ -92,7 +105,7 @@ export function useWindowControls() {
 
   async function handleClose() {
     await saveWindowState();
-    await invoke("close_window");
+    await closeWindow();
   }
 
   function clearTimers() {
