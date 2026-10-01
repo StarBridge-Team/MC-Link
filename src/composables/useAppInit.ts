@@ -1,9 +1,8 @@
 import { ref } from "vue";
-import { getAppVersion, initApp, prepareApp } from "../lib/api/app";
+import { getAppVersion, initApp } from "../lib/api/app";
 import { setWindowEffect } from "../lib/api/effect";
 import { getPersonalization } from "../lib/api/config";
 import { adapterStartupInit } from "../lib/api/adapter";
-import { loadAssets } from "../lib/resourceCache";
 import { applyPersStyle, resolveBgFile } from "./usePersonalization";
 import type { PersonalizationSettings } from "../lib/api/types";
 
@@ -27,14 +26,8 @@ export function useAppInit() {
       /* ignore */
     }
 
-    // 先触发后端从资产服务器下载到本地缓存（已存在则跳过），
-    // 再由前端注入本地 CSS，避免每次启动都走远程
-    try {
-      await prepareApp();
-    } catch {
-      /* ignore */
-    }
-    void loadAssets();
+    // 注意：远程资源（字体/图标）的同步与注入已统一挪到 main.ts 挂载之前
+    // （`bootstrapAssets`），这里不要再触发一次，否则会重复请求资源清单。
 
     let data: Awaited<ReturnType<typeof initApp>> | null = null;
     try {

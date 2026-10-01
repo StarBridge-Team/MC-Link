@@ -38,14 +38,28 @@ export interface BackgroundFile {
 
 // ===== 应用初始化类型 =====
 
+/** 单个远程资源的就绪状态（清单驱动，不再逐个硬编码 ready 标志位）。 */
+export interface AssetState {
+  path: string;
+  ready: boolean;
+  reason?: string;
+}
+
 export interface PrepareAppData {
   personalization: PersonalizationSettings;
   default_effect: string;
   app_version: string;
   tauri_version: string;
-  bootstrap_icons_ready: boolean;
-  fonts_ready: boolean;
-  icon_ready: boolean;
+  /** 资源清单版本（诊断用）。 */
+  asset_version: string;
+  /** 是否全部远程资源就绪。 */
+  assets_ready: boolean;
+  /** 每个资源的就绪状态，前端据此决定注入哪些 CSS。 */
+  assets: AssetState[];
+  /** 失败原因，可直接展示。 */
+  asset_failures: string[];
+  /** 是否处于离线降级（未能连上资源服务器，仅用本地缓存判定）。 */
+  assets_offline: boolean;
 }
 
 export interface InitAppData {
@@ -53,19 +67,6 @@ export interface InitAppData {
   default_effect: string;
   app_version: string;
   tauri_version: string;
-}
-
-// ===== 远程页面类型 =====
-
-export interface PageEntry {
-  name: string;
-  path: string;
-  sha256?: string;
-}
-
-export interface PageManifest {
-  base_url?: string;
-  pages: PageEntry[];
 }
 
 // ===== 应用更新类型 =====

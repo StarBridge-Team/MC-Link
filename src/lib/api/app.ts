@@ -26,9 +26,14 @@ export async function getIpInfo(host: string) {
   return invoke<IpInfo>("get_ip_info", { host });
 }
 
-/** 获取资产服务器地址 */
-export async function getAssetsServerUrl() {
-  return invoke<string>("get_assets_server_url");
+/**
+ * 读取 Assets 目录内某个文本资源的内容。
+ *
+ * 用于 CSS：前端需要拿到原文把其中的相对 `url()` 重写成绝对地址，
+ * 因为 asset 协议下相对路径会被解析到 asset 根而 404（详见 Rust 侧注释）。
+ */
+export async function readAssetText(path: string) {
+  return invoke<string>("read_asset_text", { path });
 }
 
 /** 获取本地 Assets 资源路径（前端再用 convertFileSrc 转为 webview URL） */
