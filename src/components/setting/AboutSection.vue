@@ -13,6 +13,7 @@ const iconUrl = ref("");
 const developers = [
   { name: "粗狗", role: "项目发起人 / 核心开发", avatar: "http://q.qlogo.cn/g?b=qq&nk=196783749&s=640" },
   { name: "oiiaio猫", role: "Python开发", avatar: "http://q.qlogo.cn/g?b=qq&nk=3995090331&s=640" },
+  { name: "", role: ""}
 ];
 
 const contributors = [
