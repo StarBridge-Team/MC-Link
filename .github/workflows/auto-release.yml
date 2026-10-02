@@ -61,7 +61,9 @@ jobs:
 
       # --target 会一并创建 tag。经 API 创建的 tag 不会触发 push 事件，
       # 所以不会把 release.yml 再带一轮（避免一次版本变更构建两遍）。
-      - name: 创建发行版
+      #
+      # 先建**草稿**：产物还没挂上之前不该对用户可见（草稿在发布前也不会创建 tag）
+      - name: 创建发行版（草稿）
         if: steps.exists.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -69,7 +71,8 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" \
             --target "${{ github.sha }}" \
             --title "MC Link ${{ steps.version.outputs.version }}" \
-            --generate-notes
+            --generate-notes \
+            --draft
 
       - name: 下载构建产物
         uses: actions/download-artifact@v4
@@ -77,11 +80,24 @@ jobs:
           name: mc-link-windows-${{ steps.version.outputs.version }}
           path: dist
 
-      # 产物路径在 artifact 里保留了目录层级，所以用 find 列出文件再逐个挂上
+      # 产物文件名里有空格（"MC Link_0.4.7_x64-setup.exe"），
+      # 所以不能用 $(find ...) 展开 —— shell 会按空格把路径切成两截。
+      # 用 NUL 分隔读进数组，再以数组形式传参，空格才不会被当分隔符。
       - name: 挂载安装包与便携整包
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "待挂载的文件："
-          find dist -type f
-          gh release upload "${{ steps.version.outputs.tag }}" $(find dist -type f) --clobber
+          mapfile -d '' FILES < <(find dist -type f -print0)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "没有找到可挂载的产物（artifact 为空？）"
+            exit 1
+          fi
+          printf '待挂载：%s\n' "${FILES[@]}"
+          gh release upload "${{ steps.version.outputs.tag }}" "${FILES[@]}" --clobber
+
+      # 产物就绪后才发布，避免出现一个"什么都没挂"的发行版。
+      # 对已发布的发行版是无操作，所以不加条件（重跑时草稿也要被放出来）。
+      - name: 发布发行版
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ steps.version.outputs.tag }}" --draft=false
