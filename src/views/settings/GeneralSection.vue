@@ -69,9 +69,9 @@ function savePlayerName() {
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
+    <div class="grid stagger">
       <SettingCard
-        :icon="'bi bi-translate'"
+        :icon="'translate'"
         :title="t('general.title')"
         :desc="t('general.desc')"
         wide
@@ -102,7 +102,7 @@ function savePlayerName() {
         <p class="hint">{{ t("general.regionHint") }}</p>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-person-badge'" :title="t('general.playerTitle')">
+      <SettingCard :icon="'person'" :title="t('general.playerTitle')">
         <div class="player">
           <var-input
             v-model="playerName"

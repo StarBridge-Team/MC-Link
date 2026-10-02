@@ -31,9 +31,9 @@ const gameId = ref("");
 const busy = ref(false);
 
 const STEPS: { id: OobeStep; labelKey: string; icon: string }[] = [
-  { id: "language", labelKey: "oobe.stepLanguage", icon: "bi bi-translate" },
-  { id: "eula", labelKey: "oobe.stepEula", icon: "bi bi-file-earmark-text" },
-  { id: "game", labelKey: "oobe.stepGame", icon: "bi bi-controller" },
+  { id: "language", labelKey: "oobe.stepLanguage", icon: "translate" },
+  { id: "eula", labelKey: "oobe.stepEula", icon: "description" },
+  { id: "game", labelKey: "oobe.stepGame", icon: "sports_esports" },
 ];
 
 const stepIndex = computed(() => STEPS.findIndex((s) => s.id === step.value));
@@ -101,7 +101,7 @@ const nextDisabled = computed(() => {
   <div class="oobe">
     <div class="oobe__card">
       <header class="oobe__head">
-        <span class="oobe__logo"><i class="bi bi-boxes" /></span>
+        <span class="oobe__logo"><i class="material-symbols-rounded">category</i></span>
         <div>
           <h1 class="oobe__title">{{ t("oobe.title") }}</h1>
           <p class="oobe__subtitle">{{ t("oobe.subtitle") }}</p>
@@ -119,7 +119,7 @@ const nextDisabled = computed(() => {
           }"
         >
           <span class="steps__dot">
-            <i :class="index < stepIndex ? 'bi bi-check-lg' : item.icon" />
+            <i class="material-symbols-rounded">{{ index < stepIndex ? 'check' : item.icon }}</i>
           </span>
           <span class="steps__label">{{ t(item.labelKey) }}</span>
         </li>
@@ -151,7 +151,7 @@ const nextDisabled = computed(() => {
 
       <footer class="oobe__foot">
         <var-button text :disabled="!canGoBack" @click="goBack">
-          <i class="bi bi-arrow-left" />
+          <i class="material-symbols-rounded">arrow_back</i>
           <span>{{ t("oobe.back") }}</span>
         </var-button>
         <span class="grow" />
@@ -253,6 +253,10 @@ const nextDisabled = computed(() => {
   border-radius: var(--r-full);
   background: var(--surface-container-highest);
   color: var(--text-secondary);
+  font-size: var(--fs-label);
+}
+
+.steps__dot .material-symbols-rounded {
   font-size: var(--fs-label);
 }
 

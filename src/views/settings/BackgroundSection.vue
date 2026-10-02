@@ -36,10 +36,10 @@ function extensionOf(name: string): string {
 }
 
 const typeOptions = computed<ChipOption<string>[]>(() => [
-  { value: "default", label: t("background.typeDefault"), icon: "bi bi-app" },
-  { value: "solid", label: t("background.typeSolid"), icon: "bi bi-square-fill" },
-  { value: "image", label: t("background.typeImage"), icon: "bi bi-image" },
-  { value: "video", label: t("background.typeVideo"), icon: "bi bi-film" },
+  { value: "default", label: t("background.typeDefault"), icon: "apps" },
+  { value: "solid", label: t("background.typeSolid"), icon: "square" },
+  { value: "image", label: t("background.typeImage"), icon: "image" },
+  { value: "video", label: t("background.typeVideo"), icon: "movie" },
 ]);
 
 const fitOptions = computed<ChipOption<string>[]>(() => [
@@ -145,8 +145,8 @@ function applyMusicUrl() {
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
-      <SettingCard :icon="'bi bi-image'" :title="t('background.title')" :desc="t('background.desc')" wide>
+    <div class="grid stagger">
+      <SettingCard :icon="'image'" :title="t('background.title')" :desc="t('background.desc')" wide>
         <div class="field-label">{{ t("background.type") }}</div>
         <ChipSelect :model-value="state.background_type" :options="typeOptions" @update:model-value="setType" />
 
@@ -176,7 +176,7 @@ function applyMusicUrl() {
               type="button"
               @click="selectFile(file)"
             >
-              <i :class="file.is_video ? 'bi bi-film' : 'bi bi-file-earmark-image'" />
+              <i class="material-symbols-rounded">{{ file.is_video ? 'movie' : 'photo' }}</i>
               <span class="ellipsis">{{ file.name }}</span>
             </button>
           </div>
@@ -199,7 +199,7 @@ function applyMusicUrl() {
         </template>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-layers-half'" :title="t('background.overlay')" :desc="t('background.overlayDesc')">
+      <SettingCard :icon="'layers'" :title="t('background.overlay')" :desc="t('background.overlayDesc')">
         <FieldRow :label="t('background.overlay')">
           <var-switch :model-value="state.background_overlay" @update:model-value="setOverlayEnabled" />
         </FieldRow>
@@ -218,7 +218,7 @@ function applyMusicUrl() {
         </FieldRow>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-music-note-beamed'" :title="t('background.music')" :desc="t('background.musicDesc')">
+      <SettingCard :icon="'music_note'" :title="t('background.music')" :desc="t('background.musicDesc')">
         <ChipSelect
           small
           :model-value="state.music_mode"
@@ -237,7 +237,7 @@ function applyMusicUrl() {
               type="button"
               @click="selectMusic(file)"
             >
-              <i class="bi bi-file-earmark-music" />
+              <i class="material-symbols-rounded">audio_file</i>
               <span class="ellipsis">{{ file.name }}</span>
             </button>
           </div>

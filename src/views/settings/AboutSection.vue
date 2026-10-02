@@ -84,21 +84,21 @@ onMounted(async () => {
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
-      <SettingCard :icon="'bi bi-info-circle'" :title="t('about.title')" wide>
+    <div class="grid stagger">
+      <SettingCard :icon="'info'" :title="t('about.title')" wide>
         <div class="hero">
-          <span class="hero__logo"><i class="bi bi-boxes" /></span>
+          <span class="hero__logo"><i class="material-symbols-rounded">category</i></span>
           <div>
             <h3 class="hero__name">{{ t("app.name") }}</h3>
             <p class="hint">{{ t("app.tagline") }}</p>
           </div>
           <span class="grow" />
           <var-button size="small" text @click="open(REPO_URL)">
-            <i class="bi bi-github" />
+            <i class="material-symbols-rounded">code</i>
             <span>{{ t("about.repo") }}</span>
           </var-button>
           <var-button size="small" text @click="open(WEBSITE_URL)">
-            <i class="bi bi-globe2" />
+            <i class="material-symbols-rounded">public</i>
             <span>{{ t("about.website") }}</span>
           </var-button>
         </div>
@@ -126,13 +126,13 @@ onMounted(async () => {
 
         <div class="actions">
           <var-button size="small" text @click="resetOobe">
-            <i class="bi bi-arrow-counterclockwise" />
+            <i class="material-symbols-rounded">refresh</i>
             <span>{{ t("oobe.resetHint") }}</span>
           </var-button>
         </div>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-people'" :title="t('about.contributors')">
+      <SettingCard :icon="'group'" :title="t('about.contributors')">
         <InfoBar v-if="community?.stale" kind="warning" :text="t('about.stale')" />
         <InfoBar v-if="community?.error" kind="danger" :text="`${t('about.communityError')}: ${community.error}`" />
         <!-- 拉取失败时不要一直显示"加载中"：那是在撒谎说请求还在进行 -->
@@ -160,7 +160,7 @@ onMounted(async () => {
         </div>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-chat-square-text'" :title="t('about.issues')">
+      <SettingCard :icon="'forum'" :title="t('about.issues')">
         <p v-if="issues.length === 0" class="hint">{{ t("about.noIssues") }}</p>
         <div v-else class="issues">
           <button
@@ -176,7 +176,7 @@ onMounted(async () => {
         </div>
         <div class="actions">
           <var-button size="small" text @click="open(`${REPO_URL}/issues/new`)">
-            <i class="bi bi-pencil-square" />
+            <i class="material-symbols-rounded">edit_square</i>
             <span>{{ t("about.openIssue") }}</span>
           </var-button>
         </div>

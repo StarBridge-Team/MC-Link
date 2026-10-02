@@ -105,7 +105,7 @@ async function applyManifest(data: PrepareAppData): Promise<void> {
  *
  * `convertFileSrc` 会把**整条绝对路径百分号编码成单个路径段**（连 `/` 都编码成
  * `%2F`），浏览器从 URL 角度看，"目录"就是 asset 根。于是 CSS 内部的相对引用
- * `url("./bootstrap-icons.woff2")` 会被解析成 `http://asset.localhost/bootstrap-icons.woff2`
+ * `url("./material-symbols-rounded.woff2")` 会被解析成 `http://asset.localhost/material-symbols-rounded.woff2`
  * → 404 → 字体不加载 → 图标全变成豆腐块。
  *
  * 所以这里改为：取 CSS 原文 → 把相对 `url()` 重写成**绝对**的 convertFileSrc 地址

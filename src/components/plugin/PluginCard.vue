@@ -36,9 +36,9 @@ watch(
 );
 
 const KIND_ICON: Record<string, string> = {
-  adapter: "bi bi-plug",
-  detector: "bi bi-search",
-  coupler: "bi bi-link-45deg",
+  adapter: "cable",
+  detector: "search",
+  coupler: "link",
 };
 
 const TRUST_KEY: Record<string, string> = {
@@ -48,7 +48,7 @@ const TRUST_KEY: Record<string, string> = {
   blocked: "plugins.trustBlocked",
 };
 
-const kindIcon = computed(() => KIND_ICON[props.plugin.kind] ?? "bi bi-puzzle");
+const kindIcon = computed(() => KIND_ICON[props.plugin.kind] ?? "extension");
 const kindLabel = computed(() => props.plugin.kind);
 const trustLabel = computed(() => t(TRUST_KEY[props.plugin.trust] ?? "plugins.trustUnsigned"));
 const sourceLabel = computed(() =>
@@ -98,37 +98,42 @@ function toggleBlocked(value: unknown) {
 </script>
 
 <template>
-  <article class="plugin" :class="{ 'is-disabled': !plugin.enabled, 'is-blocked': plugin.trust === 'blocked' }">
-    <header class="plugin__head">
-      <span class="icon-badge icon-badge--small"><i :class="kindIcon" /></span>
+  <var-card
+    variant="standard"
+    class="plugin"
+    :class="{ 'is-disabled': !plugin.enabled, 'is-blocked': plugin.trust === 'blocked' }"
+  >
+    <div class="plugin-inner">
+      <header class="plugin__head">
+        <span class="icon-badge icon-badge--small"><i class="material-symbols-rounded">{{ kindIcon }}</i></span>
 
-      <div class="grow">
-        <div class="plugin__title-row">
-          <span class="plugin__name ellipsis">{{ plugin.name }}</span>
-          <span class="tag mono">{{ plugin.version }}</span>
-          <span class="tag">{{ kindLabel }}</span>
-          <span class="tag">{{ sourceLabel }}</span>
-          <span class="tag" :class="{ 'tag--danger': plugin.trust === 'blocked' }">{{ trustLabel }}</span>
-          <span v-if="!plugin.runnable" class="tag tag--warning">{{ t("common.notSupported") }}</span>
+        <div class="grow">
+          <div class="plugin__title-row">
+            <span class="plugin__name ellipsis">{{ plugin.name }}</span>
+            <span class="tag mono">{{ plugin.version }}</span>
+            <span class="tag">{{ kindLabel }}</span>
+            <span class="tag">{{ sourceLabel }}</span>
+            <span class="tag" :class="{ 'tag--danger': plugin.trust === 'blocked' }">{{ trustLabel }}</span>
+            <span v-if="!plugin.runnable" class="tag tag--warning">{{ t("common.notSupported") }}</span>
+          </div>
+          <p v-if="plugin.description" class="plugin__desc">{{ plugin.description }}</p>
+          <p v-else class="plugin__desc plugin__desc--muted mono">{{ plugin.id }}</p>
         </div>
-        <p v-if="plugin.description" class="plugin__desc">{{ plugin.description }}</p>
-        <p v-else class="plugin__desc plugin__desc--muted mono">{{ plugin.id }}</p>
-      </div>
 
-      <div class="plugin__actions">
-        <var-switch
-          :model-value="plugin.enabled"
-          :disabled="plugin.trust === 'blocked'"
-          @update:model-value="toggleEnabled"
-        />
-        <var-button text size="small" @click="expanded = !expanded">
-          <i :class="expanded ? 'bi bi-chevron-up' : 'bi bi-chevron-down'" />
-          <span>{{ t("plugins.details") }}</span>
-        </var-button>
-      </div>
-    </header>
+        <div class="plugin__actions">
+          <var-switch
+            :model-value="plugin.enabled"
+            :disabled="plugin.trust === 'blocked'"
+            @update:model-value="toggleEnabled"
+          />
+          <var-button text size="small" @click="expanded = !expanded">
+            <i class="material-symbols-rounded">{{ expanded ? 'expand_less' : 'expand_more' }}</i>
+            <span>{{ t("plugins.details") }}</span>
+          </var-button>
+        </div>
+      </header>
 
-    <div v-if="expanded" class="plugin__body">
+      <div v-if="expanded" class="plugin__body">
       <dl class="meta">
         <div v-if="plugin.platforms.length" class="meta__row">
           <dt>{{ t("plugins.platform") }}</dt>
@@ -197,18 +202,19 @@ function toggleBlocked(value: unknown) {
         />
       </div>
     </div>
-  </article>
+  </div>
+  </var-card>
 </template>
 
 <style scoped>
-.plugin {
+/* var-card 已提供填充背景 / 圆角 / 外边距；这里只管内部纵向间距与状态边框。 */
+.plugin-inner {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: var(--sp-4);
-  border-radius: var(--r-md);
-  background: var(--surface-container-low);
-  border: 1px solid var(--outline-variant);
+}
+
+.plugin {
   transition: border-color var(--motion-short) var(--ease-standard);
 }
 
@@ -217,7 +223,7 @@ function toggleBlocked(value: unknown) {
 }
 
 .plugin.is-blocked {
-  border-color: color-mix(in srgb, var(--error) 50%, var(--outline-variant));
+  border: 1px solid color-mix(in srgb, var(--error) 50%, var(--outline-variant));
 }
 
 .plugin__head {

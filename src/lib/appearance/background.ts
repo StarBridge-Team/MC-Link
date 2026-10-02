@@ -84,6 +84,21 @@ export function applyBackground(
 
   const video = videoEl();
 
+  // 窗口材质是否真的开启（none / 空 / transparent 都视为未开启）。
+  const effectActive =
+    !!s.transparent_effect &&
+    s.transparent_effect !== "none" &&
+    s.transparent_effect !== "transparent";
+
+  // 页面实体背景：
+  // - default 且开启了窗口材质 → 保持透明，让 Mica/Acrylic 透出来；
+  // - 其余（default 无材质 / solid / image / video）→ 都以 surface 打底，
+  //   避免"无窗口材质"时整窗透出桌面；solid 会被下方颜色覆盖，
+  //   image/video 在图片/视频未铺满处露出 surface。
+  if (!(s.background_type === "default" && effectActive)) {
+    style.setProperty("--app-bg", "var(--surface)");
+  }
+
   switch (s.background_type) {
     case "solid":
       style.setProperty("--app-bg", s.background_value || "#000000");
@@ -99,9 +114,7 @@ export function applyBackground(
       }
       break;
     }
-    default:
-      // default：保持透明，露出窗口材质。
-      break;
+    // default 不再单独处理：实体背景已在上方决定。
   }
 
   if (video) {

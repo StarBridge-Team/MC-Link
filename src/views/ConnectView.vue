@@ -14,7 +14,7 @@ const { t } = useI18n();
 
 <template>
   <EmptyState
-    icon="bi bi-broadcast"
+    icon="broadcast_on_home"
     :title="t('connect.placeholderTitle')"
     :desc="t('connect.placeholderDesc')"
   />

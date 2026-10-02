@@ -2,54 +2,38 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ChipSelect, { type ChipOption } from "../../components/ui/ChipSelect.vue";
-import ColorField from "../../components/ui/ColorField.vue";
 import FieldRow from "../../components/ui/FieldRow.vue";
 import SettingCard from "../../components/ui/SettingCard.vue";
 import { useSettings } from "../../composables/useSettings";
-import { M3_CONTRAST, M3_PRESET_SEEDS, M3_VARIANTS, M3_VARIANT_LABEL_KEY } from "../../lib/m3/presets";
-import type { M3Variant } from "../../lib/m3/types";
 
 /**
  * 个性化 → 外观。
  *
+ * 颜色由组件库（Varlet 的 MD3 主题）生成，这里不提供自定义配色——
+ * 之前的"种子色 + 变体 + 对比度"覆盖层配色很难看且和组件库打架，已撤掉。
+ * 这一页只负责：明暗模式、窗口材质、界面动画。
+ *
  * 全部改动都经 `useSettings().patch()`：它是这套字段的唯一写入口，
- * 负责"立即生效 + 防抖落盘"。界面本身不碰 IPC，也不碰 localStorage。
+ * 负责"立即生效 + 防抖落盘"。界面本身不碰 IPC。
  */
 const { t } = useI18n();
 const settings = useSettings();
 const state = settings.state;
 
 const modeOptions = computed<ChipOption<string>[]>(() => [
-  { value: "system", label: t("appearance.modeSystem"), icon: "bi bi-circle-half" },
-  { value: "light", label: t("appearance.modeLight"), icon: "bi bi-sun" },
-  { value: "dark", label: t("appearance.modeDark"), icon: "bi bi-moon-stars" },
+  { value: "system", label: t("appearance.modeSystem"), icon: "contrast" },
+  { value: "light", label: t("appearance.modeLight"), icon: "light_mode" },
+  { value: "dark", label: t("appearance.modeDark"), icon: "dark_mode" },
 ]);
 
 // 后端只认 mica / acrylic / hud_window，"无"即清空材质。
 // `transparent` 是历史取值，与 "none" 等效，这里不单独提供选项。
 const effectOptions = computed<ChipOption<string>[]>(() => [
-  { value: "none", label: t("appearance.effectNone"), icon: "bi bi-slash-circle" },
-  { value: "mica", label: t("appearance.effectMica"), icon: "bi bi-window-stack" },
-  { value: "acrylic", label: t("appearance.effectAcrylic"), icon: "bi bi-droplet-half" },
-  { value: "hud_window", label: t("appearance.effectHud"), icon: "bi bi-layout-sidebar" },
+  { value: "none", label: t("appearance.effectNone"), icon: "block" },
+  { value: "mica", label: t("appearance.effectMica"), icon: "window" },
+  { value: "acrylic", label: t("appearance.effectAcrylic"), icon: "blur_on" },
+  { value: "hud_window", label: t("appearance.effectHud"), icon: "side_navigation" },
 ]);
-
-const variantOptions = computed<ChipOption<M3Variant>[]>(() =>
-  M3_VARIANTS.map((variant) => ({
-    value: variant,
-    label: t(`m3.variantNames.${M3_VARIANT_LABEL_KEY[variant]}`),
-  })),
-);
-
-const schemeSourceLabel = computed(() =>
-  settings.schemeSource.value === "backend"
-    ? t("appearance.schemeSourceBackend")
-    : t("appearance.schemeSourceFrontend"),
-);
-
-function setThemeColor(value: string) {
-  settings.patch({ theme_color: value });
-}
 
 function setMode(value: string) {
   settings.patch({ theme_mode: value });
@@ -73,51 +57,22 @@ function setAnimationEnabled(value: unknown) {
 function setAnimationSpeed(value: number | number[]) {
   settings.patch({ animation_speed: firstNumber(value) });
 }
-
-function setVariant(value: M3Variant) {
-  settings.patchM3({ variant: value });
-}
-
-function setContrast(value: number | number[]) {
-  settings.patchM3({ contrast: firstNumber(value) });
-}
 </script>
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
+    <div class="grid stagger">
       <SettingCard
-        :icon="'bi bi-palette'"
+        :icon="'contrast'"
         :title="t('appearance.title')"
         :desc="t('appearance.desc')"
         wide
       >
-        <div class="field-label">{{ t("appearance.presets") }}</div>
-        <div class="swatches">
-          <button
-            v-for="seed in M3_PRESET_SEEDS"
-            :key="seed"
-            class="swatch"
-            :class="{ 'is-active': state.theme_color.toLowerCase() === seed.toLowerCase() }"
-            type="button"
-            :style="{ background: seed }"
-            :title="seed"
-            @click="setThemeColor(seed)"
-          >
-            <i v-if="state.theme_color.toLowerCase() === seed.toLowerCase()" class="bi bi-check-lg" />
-          </button>
-          <div class="swatches__custom">
-            <ColorField :model-value="state.theme_color" size="large" @update:model-value="setThemeColor" />
-          </div>
-        </div>
-
-        <div class="divider" />
-
         <div class="field-label">{{ t("appearance.mode") }}</div>
         <ChipSelect :model-value="state.theme_mode" :options="modeOptions" @update:model-value="setMode" />
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-droplet-half'" :title="t('appearance.effect')" :desc="t('appearance.effectDesc')" wide>
+      <SettingCard :icon="'blur_on'" :title="t('appearance.effect')" :desc="t('appearance.effectDesc')" wide>
         <ChipSelect
           :model-value="settings.effect.value"
           :options="effectOptions"
@@ -125,7 +80,7 @@ function setContrast(value: number | number[]) {
         />
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-magic'" :title="t('appearance.animation')" :desc="t('appearance.animationDesc')">
+      <SettingCard :icon="'auto_awesome'" :title="t('appearance.animation')" :desc="t('appearance.animationDesc')" wide>
         <FieldRow :label="t('appearance.animation')">
           <var-switch
             :model-value="state.animation_enabled"
@@ -146,32 +101,6 @@ function setContrast(value: number | number[]) {
           </div>
         </FieldRow>
       </SettingCard>
-
-      <SettingCard :icon="'bi bi-sliders2'" :title="t('appearance.m3Title')" :desc="t('appearance.m3Desc')">
-        <div class="field-label">{{ t("appearance.variant") }}</div>
-        <ChipSelect
-          small
-          :model-value="settings.m3.variant"
-          :options="variantOptions"
-          @update:model-value="setVariant"
-        />
-        <FieldRow :label="t('appearance.contrast')">
-          <div class="slider-row">
-            <var-slider
-              class="slider-row__slider"
-              :model-value="settings.m3.contrast"
-              :min="M3_CONTRAST.min"
-              :max="M3_CONTRAST.max"
-              :step="M3_CONTRAST.step"
-              @update:model-value="setContrast"
-            />
-            <span class="slider-row__value mono">{{ settings.m3.contrast.toFixed(2) }}</span>
-          </div>
-        </FieldRow>
-        <FieldRow :label="t('appearance.schemeSource')">
-          <span class="hint">{{ schemeSourceLabel }}</span>
-        </FieldRow>
-      </SettingCard>
     </div>
   </div>
 </template>
@@ -188,47 +117,6 @@ function setContrast(value: number | number[]) {
   .grid {
     grid-template-columns: 1fr;
   }
-}
-
-.swatches {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-3);
-}
-
-.swatch {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--r-full);
-  border: 1px solid var(--outline-variant);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: var(--fs-title);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-  transition: transform var(--motion-short) var(--ease-standard);
-}
-
-.swatch:hover {
-  transform: translateY(-2px);
-}
-
-.swatch.is-active {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.swatches__custom {
-  margin-left: var(--sp-2);
-  padding-left: var(--sp-3);
-  border-left: 1px solid var(--outline-variant);
-}
-
-.divider {
-  height: 1px;
-  background: var(--outline-variant);
 }
 
 .slider-row {

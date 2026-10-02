@@ -60,7 +60,7 @@ function normalizeHex(input: string): string | null {
         :value="pickerValue"
         @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       />
-      <i class="bi bi-eyedropper" />
+      <i class="material-symbols-rounded">colorize</i>
     </label>
     <input
       v-model="draft"

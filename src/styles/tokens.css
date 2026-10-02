@@ -1,65 +1,61 @@
 /* ============================================================
  *  设计 token
  *
- *  来源分三层，不要混：
- *  1. M3 颜色角色（`--m3-*`）：由 JS 在运行时按配色方案写入 `:root`，
- *     见 `src/lib/m3/applyM3Theme.ts`。这里只做**别名**与**兜底值**。
- *  2. M3 形状 / 高程 / 动效 / 字阶：静态，写在本文件。
- *  3. Varlet 组件变量（`--hsl-*` / `--color-*`）：同样由 JS 写入，
- *     本文件不重复定义。
+ *  三层来源，别混：
+ *  1. **组件库配色**：Varlet 的 `Themes.md3Light` / `md3Dark` 由 `lib/theme.ts`
+ *     在运行时切到 `<html>` 上，决定 Varlet 自带组件的配色。**本项目不覆盖它**。
+ *  2. **本项目自己的组件配色**：下面这套 MD3 基线值，按明暗给两套。它们只服务于
+ *     我们自己的 DOM（卡片、芯片等），不碰 Varlet 的组件变量。之所以要自己给一套，
+ *     是因为 Varlet 的 MD3 主题没有定义完整的 surface / on-surface 等角色。
+ *  3. M3 形状 / 高程 / 动效 / 字阶：静态，写在本文件。
  *
- *  ⚠ 命名：角色名一律用**下划线**（`--m3-on_surface`），与后端 serde 的
- *  snake_case 逐字对应。曾经在这里写成连字符（`--m3-on-surface`），
- *  结果多词角色全部取不到值、整片界面退回基线配色——因为变量名不匹配时
- *  `var()` 会静默使用兜底值，不会报错，非常难发现。
- *
- *  兜底值很重要：首次渲染发生在 JS 写入变量之前，没有兜底会闪一帧黑底。
+ *  兜底值很重要：首次渲染发生在 `applyTheme` / `.dark` 切换之前，没有兜底会闪一帧。
  * ============================================================ */
 
 :root {
   /* ---------- 颜色别名（兜底值 = M3 基准紫的亮色角色） ---------- */
-  --primary: var(--m3-primary, #6750a4);
-  --on-primary: var(--m3-on_primary, #ffffff);
-  --primary-container: var(--m3-primary_container, #eaddff);
-  --on-primary-container: var(--m3-on_primary_container, #21005d);
+  --primary: #6750a4;
+  --on-primary: #ffffff;
+  --primary-container: #eaddff;
+  --on-primary-container: #21005d;
 
-  --secondary-container: var(--m3-secondary_container, #e8def8);
-  --on-secondary-container: var(--m3-on_secondary_container, #1d192b);
-  --tertiary: var(--m3-tertiary, #7d5260);
-  --tertiary-container: var(--m3-tertiary_container, #ffd8e4);
-  --on-tertiary-container: var(--m3-on_tertiary_container, #31111d);
+  --secondary-container: #e8def8;
+  --on-secondary-container: #1d192b;
+  --tertiary: #7d5260;
+  --tertiary-container: #ffd8e4;
+  --on-tertiary-container: #31111d;
 
-  --error: var(--m3-error, #b3261e);
-  --on-error: var(--m3-on_error, #ffffff);
-  --error-container: var(--m3-error_container, #f9dedc);
-  --on-error-container: var(--m3-on_error_container, #410e0b);
+  --error: #b3261e;
+  --on-error: #ffffff;
+  --error-container: #f9dedc;
+  --on-error-container: #410e0b;
 
-  --surface: var(--m3-surface, #fef7ff);
-  --on-surface: var(--m3-on_surface, #1d1b20);
-  --surface-variant: var(--m3-surface_variant, #e7e0ec);
-  --on-surface-variant: var(--m3-on_surface_variant, #49454f);
-  --surface-container-lowest: var(--m3-surface_container_lowest, #ffffff);
-  --surface-container-low: var(--m3-surface_container_low, #f7f2fa);
-  --surface-container: var(--m3-surface_container, #f3edf7);
-  --surface-container-high: var(--m3-surface_container_high, #ece6f0);
-  --surface-container-highest: var(--m3-surface_container_highest, #e6e0e9);
-  --inverse-surface: var(--m3-inverse_surface, #322f35);
-  --inverse-on-surface: var(--m3-inverse_on_surface, #f5eff7);
+  --surface: #fef7ff;
+  --on-surface: #1d1b20;
+  --surface-variant: #e7e0ec;
+  --on-surface-variant: #49454f;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f7f2fa;
+  --surface-container: #f3edf7;
+  --surface-container-high: #ece6f0;
+  --surface-container-highest: #e6e0e9;
+  --inverse-surface: #322f35;
+  --inverse-on-surface: #f5eff7;
 
-  --outline: var(--m3-outline, #79747e);
-  --outline-variant: var(--m3-outline_variant, #cac4d0);
-  --scrim: var(--m3-scrim, #000000);
+  --outline: #79747e;
+  --outline-variant: #cac4d0;
+  --scrim: #000000;
 
-  --success: var(--m3-sem-success, #2e7d32);
-  --success-container: var(--m3-sem-success-container, #c8e6c9);
-  --on-success-container: var(--m3-sem-success-on-container, #0b3b0e);
-  --warning: var(--m3-sem-warning, #b26a00);
-  --warning-container: var(--m3-sem-warning-container, #ffe0a3);
-  --on-warning-container: var(--m3-sem-warning-on-container, #40230a);
-  --info: var(--m3-sem-info, #00639b);
-  --info-container: var(--m3-sem-info-container, #cde5ff);
+  --success: #2e7d32;
+  --success-container: #c8e6c9;
+  --on-success-container: #0b3b0e;
+  --warning: #b26a00;
+  --warning-container: #ffe0a3;
+  --on-warning-container: #40230a;
+  --info: #00639b;
+  --info-container: #cde5ff;
 
-  /* 语义文字的语义化别名：界面里不要直接写角色名，写这些 */
+  /* 语义文字别名：界面里不要直接写角色名，写这些 */
   --text-primary: var(--on-surface);
   --text-secondary: var(--on-surface-variant);
   --text-muted: color-mix(in srgb, var(--on-surface-variant) 72%, transparent);
@@ -113,6 +109,9 @@
   --motion-long: calc(0.35s * var(--anim-speed));
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --stagger-step: 45ms;
+  /* 卡片表面：浅色用纯白以从页面（surface）中"浮"起来；深色用抬升表面。 */
+  --card-bg: #ffffff;
 
   /* ---------- 应用外壳（由 useSettings 覆盖） ---------- */
   --app-bg: transparent;
@@ -122,6 +121,51 @@
   --titlebar-height: 40px;
   --rail-width: 76px;
   --nav-width: 208px;
+}
+
+/* 暗色：本项目自己组件的基线值（与 Varlet 的 md3Dark 同属一套 MD3 暗色语汇）。 */
+.dark {
+  --primary: #d0bcff;
+  --on-primary: #381e72;
+  --primary-container: #4f378b;
+  --on-primary-container: #eaddff;
+
+  --secondary-container: #4a4458;
+  --on-secondary-container: #e8def8;
+  --tertiary: #efb8c8;
+  --tertiary-container: #633b48;
+  --on-tertiary-container: #ffd8e4;
+
+  --error: #f2b8b5;
+  --on-error: #601410;
+  --error-container: #8c1d18;
+  --on-error-container: #f9dedc;
+
+  --surface: #1c1b1f;
+  --on-surface: #e6e1e5;
+  --surface-variant: #49454f;
+  --on-surface-variant: #cac4d0;
+  --surface-container-lowest: #0f0f0f;
+  --surface-container-low: #211f26;
+  --surface-container: #1d1b20;
+  --surface-container-high: #28262c;
+  --surface-container-highest: #322f36;
+  --card-bg: var(--surface-container-high);
+  --inverse-surface: #e6e1e5;
+  --inverse-on-surface: #322f36;
+
+  --outline: #938f99;
+  --outline-variant: #44474e;
+  --scrim: #000000;
+
+  --success: #83e088;
+  --success-container: #0c3a12;
+  --on-success-container: #5dd366;
+  --warning: #ffb95c;
+  --warning-container: #4a2c00;
+  --on-warning-container: #ffe0a3;
+  --info: #7dd3ff;
+  --info-container: #00344d;
 }
 
 /* 动画关闭时把节奏归零，而不是删掉 transition（删掉会让部分组件跳变）。 */

@@ -179,8 +179,8 @@ onUnmounted(() => {
 
 <template>
   <div class="scroll-area">
-    <div class="stack">
-      <SettingCard :icon="'bi bi-hdd-network'" :title="t('plugins.gateway')" wide>
+    <div class="stack stagger">
+      <SettingCard :icon="'router'" :title="t('plugins.gateway')" wide>
         <div class="gateway">
           <span class="tag" :class="gateway?.running ? 'tag--ok' : 'tag--off'">
             {{ gateway?.running ? t("plugins.gatewayRunning") : t("plugins.gatewayStopped") }}
@@ -193,13 +193,13 @@ onUnmounted(() => {
           </span>
           <span class="grow" />
           <var-button size="small" text @click="reload">
-            <i class="bi bi-arrow-repeat" />
+            <i class="material-symbols-rounded">sync</i>
             <span>{{ t("plugins.reload") }}</span>
           </var-button>
         </div>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-puzzle'" :title="t('plugins.title')" :desc="t('plugins.desc')" wide>
+      <SettingCard :icon="'extension'" :title="t('plugins.title')" :desc="t('plugins.desc')" wide>
         <div class="toolbar">
           <var-input
             v-model="filter.query"
@@ -245,10 +245,11 @@ onUnmounted(() => {
 
         <p v-if="loading" class="hint">{{ t("common.loading") }}</p>
         <p v-else-if="plugins.length === 0" class="hint">{{ t("plugins.empty") }}</p>
-        <div v-else class="plugins">
+        <div v-else class="plugins stagger">
           <PluginCard
-            v-for="plugin in plugins"
+            v-for="(plugin, index) in plugins"
             :key="plugin.id"
+            :style="{ '--stagger-index': index }"
             :plugin="plugin"
             @toggle-enabled="(v) => toggleEnabled(plugin, v)"
             @toggle-blocked="(v) => toggleBlocked(plugin, v)"

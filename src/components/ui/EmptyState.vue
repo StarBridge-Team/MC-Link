@@ -2,7 +2,7 @@
 /**
  * 空状态 / 占位提示。
  *
- * `icon` 用 Bootstrap Icons 的 class（如 `bi bi-inbox`）。
+ * `icon` 用 Material Symbols 的 ligature 名（如 `inbox`）。
  */
 defineProps<{
   icon: string;
@@ -13,7 +13,7 @@ defineProps<{
 
 <template>
   <div class="empty">
-    <i :class="icon" class="empty__icon" />
+    <i class="material-symbols-rounded empty__icon">{{ icon }}</i>
     <h3 class="empty__title">{{ title }}</h3>
     <p v-if="desc" class="empty__desc">{{ desc }}</p>
     <div v-if="$slots.default" class="empty__actions">

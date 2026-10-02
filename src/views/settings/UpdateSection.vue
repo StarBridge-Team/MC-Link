@@ -143,9 +143,9 @@ async function openManual(url: string) {
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
+    <div class="grid stagger">
       <SettingCard
-        :icon="'bi bi-cloud-arrow-down'"
+        :icon="'cloud_download'"
         :title="t('update.title')"
         :desc="t('update.desc')"
         wide
@@ -168,7 +168,7 @@ async function openManual(url: string) {
             :loading="updater.checking.value"
             @click="check"
           >
-            <i class="bi bi-arrow-repeat" />
+            <i class="material-symbols-rounded">sync</i>
             <span>{{ updater.checking.value ? t("update.checking") : t("update.check") }}</span>
           </var-button>
           <var-button text :disabled="updater.downloading.value" @click="clearCache">

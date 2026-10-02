@@ -93,11 +93,12 @@ function isSwitchOn(field: FieldMeta): boolean {
 </script>
 
 <template>
-  <template v-if="!loading && sections.length > 0">
+  <div v-if="!loading && sections.length > 0" class="stagger">
     <SettingCard
-      v-for="section in sections"
+      v-for="(section, index) in sections"
       :key="section.meta.section"
-      :icon="section.meta.icon || 'bi bi-sliders'"
+      :style="{ '--stagger-index': index }"
+      :icon="section.meta.icon || 'tune'"
       :title="section.meta.title || section.meta.section"
       :desc="section.meta.description"
       wide
@@ -145,7 +146,7 @@ function isSwitchOn(field: FieldMeta): boolean {
         </var-button>
       </div>
     </SettingCard>
-  </template>
+  </div>
 </template>
 
 <style scoped>

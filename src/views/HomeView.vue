@@ -45,7 +45,7 @@ const iframeUrl = computed(() => (/^https?:\/\//i.test(url.value) ? url.value : 
     />
     <EmptyState
       v-else
-      icon="bi bi-link-45deg"
+      icon="link"
       :title="t('home.webpageMissingUrl')"
       :desc="t('home.webpageMissingUrlHint')"
     />
@@ -59,7 +59,7 @@ const iframeUrl = computed(() => (/^https?:\/\//i.test(url.value) ? url.value : 
     </div>
 
     <div class="home__card">
-      <span class="icon-badge icon-badge--small"><i class="bi bi-broadcast" /></span>
+      <span class="icon-badge icon-badge--small"><i class="material-symbols-rounded">broadcast_on_home</i></span>
       <div class="grow">
         <h2 class="section-title">{{ t("home.defaultTitle") }}</h2>
         <p class="hint">{{ t("home.defaultDesc") }}</p>

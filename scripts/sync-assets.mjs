@@ -606,25 +606,15 @@ function syncFromNpm() {
     return;
   }
 
-  // Bootstrap Icons
-  const biSrc = join(npm, "bootstrap-icons", "font");
-  if (existsSync(biSrc)) {
-    const dst = join(ASSETS_DIR, "bootstrap-icons");
+  // Material Symbols（Rounded 变量字体；FILL 轴由前端全局设为 1 = 填充态）
+  const msSrc = join(npm, "material-symbols");
+  if (existsSync(msSrc)) {
+    const dst = join(ASSETS_DIR, "material-symbols");
     mkdirSync(dst, { recursive: true });
-    for (const ext of ["woff2", "woff"]) {
-      const s = join(biSrc, "fonts", `bootstrap-icons.${ext}`);
-      if (existsSync(s)) cpSync(s, join(dst, `bootstrap-icons.${ext}`));
-    }
-    const css = readFileSync(join(biSrc, "bootstrap-icons.css"), "utf8")
-      .replace(
-        "./fonts/bootstrap-icons.woff2?e34853135f9e39acf64315236852cd5a",
-        "./bootstrap-icons.woff2",
-      )
-      .replace(
-        "./fonts/bootstrap-icons.woff?e34853135f9e39acf64315236852cd5a",
-        "./bootstrap-icons.woff",
-      );
-    writeFileSync(join(dst, "bootstrap-icons.css"), css);
+    const msWoff2 = join(msSrc, "material-symbols-rounded.woff2");
+    if (existsSync(msWoff2)) cpSync(msWoff2, join(dst, "material-symbols-rounded.woff2"));
+    const msCss = readFileSync(join(msSrc, "rounded.css"), "utf8");
+    writeFileSync(join(dst, "material-symbols.css"), msCss);
   }
 
   // Poppins：读取 latin-*.css，复制 woff2/woff 并合并为 poppins.css

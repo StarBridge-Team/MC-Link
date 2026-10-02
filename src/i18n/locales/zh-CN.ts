@@ -85,9 +85,7 @@ export default {
 
   appearance: {
     title: "外观",
-    desc: "主题色即 M3 配色的种子色，改动立即生效并自动保存",
-    themeColor: "主题色",
-    custom: "自定义",
+    desc: "明暗、窗口材质与界面动画。配色由组件库自身生成，保持协调统一",
     mode: "明暗模式",
     modeSystem: "跟随系统",
     modeLight: "浅色",
@@ -101,12 +99,6 @@ export default {
     animation: "界面动画",
     animationDesc: "关闭后所有过渡立即完成",
     animationSpeed: "动画速度",
-    m3Title: "M3 观感",
-    m3Desc: "配色变体与对比度，仅影响本机观感，不改主题色",
-    variant: "配色变体",
-    contrast: "对比度",
-    presets: "预设种子色",
-    schemeSource: "配色来源",
     schemeSourceBackend: "后端引擎",
     schemeSourceFrontend: "内置引擎（回退）",
   },
@@ -271,12 +263,11 @@ export default {
     thanks: "鸣谢",
   },
 
-  /** M3 配色实验室（`/m3`） */
+  /** M3 配色实验室（`/m3`，仅预览，不写进应用主题） */
   m3: {
     title: "配色实验室",
-    desc: "以种子色生成整套 M3 配色，并应用到整个界面",
+    desc: "以任意种子色生成整套 M3 配色预览，方便挑颜色（不影响应用主题）",
     seed: "种子色",
-    applied: "已应用到主题色",
     variant: "配色变体",
     contrast: "对比度",
     palette: "色调调色板",

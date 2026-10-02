@@ -35,7 +35,7 @@ const { t } = useI18n();
         @mousedown.stop
         @click="emit('back')"
       >
-        <i class="bi bi-arrow-left" />
+        <i class="material-symbols-rounded">arrow_back</i>
       </button>
     </div>
 
@@ -49,7 +49,7 @@ const { t } = useI18n();
         @mousedown.stop
         @click="emit('minimize')"
       >
-        <i class="bi bi-dash-lg" />
+        <i class="material-symbols-rounded">remove</i>
       </button>
       <button
         class="titlebar__btn"
@@ -58,7 +58,7 @@ const { t } = useI18n();
         @mousedown.stop
         @click="emit('maximize')"
       >
-        <i class="bi bi-square" />
+        <i class="material-symbols-rounded">crop_square</i>
       </button>
       <button
         class="titlebar__btn titlebar__btn--danger"
@@ -67,7 +67,7 @@ const { t } = useI18n();
         @mousedown.stop
         @click="emit('close')"
       >
-        <i class="bi bi-x-lg" />
+        <i class="material-symbols-rounded">close</i>
       </button>
     </div>
   </header>
@@ -122,6 +122,10 @@ const { t } = useI18n();
   font-size: var(--fs-title);
   transition: background-color var(--motion-short) var(--ease-standard),
     color var(--motion-short) var(--ease-standard);
+}
+
+.titlebar__btn .material-symbols-rounded {
+  font-size: inherit;
 }
 
 .titlebar__btn:hover:not(:disabled) {

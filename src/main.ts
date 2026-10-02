@@ -8,6 +8,11 @@ import App from "./App.vue";
 import { router } from "./router";
 import { i18n, initI18n } from "./i18n";
 import { bootstrapAssets } from "./lib/resourceCache";
+import { applyTheme } from "./lib/theme";
+
+// 在挂载前先把 Varlet 的 MD3 亮色主题装上，避免首帧先按 Varlet 默认主题渲染、
+// 等 `useSettings.load()` 跑完再切成 MD3 造成闪动。暗色会在 load 后按设置重设。
+applyTheme(false);
 
 const app = createApp(App);
 app.use(i18n);

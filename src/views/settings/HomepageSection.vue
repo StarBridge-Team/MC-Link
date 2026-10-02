@@ -67,8 +67,8 @@ function clearUrl() {
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
-      <SettingCard :icon="'bi bi-house-gear'" :title="t('homepage.title')" :desc="t('homepage.desc')" wide>
+    <div class="grid stagger">
+      <SettingCard :icon="'home'" :title="t('homepage.title')" :desc="t('homepage.desc')" wide>
         <div class="field-label">{{ t("homepage.mode") }}</div>
         <ChipSelect :model-value="state.homepage_mode" :options="modeOptions" @update:model-value="setMode" />
         <p class="hint">{{ modeHint }}</p>

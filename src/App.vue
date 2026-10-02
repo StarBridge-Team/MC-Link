@@ -50,26 +50,26 @@ const pageTitle = computed(() => {
 
 // ---- 导航 ----
 const navItems = computed<NavItem[]>(() => [
-  { id: "home", icon: "bi bi-house-door", label: t("nav.home") },
-  { id: "connect", icon: "bi bi-broadcast", label: t("nav.connect") },
-  { id: "m3", icon: "bi bi-palette", label: t("nav.m3") },
-  { id: "setting", icon: "bi bi-sliders", label: t("nav.setting") },
+  { id: "home", icon: "home", label: t("nav.home") },
+  { id: "connect", icon: "broadcast_on_home", label: t("nav.connect") },
+  { id: "m3", icon: "palette", label: t("nav.m3") },
+  { id: "setting", icon: "tune", label: t("nav.setting") },
 ]);
 
 const SETTING_TAB_ICONS: Record<string, string> = {
-  personalization: "bi bi-brush",
-  background: "bi bi-image",
-  homepage: "bi bi-house-gear",
-  general: "bi bi-translate",
-  plugins: "bi bi-puzzle",
-  update: "bi bi-cloud-arrow-down",
-  about: "bi bi-info-circle",
+  personalization: "brush",
+  background: "image",
+  homepage: "home",
+  general: "translate",
+  plugins: "extension",
+  update: "cloud_download",
+  about: "info",
 };
 
 const secondaryItems = computed<NavListItem[]>(() =>
   SETTING_TABS.map((id) => ({
     id,
-    icon: SETTING_TAB_ICONS[id] ?? "bi bi-circle",
+    icon: SETTING_TAB_ICONS[id] ?? "circle",
     label: t(`setting.${id}`),
   })),
 );

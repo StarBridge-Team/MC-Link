@@ -5,18 +5,15 @@
 // 各自写一份（`App.vue` 读进 ref、设置页读进另一个对象），于是"改了没反应"
 // 或者"退出后没保存"这类问题无法定位。**任何需要读写这些字段的界面都来这里取。**
 //
-// M3 变体与对比度是纯前端的观感参数（后端契约里没有），因此落在 localStorage，
-// 与后端字段一起构成完整的观感状态；种子色就是后端的 `theme_color`，不重复存一份。
+// 配色由组件库（Varlet 的 `Themes.md3Light/md3Dark`）生成，见 `lib/theme.ts`；
+// 这里只负责明暗开关，不再自己算 M3 去覆盖组件库。
 
-import { computed, reactive, ref, shallowRef } from "vue";
+import { computed, reactive, ref } from "vue";
 import { getPersonalization, savePersonalization } from "../lib/api/config";
 import { getDefaultEffect, setWindowDarkMode, setWindowEffect } from "../lib/api/effect";
 import type { PersonalizationSettings } from "../lib/api/types";
 import { applyBackground, resolveMediaUrl } from "../lib/appearance/background";
-import { applyM3Scheme } from "../lib/m3/applyM3Theme";
-import { generateM3SchemeSynced } from "../lib/m3/m3Client";
-import type { M3Scheme, M3Variant } from "../lib/m3/types";
-import { local, KEYS } from "../lib/persist";
+import { applyTheme } from "../lib/theme";
 
 /** 后端 `config/mod.rs` 的默认值镜像（读不到配置时的兜底）。 */
 export function defaultSettings(): PersonalizationSettings {
@@ -38,23 +35,8 @@ export function defaultSettings(): PersonalizationSettings {
   };
 }
 
-interface M3Local {
-  variant: M3Variant;
-  contrast: number;
-}
-
-const M3_FALLBACK: M3Local = { variant: "tonal_spot", contrast: 0 };
-
 // ---- 模块级单例状态 ----
 const state = reactive<PersonalizationSettings>(defaultSettings());
-const m3 = reactive<M3Local>(
-  local.get<Partial<M3Local>>(KEYS.m3Theme, {}) as M3Local,
-);
-if (!m3.variant) m3.variant = M3_FALLBACK.variant;
-if (typeof m3.contrast !== "number") m3.contrast = M3_FALLBACK.contrast;
-
-const scheme = shallowRef<M3Scheme | null>(null);
-const schemeSource = ref<"backend" | "frontend">("frontend");
 const loaded = ref(false);
 const saving = ref(false);
 const saveError = ref<string | null>(null);
@@ -82,6 +64,8 @@ const effect = computed(() =>
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let windowDark: boolean | null = null;
+let appliedDark: boolean | null = null;
+let themeTransitionTimer: ReturnType<typeof setTimeout> | undefined;
 
 function syncWindowDark(dark: boolean) {
   if (windowDark === dark) return;
@@ -89,30 +73,42 @@ function syncWindowDark(dark: boolean) {
   void setWindowDarkMode(dark).catch(() => undefined);
 }
 
-/** 顶栏透明、动画速度、明暗 class、窗口材质与 DWM 暗色。 */
+/**
+ * 顶栏透明、动画速度、明暗（class + 组件库主题）、窗口材质与 DWM 暗色。
+ *
+ * 明暗有两套消费者、两个开关：
+ * - 组件库（Varlet）的配色由 `applyTheme` 切 `Themes.md3Light/md3Dark`；
+ * - 本项目自己的组件颜色靠 `tokens.css` 在 `.dark` 下的基线值，
+ *   所以这里要给 `<html>` 切上 `.dark` 这个钩子类。
+ */
 function applyChrome() {
   const root = document.documentElement;
   root.setAttribute("data-theme-mode", state.theme_mode);
+  root.classList.toggle("dark", isDark.value);
   root.classList.toggle("no-animations", !state.animation_enabled);
   root.style.setProperty(
     "--anim-speed",
     String(state.animation_enabled ? state.animation_speed : 1),
   );
+  applyTheme(isDark.value);
   syncWindowDark(isDark.value);
   void setWindowEffect(state.transparent_effect || platformDefaultEffect.value).catch(
     () => undefined,
   );
-}
 
-/** 重新生成 M3 配色并写入 CSS 变量。 */
-async function refreshScheme() {
-  const { scheme: next, source } = await generateM3SchemeSynced(state.theme_color, {
-    variant: m3.variant,
-    contrast: m3.contrast,
-  });
-  scheme.value = next;
-  schemeSource.value = source;
-  applyM3Scheme(next, isDark.value);
+  // 主题切换淡入淡出：仅当明暗真的翻转、且动画开启时，临时给 <html> 挂
+  // `.theme-transition` 让全站配色平滑过渡，动画结束（跟随「动画速度」）后移除，
+  // 避免长期用 `*` 过渡覆盖组件自身 transition。
+  if (appliedDark !== null && appliedDark !== isDark.value && state.animation_enabled) {
+    const dur = 350 * (state.animation_speed || 1);
+    root.classList.add("theme-transition");
+    window.clearTimeout(themeTransitionTimer);
+    themeTransitionTimer = window.setTimeout(
+      () => root.classList.remove("theme-transition"),
+      dur + 60,
+    );
+  }
+  appliedDark = isDark.value;
 }
 
 let bgToken = 0;
@@ -136,10 +132,10 @@ async function refreshBackground() {
   applyBackground(state, bgUrl, musicUrl);
 }
 
-/** 把当前状态整体落到 DOM（配色 + 外观 + 背景）。 */
+/** 把当前状态整体落到 DOM（外观 + 背景）。 */
 async function applyAll() {
   applyChrome();
-  await Promise.all([refreshScheme(), refreshBackground()]);
+  await refreshBackground();
 }
 
 /** 合并默认值，兼容老配置缺失字段。 */
@@ -203,13 +199,6 @@ async function saveNow(): Promise<boolean> {
   }
 }
 
-/** 改 M3 观感参数（变体 / 对比度），只落 localStorage。 */
-function patchM3(partial: Partial<M3Local>) {
-  Object.assign(m3, partial);
-  local.set(KEYS.m3Theme, { variant: m3.variant, contrast: m3.contrast });
-  void refreshScheme();
-}
-
 /** 系统主题变化时，仅在"跟随系统"模式下重算。 */
 function bindSystemTheme(onChange: () => void) {
   systemPrefersDark?.addEventListener("change", () => {
@@ -225,9 +214,6 @@ export function useSettings() {
   return {
     // 状态
     state,
-    m3,
-    scheme,
-    schemeSource,
     loaded,
     saving,
     saveError,
@@ -238,7 +224,6 @@ export function useSettings() {
     // 动作
     load,
     patch,
-    patchM3,
     saveNow,
     applyAll,
     bindSystemTheme,
