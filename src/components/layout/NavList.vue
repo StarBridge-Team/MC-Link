@@ -1,84 +1,64 @@
 <script setup lang="ts">
 /**
- * 二级导航列表（M3 Navigation Drawer 风格）。
+ * 二级导航（M3 Navigation Drawer 风格）。
  *
- * 只负责展示与派发选中事件；选中态由父组件（路由参数）驱动，
- * 组件内部不持有状态——否则路由前进/后退时会出现两套"当前项"。
+ * 用 @m3e/web 的 `<m3e-nav-menu>` + `<m3e-nav-menu-item>`；选中态由父组件
+ * （路由参数）驱动，组件内部不持有状态——否则路由前进/后退时会出现两套"当前项"。
  */
+import { onMounted, ref, watch } from "vue";
+
 export interface NavListItem {
   id: string;
   icon: string;
   label: string;
 }
 
-defineProps<{
+const props = defineProps<{
   items: NavListItem[];
   active: string;
 }>();
 
 const emit = defineEmits<{ select: [id: string] }>();
+
+const menuEl = ref<HTMLElement & { items?: readonly (HTMLElement & { selected: boolean })[] }>();
+
+function syncSelection() {
+  const menu = menuEl.value;
+  const items = menu?.items;
+  if (!items) return;
+  props.items.forEach((item, i) => {
+    const el = items[i] as (HTMLElement & { selected: boolean }) | undefined;
+    if (el) el.selected = item.id === props.active;
+  });
+}
+
+onMounted(syncSelection);
+watch(() => props.active, () => requestAnimationFrame(syncSelection), { flush: "post" });
+
+// m3e-nav-menu 不派发 change 事件（只有 rail/bar 有），
+// 因此由每个 item 的 click 主动派发路由跳转。
+function onItemClick(id: string) {
+  emit("select", id);
+}
 </script>
 
 <template>
-  <aside class="nav-list">
-    <button
+  <m3e-nav-menu ref="menuEl" class="nav-list">
+    <m3e-nav-menu-item
       v-for="item in items"
       :key="item.id"
-      class="nav-list__item"
-      :class="{ 'is-active': item.id === active }"
-      type="button"
-      @click="emit('select', item.id)"
+      @click="onItemClick(item.id)"
     >
-      <i :class="item.icon" />
-      <span class="nav-list__label">{{ item.label }}</span>
-    </button>
-  </aside>
+      <m3e-icon slot="icon" :name="item.icon" />
+      <span slot="label">{{ item.label }}</span>
+    </m3e-nav-menu-item>
+  </m3e-nav-menu>
 </template>
 
 <style scoped>
 .nav-list {
   width: var(--nav-width);
   flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--sp-3) var(--sp-2);
   overflow-y: auto;
-}
-
-.nav-list__item {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  height: 44px;
-  padding: 0 var(--sp-4);
-  border-radius: var(--r-full);
-  color: var(--text-secondary);
-  font-size: var(--fs-body);
-  text-align: left;
-  transition: background-color var(--motion-medium) var(--ease-standard),
-    color var(--motion-medium) var(--ease-standard);
-}
-
-.nav-list__item i {
-  font-size: var(--fs-title);
-  flex-shrink: 0;
-}
-
-.nav-list__item:hover {
-  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-  color: var(--text-primary);
-}
-
-.nav-list__item.is-active {
-  background: var(--secondary-container);
-  color: var(--on-secondary-container);
-  font-weight: var(--fw-semibold);
-}
-
-.nav-list__label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

@@ -203,6 +203,14 @@ p {
   font-size: inherit;
 }
 
+/* m3e-icon 的字形来自 @m3e/web 自带的 Material Symbols（outlined 变体）。
+   我们自托管的是 rounded 变体，这里统一指向已加载的 rounded 字体族，
+   使 m3e 图标与其余手写图标风格一致（FILL 由全局变量字体设置控制）。 */
+m3e-icon {
+  font-family: "Material Symbols Rounded";
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
 /* ============================================================
  *  Varlet 修正
  *
@@ -231,17 +239,15 @@ p {
   color: var(--inverse-on-surface);
 }
 
-/* 侧边导航：选中态用 secondary-container，与 M3 Navigation Rail 一致。 */
-.var-rail-navigation {
-  background: transparent;
-  width: var(--rail-width);
-  padding: var(--sp-2) 0;
-  gap: var(--sp-1);
-  border-radius: 0;
+/* 导航栏（@m3e/web）：紧凑宽度对齐旧设计稿的 76px，默认是 96px。 */
+m3e-nav-rail {
+  --m3e-nav-rail-compact-width: var(--rail-width);
 }
 
-.var-rail-navigation-item {
-  border-radius: var(--r-full);
+/* 二级导航（@m3e/web nav-menu）：作为设置抽屉使用时去掉多余内外边距。 */
+m3e-nav-menu {
+  --m3e-nav-menu-padding-top: var(--sp-3);
+  --m3e-nav-menu-padding-bottom: var(--sp-3);
 }
 
 /* 开关/复选/单选/滑块的强调色跟随 M3 primary */

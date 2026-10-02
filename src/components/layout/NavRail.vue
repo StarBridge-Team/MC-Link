@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
- * M3 导航栏（Navigation Rail）：图标 + 文案竖排，选中项用一个**滑动**的胶囊指示器
- * 标示——active 指示会"滑"到目标位置（M3 规范），而不是每个项各自亮灭。
+ * M3 导航栏（Navigation Rail）。
  *
- * 不用 Varlet 的 `var-rail-navigation`：它的选中态与槽位约定是给移动端横向
- * 折叠场景设计的，桌面端需要固定宽度 + 文案常显，自己写更可控。
+ * 用 @m3e/web 的原生 `<m3e-nav-rail>` + `<m3e-nav-item>`：选中指示器、图标/标签
+ * 配色、键盘导航全部由组件按 M3 规范处理，不再自己算滑块位置。
+ *
+ * 选中态由父组件（路由）驱动：`selected` 属性只在路由变化时同步一次，
+ * 组件内部点选后由 rail 自己先切换，再通过 `change` 事件通知父组件改路由。
  */
 import { onMounted, ref, watch } from "vue";
 
@@ -21,122 +23,42 @@ const props = defineProps<{
 
 const emit = defineEmits<{ select: [id: string] }>();
 
-const railEl = ref<HTMLElement | null>(null);
-const indicatorEls = ref<(HTMLElement | null)[]>([]);
-const sliderY = ref(0);
+const railEl = ref<HTMLElement & { items?: readonly (HTMLElement & { selected: boolean })[] }>();
 
-function bindIndicator(el: unknown, index: number) {
-  indicatorEls.value[index] = (el as HTMLElement | null) ?? null;
+/** 把 rail 内部的选中项对齐到当前路由。 */
+function syncSelection() {
+  const rail = railEl.value;
+  const items = rail?.items;
+  if (!items) return;
+  props.items.forEach((item, i) => {
+    const el = items[i] as (HTMLElement & { selected: boolean }) | undefined;
+    if (el) el.selected = item.id === props.active;
+  });
 }
 
-function syncSlider() {
-  const idx = props.items.findIndex((i) => i.id === props.active);
-  const el = indicatorEls.value[idx];
-  if (el && railEl.value) sliderY.value = el.offsetTop;
-}
+onMounted(syncSelection);
+watch(() => props.active, () => requestAnimationFrame(syncSelection), { flush: "post" });
 
-onMounted(syncSlider);
-watch(() => props.active, syncSlider, { flush: "post" });
+function onChange() {
+  const rail = railEl.value;
+  const items = rail?.items;
+  if (!items) return;
+  const idx = items.findIndex((el) => (el as { selected: boolean }).selected);
+  if (items[idx]) emit("select", props.items[idx].id);
+}
 </script>
 
 <template>
-  <nav ref="railEl" class="rail" role="tablist">
-    <span class="rail__slider" :style="{ transform: `translate(-50%, ${sliderY}px)` }" />
-    <button
-      v-for="(item, index) in items"
-      :key="item.id"
-      class="rail__item"
-      :class="{ 'is-active': item.id === active }"
-      type="button"
-      role="tab"
-      :aria-selected="item.id === active"
-      :title="item.label"
-      @click="emit('select', item.id)"
-    >
-      <span :ref="(el) => bindIndicator(el, index)" class="rail__indicator">
-        <i class="material-symbols-rounded">{{ item.icon }}</i>
-      </span>
-      <span class="rail__label">{{ item.label }}</span>
-    </button>
-  </nav>
+  <m3e-nav-rail ref="railEl" class="rail" @change="onChange">
+    <m3e-nav-item v-for="item in items" :key="item.id">
+      <m3e-icon slot="icon" :name="item.icon" />
+      {{ item.label }}
+    </m3e-nav-item>
+  </m3e-nav-rail>
 </template>
 
 <style scoped>
 .rail {
-  position: relative;
-  width: var(--rail-width);
   flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-2);
-  background: transparent;
-}
-
-/* 滑动的选中指示器：在 active 项背后滑到目标位置 */
-.rail__slider {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: 56px;
-  height: 32px;
-  border-radius: var(--r-full);
-  background: var(--secondary-container);
-  transform: translate(-50%, 0);
-  transition: transform var(--motion-medium) var(--ease-standard);
-  z-index: 0;
-  pointer-events: none;
-}
-
-.rail__item {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 0;
-  color: var(--text-secondary);
-  font-size: var(--fs-label);
-  transition: color var(--motion-medium) var(--ease-standard);
-}
-
-.rail__indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 32px;
-  border-radius: var(--r-full);
-  font-size: 20px;
-  transition: color var(--motion-medium) var(--ease-standard),
-    background-color var(--motion-short) var(--ease-standard);
-}
-
-.rail__indicator .material-symbols-rounded {
-  font-size: inherit;
-}
-
-.rail__item:hover .rail__indicator {
-  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-  color: var(--text-primary);
-}
-
-.rail__item.is-active {
-  color: var(--text-primary);
-  font-weight: var(--fw-semibold);
-}
-
-.rail__item.is-active .rail__indicator {
-  color: var(--on-secondary-container);
-}
-
-.rail__label {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>
