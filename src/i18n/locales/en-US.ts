@@ -71,8 +71,33 @@ export default {
   },
 
   connect: {
-    placeholderTitle: "Connect is not available yet",
-    placeholderDesc: "The connectivity core is being re-integrated through plugins.",
+    currentGame: "Current game",
+    createRoom: "Create room",
+    joinRoom: "Join room",
+    joinFormTitle: "Join room",
+    field: {
+      roomCode: "Room code / invite code",
+    },
+    pasteInvite: "Paste invite link",
+    pasteInvitePlaceholder: "mclink://join/ABCD-1234 or ?code=…",
+    recognize: "Recognize",
+    adapters: "Available adapters",
+    noAdapters: "No available connect adapter",
+    connecting: "Connecting…",
+    connected: "Connected",
+    host: "Host",
+    guest: "Guest",
+    copyCode: "Copy room code",
+    invite: "Invite friends",
+    disconnect: "Disconnect",
+    copied: "Room code copied",
+    linkCopied: "Invite link copied",
+    trust: {
+      official: "Official",
+      verified: "Verified",
+      unsigned: "Unsigned",
+      blocked: "Blocked",
+    },
   },
 
   setting: {

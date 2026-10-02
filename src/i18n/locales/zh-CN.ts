@@ -75,8 +75,33 @@ export default {
   },
 
   connect: {
-    placeholderTitle: "联机功能暂未开放",
-    placeholderDesc: "联机核心正在按插件化方案重新接入，界面稍后补齐。",
+    currentGame: "当前游戏",
+    createRoom: "创建房间",
+    joinRoom: "加入房间",
+    joinFormTitle: "加入房间",
+    field: {
+      roomCode: "房间码 / 邀请码",
+    },
+    pasteInvite: "粘贴邀请链接",
+    pasteInvitePlaceholder: "mclink://join/ABCD-1234 或 ?code=…",
+    recognize: "识别",
+    adapters: "可用适配器",
+    noAdapters: "暂无可用的联机适配器",
+    connecting: "连接中…",
+    connected: "已连接",
+    host: "房主",
+    guest: "访客",
+    copyCode: "复制房间码",
+    invite: "邀请好友",
+    disconnect: "断开",
+    copied: "已复制房间码",
+    linkCopied: "邀请链接已复制",
+    trust: {
+      official: "官方",
+      verified: "已验证",
+      unsigned: "未签名",
+      blocked: "已拉黑",
+    },
   },
 
   setting: {
