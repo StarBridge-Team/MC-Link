@@ -71,6 +71,7 @@ export default {
     title: "Settings",
     personalization: "Personalization",
     homepage: "Home",
+    general: "General",
     plugins: "Plugins",
     update: "Update",
     about: "About",
@@ -316,8 +317,8 @@ export default {
   /** Region code → display name. Unknown codes fall back to the raw code. */
   region: {
     CN: "Chinese Mainland",
-    HK: "Hong Kong",
-    TW: "Taiwan",
+    HK: "Hong Kong SAR, China",
+    TW: "Taiwan, China",
     JP: "Japan",
     KR: "South Korea",
     SG: "Singapore",

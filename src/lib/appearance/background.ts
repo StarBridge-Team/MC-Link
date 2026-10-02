@@ -91,12 +91,14 @@ export function applyBackground(
     s.transparent_effect !== "transparent";
 
   // 页面实体背景：
-  // - default 且开启了窗口材质 → 保持透明，让 Mica/Acrylic 透出来；
-  // - 其余（default 无材质 / solid / image / video）→ 都以 surface 打底，
-  //   避免"无窗口材质"时整窗透出桌面；solid 会被下方颜色覆盖，
-  //   image/video 在图片/视频未铺满处露出 surface。
-  if (!(s.background_type === "default" && effectActive)) {
-    style.setProperty("--app-bg", "var(--surface)");
+  // - default 且开启了窗口材质 → 显式透明，让 Mica/Acrylic 透出来；
+  // - 其余（default 无材质 / image / video）→ **不设** `--app-bg`，由 `.shell` 回落到
+  //   调色板的 surface。这里刻意不再写 `var(--surface)`：`.shell` 在 `m3e-theme` 作用域内，
+  //   能解析到动态调色板令牌；而本文件把变量写在 `<html>` 上，那里解析不到 m3e 的令牌，
+  //   只会拿到亮色兜底值 → 表现为"无窗口材质时背景不跟配色/暗色"。
+  //   solid 仍由下方显式覆盖成具体颜色。
+  if (s.background_type === "default" && effectActive) {
+    style.setProperty("--app-bg", "transparent");
   }
 
   switch (s.background_type) {

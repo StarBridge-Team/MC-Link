@@ -30,6 +30,7 @@ const routes = [
 export const SETTING_TABS = [
   "personalization",
   "homepage",
+  "general",
   "plugins",
   "update",
   "about",

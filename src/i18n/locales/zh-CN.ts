@@ -75,6 +75,7 @@ export default {
     title: "设置",
     personalization: "个性化",
     homepage: "首页",
+    general: "通用",
     plugins: "插件",
     update: "更新",
     about: "关于",
@@ -320,8 +321,8 @@ export default {
   /** 地区代码 → 显示名。取不到的名称由界面回退成原始代码。 */
   region: {
     CN: "中国大陆",
-    HK: "香港",
-    TW: "台湾",
+    HK: "中国香港",
+    TW: "中国台湾",
     JP: "日本",
     KR: "韩国",
     SG: "新加坡",

@@ -62,6 +62,7 @@ const navItems = computed<NavItem[]>(() => [
 const SETTING_TAB_ICONS: Record<string, string> = {
   personalization: "brush",
   homepage: "home",
+  general: "translate",
   plugins: "extension",
   update: "cloud_download",
   about: "info",
@@ -195,7 +196,9 @@ onMounted(async () => {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: var(--app-bg);
+  /* 未设置 --app-bg 时回落到调色板 surface：`.shell` 在 m3e-theme 作用域内，
+   * `--surface` 已别名到 `--md-sys-color-surface`，因此会跟随配色与暗色。 */
+  background: var(--app-bg, var(--surface));
 }
 
 .shell__bg {

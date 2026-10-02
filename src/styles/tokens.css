@@ -112,8 +112,10 @@
   /* 卡片表面：浅色用纯白以从页面（surface）中"浮"起来；深色用抬升表面。 */
   --card-bg: #ffffff;
 
-  /* ---------- 应用外壳（由 useSettings 覆盖） ---------- */
-  --app-bg: transparent;
+  /* ---------- 应用外壳（由 useSettings 覆盖） ----------
+   * 注意：**不要**在这里给 `--app-bg` 设默认值。它由 `applyBackground` 按需设置，
+   * 未设置时 `.shell` 回落到调色板的 surface（在 m3e-theme 作用域内解析，才能跟随配色与暗色）。
+   * 若在此处写死 `transparent`，会覆盖那个回落，导致"无窗口材质时背景不跟配色"。 */
   --app-bg-image: none;
   --app-bg-size: 100% 100%;
   --app-scrim: transparent;

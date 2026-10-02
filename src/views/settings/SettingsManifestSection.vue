@@ -33,11 +33,18 @@ const sections = ref<LoadedSection[]>([]);
 const loading = ref(true);
 const saving = ref<string | null>(null);
 
+/**
+ * 已由客户端原生界面渲染的分区 id。服务器若也下发这些分区，会与原生界面重复
+ * （表现为同一页冒出第二张「个性化设置」卡片），因此这里跳过。
+ */
+const NATIVE_SECTION_IDS = new Set(["personalization"]);
+
 onMounted(async () => {
   try {
     const manifest = await getSettingManifest();
     const loaded: LoadedSection[] = [];
     for (const section of manifest.sections) {
+      if (NATIVE_SECTION_IDS.has(section.id)) continue;
       // 单个分区失败不影响其它分区：服务器可能只配了一半。
       try {
         const [meta, content] = await Promise.all([

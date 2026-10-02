@@ -2,6 +2,7 @@
 import { computed, onMounted, watch, type Component } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AboutSection from "./settings/AboutSection.vue";
+import GeneralSection from "./settings/GeneralSection.vue";
 import HomepageSection from "./settings/HomepageSection.vue";
 import PersonalizationSection from "./settings/PersonalizationSection.vue";
 import PluginSection from "./settings/PluginSection.vue";
@@ -21,6 +22,7 @@ const router = useRouter();
 const SECTIONS: Record<SettingTab, Component> = {
   personalization: PersonalizationSection,
   homepage: HomepageSection,
+  general: GeneralSection,
   plugins: PluginSection,
   update: UpdateSection,
   about: AboutSection,
