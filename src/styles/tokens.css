@@ -1,0 +1,136 @@
+/* ============================================================
+ *  设计 token
+ *
+ *  来源分三层，不要混：
+ *  1. M3 颜色角色（`--m3-*`）：由 JS 在运行时按配色方案写入 `:root`，
+ *     见 `src/lib/m3/applyM3Theme.ts`。这里只做**别名**与**兜底值**。
+ *  2. M3 形状 / 高程 / 动效 / 字阶：静态，写在本文件。
+ *  3. Varlet 组件变量（`--hsl-*` / `--color-*`）：同样由 JS 写入，
+ *     本文件不重复定义。
+ *
+ *  ⚠ 命名：角色名一律用**下划线**（`--m3-on_surface`），与后端 serde 的
+ *  snake_case 逐字对应。曾经在这里写成连字符（`--m3-on-surface`），
+ *  结果多词角色全部取不到值、整片界面退回基线配色——因为变量名不匹配时
+ *  `var()` 会静默使用兜底值，不会报错，非常难发现。
+ *
+ *  兜底值很重要：首次渲染发生在 JS 写入变量之前，没有兜底会闪一帧黑底。
+ * ============================================================ */
+
+:root {
+  /* ---------- 颜色别名（兜底值 = M3 基准紫的亮色角色） ---------- */
+  --primary: var(--m3-primary, #6750a4);
+  --on-primary: var(--m3-on_primary, #ffffff);
+  --primary-container: var(--m3-primary_container, #eaddff);
+  --on-primary-container: var(--m3-on_primary_container, #21005d);
+
+  --secondary-container: var(--m3-secondary_container, #e8def8);
+  --on-secondary-container: var(--m3-on_secondary_container, #1d192b);
+  --tertiary: var(--m3-tertiary, #7d5260);
+  --tertiary-container: var(--m3-tertiary_container, #ffd8e4);
+  --on-tertiary-container: var(--m3-on_tertiary_container, #31111d);
+
+  --error: var(--m3-error, #b3261e);
+  --on-error: var(--m3-on_error, #ffffff);
+  --error-container: var(--m3-error_container, #f9dedc);
+  --on-error-container: var(--m3-on_error_container, #410e0b);
+
+  --surface: var(--m3-surface, #fef7ff);
+  --on-surface: var(--m3-on_surface, #1d1b20);
+  --surface-variant: var(--m3-surface_variant, #e7e0ec);
+  --on-surface-variant: var(--m3-on_surface_variant, #49454f);
+  --surface-container-lowest: var(--m3-surface_container_lowest, #ffffff);
+  --surface-container-low: var(--m3-surface_container_low, #f7f2fa);
+  --surface-container: var(--m3-surface_container, #f3edf7);
+  --surface-container-high: var(--m3-surface_container_high, #ece6f0);
+  --surface-container-highest: var(--m3-surface_container_highest, #e6e0e9);
+  --inverse-surface: var(--m3-inverse_surface, #322f35);
+  --inverse-on-surface: var(--m3-inverse_on_surface, #f5eff7);
+
+  --outline: var(--m3-outline, #79747e);
+  --outline-variant: var(--m3-outline_variant, #cac4d0);
+  --scrim: var(--m3-scrim, #000000);
+
+  --success: var(--m3-sem-success, #2e7d32);
+  --success-container: var(--m3-sem-success-container, #c8e6c9);
+  --on-success-container: var(--m3-sem-success-on-container, #0b3b0e);
+  --warning: var(--m3-sem-warning, #b26a00);
+  --warning-container: var(--m3-sem-warning-container, #ffe0a3);
+  --on-warning-container: var(--m3-sem-warning-on-container, #40230a);
+  --info: var(--m3-sem-info, #00639b);
+  --info-container: var(--m3-sem-info-container, #cde5ff);
+
+  /* 语义文字的语义化别名：界面里不要直接写角色名，写这些 */
+  --text-primary: var(--on-surface);
+  --text-secondary: var(--on-surface-variant);
+  --text-muted: color-mix(in srgb, var(--on-surface-variant) 72%, transparent);
+  --text-on-accent: var(--on-primary);
+
+  /* ---------- M3 形状 ---------- */
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 28px;
+  --r-full: 9999px;
+
+  /* ---------- 间距 ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 48px;
+
+  /* ---------- 字阶（M3 type scale 的简化版） ---------- */
+  --fs-display: 30px;
+  --fs-headline: 22px;
+  --fs-title: 16px;
+  --fs-body: 14px;
+  --fs-base: 13px;
+  --fs-label: 12px;
+  --fs-xs: 11px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --lh-loose: 1.7;
+  --font-sans: "Poppins", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Fira Code", Consolas, monospace;
+
+  /* ---------- M3 高程 ---------- */
+  --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --elevation-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --elevation-3: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
+  --elevation-4: 0 2px 3px rgba(0, 0, 0, 0.3), 0 6px 10px 4px rgba(0, 0, 0, 0.15);
+
+  /* ---------- 动效（受「动画速度」设置缩放） ---------- */
+  --anim-speed: 1;
+  --motion-short: calc(0.1s * var(--anim-speed));
+  --motion-medium: calc(0.2s * var(--anim-speed));
+  --motion-long: calc(0.35s * var(--anim-speed));
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---------- 应用外壳（由 useSettings 覆盖） ---------- */
+  --app-bg: transparent;
+  --app-bg-image: none;
+  --app-bg-size: 100% 100%;
+  --app-scrim: transparent;
+  --titlebar-height: 40px;
+  --rail-width: 76px;
+  --nav-width: 208px;
+}
+
+/* 动画关闭时把节奏归零，而不是删掉 transition（删掉会让部分组件跳变）。 */
+.no-animations,
+.no-animations *,
+.no-animations *::before,
+.no-animations *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-delay: 0s !important;
+}

@@ -1,11 +1,12 @@
 /**
  * 统一本地存储层。
  *
- * 所有 `localStorage` / `sessionStorage` 访问都必须经由此处：
+ * 所有 `localStorage` / `sessionStorage` 访问都必须经由此处（`scripts/check-arch.mjs`
+ * 会拦直接访问）：
  *
  * 1. **key 集中登记**（见 `KEYS`），避免同一份数据在多个文件里用不同拼写读写；
  * 2. **失败不再静默**：配额不足 / 隐私模式下的写失败会 `console.warn`，
- *    而不是像此前那样用空 `catch` 吞掉，导致"改了却没保存"无从察觉；
+ *    而不是用空 `catch` 吞掉，导致"改了却没保存"无从察觉；
  * 3. 将来若要改为存到后端统一持久化，只需改这一个文件。
  *
  * 注意：`KEYS` 里的字符串**必须与历史版本保持一致**。改名会让老用户的
@@ -16,17 +17,21 @@
 export const KEYS = {
   /** 窗口位置与大小（含 x/y/width/height 的 JSON） */
   windowState: "window_state",
-  /** M3 主题参数（seed/variant/contrast/isDark 的 JSON） */
+  /** M3 主题参数（seed/variant/contrast 的 JSON） */
   m3Theme: "m3-theme-config",
-  /** 玩家名（当前尚无写入入口，登记于此以便后续接管） */
+  /** 玩家名 */
   playerName: "player_name",
-  /** 快速联机表单 */
+  /** 快速联机表单（联机能力重接后使用） */
   flashCode: "flash_code",
   flashMode: "flash_mode",
   /** 高级联机表单（前缀 + code/mode/signaling/stun/nat_stun/app_type） */
   advancedPrefix: "gaoji_p2p_",
   /** 联机页当前标签 */
   activeTab: "active_tab",
+  /** 设置页当前二级标签 */
+  settingTab: "setting_tab",
+  /** 插件管理界面的筛选条件 */
+  pluginFilter: "plugin_filter",
 } as const;
 
 function warn(action: string, key: string, err: unknown): void {

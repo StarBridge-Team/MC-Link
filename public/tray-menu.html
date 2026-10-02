@@ -1,85 +1,130 @@
 <!DOCTYPE html>
+<!--
+  托盘右键菜单。
+
+  这是一个**独立页面**（`WebviewUrl::App("tray-menu.html")`），不走打包器，
+  因此不能 import Varlet，也不能用 `src/lib/api/**`；这里直接经
+  `window.__TAURI_INTERNALS__.invoke` 调用应用自定义命令。
+
+  关于窗口高度：
+  后端有 `set_tray_size`，但它**只 emit `tray-resize` 事件、不改窗口尺寸**
+  （真正的 resize 在 `resize_window` 里）。托盘页没有事件监听栈可用，
+  因此这里直接调 `resize_window`，一次性把窗口高度对齐到内容高度——
+  否则菜单底部会留一块透明或空白。
+
+  配色：托盘窗口不注入应用主题变量，只能用系统亮/暗（`prefers-color-scheme`）。
+-->
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MC Link</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { user-select: none; overflow: hidden; background: transparent; }
-:root { --bg: rgba(30, 30, 46, 0.85); --text: rgba(255,255,255,0.9); }
-@media (prefers-color-scheme: dark) {
-  :root { --hover: rgba(255,255,255,0.10); }
-}
-@media (prefers-color-scheme: light) {
-  :root { --bg: rgba(240, 242, 245, 0.85); --text: rgba(0,0,0,0.85); --hover: rgba(0,0,0,0.07); }
-}
-.menu {
-  background: var(--bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  padding: 4px 0;
-  min-width: 170px;
-  border-radius: 4px;
-}
+  * { margin: 0; padding: 0; box-sizing: border-box; }
 
-@media (prefers-color-scheme: dark) {
-  .menu {
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.3);
+  :root {
+    color-scheme: light dark;
+    --surface: rgba(243, 237, 247, 0.92);
+    --on-surface: #1d1b20;
+    --on-surface-variant: #49454f;
+    --outline: rgba(121, 116, 126, 0.45);
+    --state-hover: rgba(29, 27, 32, 0.08);
+    --radius: 16px;
   }
-}
 
-@media (prefers-color-scheme: light) {
-  .menu {
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.08);
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: rgba(43, 41, 47, 0.92);
+      --on-surface: #e6e0e9;
+      --on-surface-variant: #cac4d0;
+      --outline: rgba(202, 196, 208, 0.28);
+      --state-hover: rgba(230, 224, 233, 0.12);
+    }
   }
-}
 
-.item {
-  width: 100%; border: none; background: var(--bg);
-  color: var(--text); padding: 6px 12px;
-  font-size: 13px; display: flex; align-items: center; gap: 8px;
-  cursor: pointer;
-}
-.item:hover:not(:disabled) { background: var(--hover); }
-.item:disabled { opacity: 0.35; cursor: default; }
-.icon { width: 14px; height: 14px; flex-shrink: 0; }
+  html, body {
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: "Poppins", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+  }
+
+  .menu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--outline);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 9999px;
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 120ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .item:hover { background: var(--state-hover); }
+  .item:active { background: var(--state-hover); }
+  .item--danger:hover { background: rgba(179, 38, 30, 0.14); }
+
+  .icon { width: 16px; height: 16px; flex-shrink: 0; }
+  .item__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 </head>
 <body>
 <div id="menu" class="menu">
-  <button id="openBtn" class="item">
+  <button id="openBtn" class="item" type="button">
     <svg class="icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 14.5A6.5 6.5 0 118 1.5a6.5 6.5 0 010 13z"/>
-      <path d="M5 5h2v6H5zM9 5h2v6H9z"/>
+      <path d="M8 1.5 1.5 5v6L8 14.5 14.5 11V5L8 1.5Zm0 1.7 4.6 2.4L8 8 3.4 5.6 8 3.2ZM3 6.9l4.2 2.2v3.6L3 10.5V6.9Zm5.8 5.8V9.1L13 6.9v3.6l-4.2 2.2Z"/>
     </svg>
-    打开 MC Link
+    <span class="item__label">打开 MC Link</span>
   </button>
-  <button id="exitBtn" class="item">
-    <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
-      <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M10 11l3-3-3-3M13 8H6" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <button id="exitBtn" class="item item--danger" type="button">
+    <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="M6 2H3.5A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14H6M10.5 11 13.5 8l-3-3M13.5 8H6"
+            stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    退出主程序
+    <span class="item__label">退出主程序</span>
   </button>
 </div>
 
 <script>
-const invoke = window.__TAURI_INTERNALS__.invoke;
+  const { invoke } = window.__TAURI_INTERNALS__;
 
-// 菜单高度随内容变化，渲染完后再把窗口调到实际高度。
-// 此前这里靠 `invoke('get_latency')` 的 promise 来延后一帧，但该命令并不存在
-// （联机后端已断开），于是 set_tray_size 也一并失败——窗口尺寸永远不更新。
-window.addEventListener('load', () => {
-  const height = document.getElementById('menu').offsetHeight;
-  invoke('set_tray_size', { width: 180, height });
-});
+  // 菜单高度随内容变化：渲染完把窗口对齐到实际高度，避免底部留白。
+  window.addEventListener('load', () => {
+    const height = document.getElementById('menu').offsetHeight;
+    invoke('resize_window', { width: 200, height, center: false }).catch((error) => {
+      console.error('[tray] 调整菜单尺寸失败:', error);
+    });
+  });
 
-document.getElementById('openBtn').addEventListener('click', () => {
-  invoke('show_main_window');
-});
+  document.getElementById('openBtn').addEventListener('click', () => {
+    invoke('show_main_window').catch((error) => console.error('[tray]', error));
+  });
 
-document.getElementById('exitBtn').addEventListener('click', () => {
-  invoke('exit_app');
-});
+  document.getElementById('exitBtn').addEventListener('click', () => {
+    invoke('exit_app').catch((error) => console.error('[tray]', error));
+  });
 </script>
 </body>
 </html>

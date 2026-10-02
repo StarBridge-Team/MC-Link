@@ -1,7 +1,12 @@
-import { ref, onUnmounted, onDeactivated } from "vue";
+// 无边框窗口的控制：拖动、最小化、最大化、关闭、退出，以及窗口位置记忆。
+//
+// 位置记忆的存储键是 `KEYS.windowState`（冻结），因为它是纯前端数据，
+// 丢了只是窗口回到默认位置，不会造成功能缺失。
+
+import { onDeactivated, onUnmounted, ref } from "vue";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
-import { closeWindow, dragWindow, resizeWindow } from "../lib/api/window";
-import { local, KEYS } from "../lib/persist";
+import { closeWindow, dragWindow, exitApp, resizeWindow } from "../lib/api/window";
+import { KEYS, local } from "../lib/persist";
 
 interface WindowState {
   x: number;
@@ -10,15 +15,17 @@ interface WindowState {
   height: number;
 }
 
+const DEFAULT_SIZE = { width: 960, height: 680, minWidth: 720, minHeight: 520 };
+
 export function useWindowControls() {
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const isDragging = ref(false);
 
   async function saveWindowState() {
     try {
-      const window = getCurrentWindow();
-      const pos = await window.outerPosition();
-      const size = await window.outerSize();
+      const win = getCurrentWindow();
+      const pos = await win.outerPosition();
+      const size = await win.outerSize();
       if (size.width < 100 || size.height < 100) return;
       local.set(KEYS.windowState, {
         x: pos.x,
@@ -27,85 +34,95 @@ export function useWindowControls() {
         height: size.height,
       } satisfies WindowState);
     } catch (e) {
-      console.warn("[窗口] 保存窗口位置失败:", e);
+      console.warn("[window] 保存窗口位置失败:", e);
     }
   }
 
-  function debouncedSaveState() {
+  function scheduleSave() {
     if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveWindowState, 500);
+    saveTimer = setTimeout(() => void saveWindowState(), 500);
   }
 
-  async function restoreWindowState() {
-    const s = local.get<WindowState | null>(KEYS.windowState, null);
-    if (!s) return false;
+  /** 恢复上次的尺寸与位置；没有记录（或记录已失效）时返回 false。 */
+  async function restoreWindowState(): Promise<boolean> {
+    const saved = local.get<WindowState | null>(KEYS.windowState, null);
+    if (!saved) return false;
+    if (saved.width < 100 || saved.height < 100) return false;
     try {
-      if (s.width < 100 || s.height < 100) return false;
       await resizeWindow({
-        width: s.width,
-        height: s.height,
-        minWidth: 700,
-        minHeight: 500,
+        width: saved.width,
+        height: saved.height,
+        minWidth: DEFAULT_SIZE.minWidth,
+        minHeight: DEFAULT_SIZE.minHeight,
         center: false,
       });
-      const window = getCurrentWindow();
-      await window.setPosition(new LogicalPosition(s.x, s.y));
+      await getCurrentWindow().setPosition(new LogicalPosition(saved.x, saved.y));
       return true;
     } catch (e) {
-      console.warn("[窗口] 恢复窗口位置失败:", e);
+      console.warn("[window] 恢复窗口位置失败:", e);
       return false;
     }
   }
 
   async function setDefaultWindowSize() {
     await resizeWindow({
-      width: 900,
-      height: 650,
-      minWidth: 700,
-      minHeight: 500,
+      width: DEFAULT_SIZE.width,
+      height: DEFAULT_SIZE.height,
+      minWidth: DEFAULT_SIZE.minWidth,
+      minHeight: DEFAULT_SIZE.minHeight,
       center: true,
     });
     await saveWindowState();
   }
 
   async function setupWindowStateListeners() {
-    const window = getCurrentWindow();
-    await window.onResized(debouncedSaveState);
-    await window.onMoved(debouncedSaveState);
+    const win = getCurrentWindow();
+    await win.onResized(scheduleSave);
+    await win.onMoved(scheduleSave);
   }
 
   function startDrag() {
-    // 拖动失败不影响后续交互，只记录
-    void dragWindow().catch((e) => console.warn("[窗口] 拖动失败:", e));
+    void dragWindow().catch((e) => console.warn("[window] 拖动失败:", e));
     isDragging.value = true;
     setTimeout(() => (isDragging.value = false), 200);
   }
 
   async function handleMinimize() {
     try {
-      const window = await getCurrentWindow();
-      await window.minimize();
-    } catch (error) {
-      console.error("Minimize error:", error);
+      await getCurrentWindow().minimize();
+    } catch (e) {
+      console.warn("[window] 最小化失败:", e);
     }
   }
 
   async function handleMaximize() {
     try {
-      const window = await getCurrentWindow();
-      if (await window.isMaximized()) {
-        await window.unmaximize();
-      } else {
-        await window.maximize();
-      }
-    } catch (error) {
-      console.error("Maximize error:", error);
+      const win = getCurrentWindow();
+      if (await win.isMaximized()) await win.unmaximize();
+      else await win.maximize();
+    } catch (e) {
+      console.warn("[window] 最大化失败:", e);
     }
   }
 
+  /** 关闭窗口（保留托盘，应用仍在后台运行）。 */
   async function handleClose() {
     await saveWindowState();
-    await closeWindow();
+    try {
+      await closeWindow();
+    } catch (e) {
+      console.warn("[window] 关闭窗口失败:", e);
+    }
+  }
+
+  /** 完全退出应用（与 `handleClose` 的区别见 `lib/api/window.ts`）。 */
+  async function handleExit() {
+    await saveWindowState();
+    try {
+      await exitApp();
+    } catch (e) {
+      console.warn("[window] 退出应用失败:", e);
+    }
   }
 
   function clearTimers() {
@@ -126,5 +143,6 @@ export function useWindowControls() {
     handleMinimize,
     handleMaximize,
     handleClose,
+    handleExit,
   };
 }

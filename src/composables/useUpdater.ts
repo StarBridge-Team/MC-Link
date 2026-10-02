@@ -38,13 +38,22 @@ import type {
  *     await updater.download();        // 可选：让用户看到进度
  *     await updater.install();         // 应用会在约 0.6 秒后退出并重启
  *   } else {
- *     // 用 updater.manualUrl.value 打开浏览器，或展示 updater.blockedMessage.value
+ *     // 用 updater.manualUrl.value 打开浏览器，或按 updater.blockedReason.value 显示原因
  *   }
  * }
  * ```
  *
  * 强制更新时（`latest.mandatory`）界面不应提供"稍后再说"。
  */
+/**
+ * 不能自动更新的原因代号（不是给人看的文案）。
+ *
+ * `dev` / `self-built` 由构建渠道推导；`unsupported` 表示渠道允许但当前形态无对应包；
+ * `no-asset` 表示清单里没有匹配本安装形态的包。界面负责把代号翻成 `update.*` 文案；
+ * 若收到的是后端原文（例如下载失败原因），直接展示即可。
+ */
+export type UpdateBlockReason = "dev" | "self-built" | "unsupported" | "no-asset";
+
 export function useUpdater() {
   const checking = ref(false);
   const downloading = ref(false);
@@ -82,16 +91,14 @@ export function useUpdater() {
   /** 是否强制更新 */
   const mandatory = computed(() => latest.value?.mandatory === true);
 
-  /** 不能自动更新时给用户看的说明（由构建渠道推导） */
-  const blockedMessage = computed(() => {
-    switch (buildChannel.value) {
-      case "dev":
-        return "当前是开发构建，不参与自动更新";
-      case "self-built":
-        return "当前是自行构建的版本，不会自动替换程序文件；请手动下载安装包";
-      default:
-        return null;
-    }
+  /**
+   * 不能自动更新的原因代号（界面据此取文案，不在 composable 里写死中文）。
+   * 文案在 `i18n` 的 `update.blockedDev` / `update.blockedSelfBuilt` / `update.noAsset`。
+   */
+  const blockedReason = computed<UpdateBlockReason | null>(() => {
+    if (buildChannel.value === "dev") return "dev";
+    if (buildChannel.value === "self-built") return "self-built";
+    return null;
   });
 
   let unlisten: UnlistenFn | null = null;
@@ -160,9 +167,9 @@ export function useUpdater() {
    */
   async function install() {
     if (!updateAllowed.value) {
-      const msg = blockedMessage.value ?? "当前构建不支持自动更新，请手动下载安装包";
-      error.value = msg;
-      throw new Error(msg);
+      const reason: UpdateBlockReason = blockedReason.value ?? "unsupported";
+      error.value = reason;
+      throw new Error(reason);
     }
 
     const asset = requireAsset();
@@ -202,11 +209,9 @@ export function useUpdater() {
   function requireAsset() {
     const asset = latest.value?.asset;
     if (!asset) {
-      const msg =
-        blockedMessage.value ??
-        "该版本未提供适配当前安装形态的更新包，请手动下载安装包";
-      error.value = msg;
-      throw new Error(msg);
+      const reason: UpdateBlockReason = blockedReason.value ?? "no-asset";
+      error.value = reason;
+      throw new Error(reason);
     }
     return asset;
   }
@@ -238,7 +243,7 @@ export function useUpdater() {
     manualUrl,
     isPortable,
     mandatory,
-    blockedMessage,
+    blockedReason,
     // 动作
     check,
     download,

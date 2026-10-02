@@ -1,0 +1,273 @@
+/* ============================================================
+ *  基础样式与通用工具类
+ *
+ *  这里只放三类东西：
+ *  1. reset 与外壳布局（窗口是全透明无边框的，body 必须保持透明）；
+ *  2. 与主题无关的通用工具类（页面里反复出现的小结构）；
+ *  3. Varlet 组件的少量 M3 修正（默认值来自其 MD3 主题对象，这里只补差异）。
+ * ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  font-family: var(--font-sans);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--outline) 60%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--outline) 55%, transparent);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--outline) 80%, transparent);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  /* 窗口透明 + 系统材质（Mica / Acrylic / vibrancy）需要页面本身透出去 */
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  height: 100%;
+}
+
+/* 只有真正的内容区域允许选中文字，其余（标题栏、按钮、列表）保持不可选。 */
+.selectable,
+input,
+textarea,
+code,
+pre {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+/* ============================================================
+ *  通用工具类
+ * ============================================================ */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.row--between {
+  justify-content: space-between;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.scroll-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-6);
+  scrollbar-gutter: stable;
+}
+
+.page-title {
+  font-size: var(--fs-headline);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  line-height: var(--lh-tight);
+}
+
+.section-title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.field-label {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
+.hint {
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+  line-height: var(--lh-normal);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 圆角图标容器：设置卡片标题、空状态等复用 */
+.icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  font-size: 20px;
+}
+
+.icon-badge--small {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  border-radius: var(--r-sm);
+}
+
+/* ============================================================
+ *  Varlet 修正
+ *
+ *  组件级颜色/圆角已由 `Themes.md3Light|Dark` 提供；这里只补它没覆盖到的部分。
+ * ============================================================ */
+
+/* 弹层与对话框统一 M3 观感（默认偏"安卓卡片"，圆角与阴影需要抬到 M3 规格）。 */
+.var-dialog {
+  border-radius: var(--r-xl);
+  background: var(--surface-container-high);
+  color: var(--text-primary);
+}
+
+.var-dialog__title {
+  color: var(--text-primary);
+}
+
+.var-dialog__message {
+  color: var(--text-secondary);
+}
+
+.var-snackbar {
+  border-radius: var(--r-sm);
+  background: var(--inverse-surface);
+  color: var(--inverse-on-surface);
+}
+
+/* 侧边导航：选中态用 secondary-container，与 M3 Navigation Rail 一致。 */
+.var-rail-navigation {
+  background: transparent;
+  width: var(--rail-width);
+  padding: var(--sp-2) 0;
+  gap: var(--sp-1);
+  border-radius: 0;
+}
+
+.var-rail-navigation-item {
+  border-radius: var(--r-full);
+}
+
+/* 开关/复选/单选/滑块的强调色跟随 M3 primary */
+.var-switch__track,
+.var-slider__track {
+  border-radius: var(--r-full);
+}
+
+/* 表格：M3 里表格只是分隔线，不加外框 */
+.var-table {
+  border-radius: 0;
+  background: transparent;
+}
+
+/* 进度条 */
+.var-progress__track {
+  border-radius: var(--r-full);
+}
+
+/* 卡片默认贴合 M3「filled card」：低对比表面 + 无阴影 */
+.var-card {
+  border-radius: var(--r-md);
+  background: var(--surface-container-low);
+  color: var(--text-primary);
+}
+
+/* 页面级淡入：路由切换用，随「动画速度」缩放 */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity var(--motion-medium) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-standard);
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.page-leave-to {
+  opacity: 0;
+}
