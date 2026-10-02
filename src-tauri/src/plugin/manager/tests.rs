@@ -16,10 +16,17 @@ fn manager_registers_builtin_adapter() {
     let dir = temp_dir();
     let mgr = PluginManager::new(&dir).unwrap();
     let records = mgr.list();
-    assert_eq!(records.len(), 1);
-    assert_eq!(records[0].manifest.id, TERRACOTTA_PLUGIN_ID);
-    assert_eq!(records[0].source, PluginSource::Builtin);
-    assert!(records[0].permissions.contains(Permission::NetListenLocal));
+    assert_eq!(records.len(), 3);
+    let ids: Vec<&str> = records.iter().map(|r| r.manifest.id.as_str()).collect();
+    assert!(ids.contains(&TERRACOTTA_PLUGIN_ID));
+    assert!(ids.contains(&MINECRAFT_DETECTOR_PLUGIN_ID));
+    assert!(ids.contains(&MINECRAFT_COUPLER_PLUGIN_ID));
+    assert!(records.iter().all(|r| r.source == PluginSource::Builtin));
+    let terra = records
+        .iter()
+        .find(|r| r.manifest.id == TERRACOTTA_PLUGIN_ID)
+        .unwrap();
+    assert!(terra.permissions.contains(Permission::NetListenLocal));
 }
 
 #[test]

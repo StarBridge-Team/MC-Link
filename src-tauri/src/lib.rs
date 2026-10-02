@@ -21,6 +21,7 @@ mod plugin;
 mod setting_meta;
 mod setup;
 mod tray;
+mod action;
 mod update;
 use m3::commands::*;
 
@@ -31,7 +32,7 @@ use state::AppState;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 /// 初始化插件子系统。
@@ -48,6 +49,15 @@ fn init_plugin_subsystem(app: &tauri::App, data_dir: &std::path::Path) -> Result
             eprintln!("[插件] 网关启动失败，外部插件将不可用: {}", e);
         }
     });
+    Ok(())
+}
+
+/// 重新执行所有打开动作（首页刷新按钮触发，用于重新扫描局域网游戏）。
+#[tauri::command]
+async fn run_open_actions(app: AppHandle) -> Result<(), String> {
+    let mgr: Arc<crate::action::ActionManager> =
+        app.state::<Arc<crate::action::ActionManager>>().inner().clone();
+    mgr.run_open_actions(app).await;
     Ok(())
 }
 
@@ -90,6 +100,16 @@ pub fn run() {
             if let Err(e) = init_plugin_subsystem(app, &data_dir) {
                 eprintln!("[插件] 子系统初始化失败: {}", e);
             }
+
+            // 应用打开时动作管理器：注册内置打开动作（扫描局域网游戏）并在启动后执行。
+            let action_mgr = Arc::new(crate::action::ActionManager::new());
+            crate::action::register_builtin_open_actions(&action_mgr);
+            app.manage(action_mgr.clone());
+            let am = action_mgr.clone();
+            let apph = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                am.run_open_actions(apph).await;
+            });
             // 用已保存的设置预应用窗口效果，避免启动瞬间先闪一下平台默认效果
             let effect_name = mgr
                 .read()
@@ -228,6 +248,7 @@ pub fn run() {
             plugin_set_grants,
             plugin_set_blocked,
             plugin_reload,
+            run_open_actions,
         ])
         .build(context)
         .expect("error while building tauri application");

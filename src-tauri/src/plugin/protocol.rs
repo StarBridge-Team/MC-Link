@@ -278,6 +278,19 @@ pub struct GameInfo {
     pub extra: BTreeMap<String, String>,
 }
 
+/// 本地游戏发现结果（核心编排扫描后回传前端首页展示）。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LocalGameFound {
+    /// 游戏进程可执行文件名。
+    pub process: String,
+    /// 游戏展示名。
+    pub game_name: String,
+    /// 命中的扫描器（detector）插件展示名。
+    pub scanner: String,
+    /// 推荐的适配器（adapter）插件展示名。
+    pub adapter: String,
+}
+
 /// 房间信息。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RoomInfo {

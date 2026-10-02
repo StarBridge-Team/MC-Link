@@ -6,5 +6,9 @@
 //! 区别只是传输从回环 WebSocket 换成进程内直调。
 
 pub mod terracotta;
+pub mod minecraft_scanner;
+pub mod minecraft_coupler;
 
 pub use terracotta::{TerracottaProvider, PLUGIN_ID as TERRACOTTA_PLUGIN_ID};
+pub use minecraft_scanner::{MinecraftScannerProvider, PLUGIN_ID as MINECRAFT_DETECTOR_PLUGIN_ID};
+pub use minecraft_coupler::{MinecraftCouplerProvider, PLUGIN_ID as MINECRAFT_COUPLER_PLUGIN_ID};
