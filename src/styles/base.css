@@ -216,12 +216,10 @@ m3e-theme {
   font-family: var(--font-sans);
 }
 
-/* 卡片去掉水波（ripple）反馈：保留 actionable 的悬停/焦点状态层，
- * 只把那道扩散圈关掉。`--m3e-ripple-opacity` 由 <m3e-ripple> 读取，
- * 自定义属性会穿透 shadow 边界传进去。 */
-m3e-card {
-  --m3e-ripple-opacity: 0;
-}
+/* 卡片不用 `actionable`：它的波纹是 WAAPI 驱动的，`--m3e-ripple-opacity` 关不掉。
+ * 组件在非 actionable 时会自行 `display: none` 掉 ripple / state-layer / focus-ring，
+ * 而设置卡片本就是静态容器（不可点），去掉 actionable 既消波纹也更贴合语义。
+ * 观感保留 `variant="elevated"`。 */
 
 /* ============================================================
  *  @m3e/web 组件微调

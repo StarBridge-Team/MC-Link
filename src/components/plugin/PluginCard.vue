@@ -100,7 +100,6 @@ function toggleBlocked(e: Event) {
 <template>
   <m3e-card
     variant="elevated"
-    actionable
     class="plugin"
     :class="{ 'is-disabled': !plugin.enabled, 'is-blocked': plugin.trust === 'blocked' }"
   >
