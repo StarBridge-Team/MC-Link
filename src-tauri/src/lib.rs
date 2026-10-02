@@ -20,6 +20,7 @@ mod deep_link;
 mod setting_meta;
 mod setup;
 mod legal;
+mod community;
 mod m3;
 use m3::commands::*;
 
@@ -206,6 +207,8 @@ pub fn run() {
             complete_setup_command,
             update_setup_command,
             reset_setup_command,
+            community_fetch_command,
+            community_clear_cache_command,
             legal_fetch_command,
             accept_eula_command,
             set_first_game_command,

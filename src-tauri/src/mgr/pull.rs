@@ -33,6 +33,15 @@ impl<'a> PullMgr<'a> {
         crate::setting_meta::fetch_setting_manifest(self.mgr.data_dir(), self.mgr.http()).await
     }
 
+    /// 拉取社区信息（GitHub 贡献者与 Issues）。
+    ///
+    /// **不持 `pull_lock`**：它访问的是 GitHub，和资产同步没有共享状态；共用一把锁
+    /// 会让"关于"页在 8MB 适配器下载期间一直转圈（与 `check_update` 同样的取舍）。
+    /// 它自己只写 `Cache/Community/` 下两份专属缓存，且是原子写。
+    pub async fn community(&self) -> crate::community::Community {
+        crate::community::fetch(self.mgr.data_dir(), self.mgr.http()).await
+    }
+
     /// 下载更新包。
     ///
     /// 用**独立的 `update_lock`**：更新包动辄十几 MB，若与资产/页面/设置元共用

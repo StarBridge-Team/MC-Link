@@ -40,6 +40,16 @@ impl<'a> WriteMgr<'a> {
         crate::setting_meta::clear_setting_meta_cache(self.mgr.data_dir())
     }
 
+    /// 清理社区信息缓存（GitHub 贡献者与 Issues），是"重新拉取"的入口。
+    pub fn clear_community_cache(&self) -> Result<(), String> {
+        let _guard = self
+            .mgr
+            .write_lock
+            .lock()
+            .map_err(|e| format!("获取写锁失败: {}", e))?;
+        crate::community::clear_cache(self.mgr.data_dir())
+    }
+
     /// 完成首次引导：保存语言与地区并标记已完成。
     pub fn complete_setup(&self, language: &str, region: &str) -> Result<(), String> {
         let _guard = self
