@@ -65,6 +65,23 @@ function savePlayerName() {
   local.setString(KEYS.playerName, playerName.value.trim());
   showSuccess(t("common.saved"));
 }
+
+// m3e-select 的选中值经 `change` 事件回传（原生 CustomEvent），
+// 值本身仍是字符串代码，这里读出来后再触发保存。
+function selectValue(e: Event): string {
+  const el = e.target as HTMLElement & { value?: string };
+  return el.value ?? "";
+}
+
+function onLanguageChange(e: Event) {
+  language.value = selectValue(e);
+  void persistLocale();
+}
+
+function onRegionChange(e: Event) {
+  region.value = selectValue(e);
+  void persistLocale();
+}
 </script>
 
 <template>
@@ -79,38 +96,34 @@ function savePlayerName() {
         <div class="locale">
           <div class="locale__field">
             <span class="field-label">{{ t("general.language") }}</span>
-            <var-select
-              v-model="language"
-              :options="languageOptions"
-              :placeholder="t('general.language')"
-              @update:model-value="persistLocale"
-            />
+            <m3e-select :value="language" @change="onLanguageChange">
+              <m3e-option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </m3e-option>
+            </m3e-select>
           </div>
           <div class="locale__field">
             <span class="field-label">{{ t("general.region") }}</span>
-            <var-select
-              v-model="region"
-              :options="regionOptions"
-              :placeholder="t('general.region')"
-              @update:model-value="persistLocale"
-            />
+            <m3e-select :value="region" @change="onRegionChange">
+              <m3e-option v-for="opt in regionOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </m3e-option>
+            </m3e-select>
           </div>
-          <var-button type="primary" :loading="savingLocale" @click="persistLocale">
+          <m3e-button variant="filled" :disabled="savingLocale" @click="persistLocale">
             {{ t("common.save") }}
-          </var-button>
+          </m3e-button>
         </div>
         <p class="hint">{{ t("general.regionHint") }}</p>
       </SettingCard>
 
       <SettingCard :icon="'person'" :title="t('general.playerTitle')">
         <div class="player">
-          <var-input
-            v-model="playerName"
-            class="player__input"
-            :placeholder="t('general.playerNamePlaceholder')"
-            :maxlength="32"
-          />
-          <var-button type="primary" @click="savePlayerName">{{ t("common.save") }}</var-button>
+          <m3e-form-field variant="outlined" class="player__input">
+            <label slot="label">{{ t("general.playerName") }}</label>
+            <input v-model="playerName" maxlength="32" :placeholder="t('general.playerNamePlaceholder')" />
+          </m3e-form-field>
+          <m3e-button variant="filled" @click="savePlayerName">{{ t("common.save") }}</m3e-button>
         </div>
       </SettingCard>
 

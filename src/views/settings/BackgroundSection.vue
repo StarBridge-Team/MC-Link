@@ -118,13 +118,13 @@ function applyBackgroundUrl() {
   });
 }
 
-function setOverlayEnabled(value: unknown) {
-  settings.patch({ background_overlay: value !== false });
+function onOverlayToggle(e: Event) {
+  settings.patch({ background_overlay: (e.target as HTMLInputElement).checked });
 }
 
-function setOverlayOpacity(value: number | number[]) {
-  const n = Array.isArray(value) ? value[0] : value;
-  settings.patch({ background_overlay_opacity: typeof n === "number" ? n : 0 });
+function onOverlayOpacity(e: Event) {
+  const value = (e.target as HTMLElement & { value?: number }).value;
+  settings.patch({ background_overlay_opacity: typeof value === "number" ? value : 0 });
 }
 
 function setMusicMode(value: string) {
@@ -184,12 +184,10 @@ function applyMusicUrl() {
           <div class="field-label">{{ t("background.url") }}</div>
           <!-- 回车监听挂在外层容器上：DOM 事件会冒泡，比依赖组件转发原生事件更可靠 -->
           <div class="url-row" @keyup.enter="applyBackgroundUrl">
-            <var-input
-              v-model="bgUrlInput"
-              class="url-row__input"
-              :placeholder="t('background.urlPlaceholder')"
-            />
-            <var-button type="primary" @click="applyBackgroundUrl">{{ t("common.apply") }}</var-button>
+            <m3e-form-field variant="outlined" class="url-row__input">
+              <input v-model="bgUrlInput" :placeholder="t('background.urlPlaceholder')" />
+            </m3e-form-field>
+            <m3e-button variant="filled" @click="applyBackgroundUrl">{{ t("common.apply") }}</m3e-button>
           </div>
 
           <p v-if="state.background_value" class="hint">
@@ -201,18 +199,19 @@ function applyMusicUrl() {
 
       <SettingCard :icon="'layers'" :title="t('background.overlay')" :desc="t('background.overlayDesc')">
         <FieldRow :label="t('background.overlay')">
-          <var-switch :model-value="state.background_overlay" @update:model-value="setOverlayEnabled" />
+          <m3e-switch :checked="state.background_overlay" @change="onOverlayToggle" />
         </FieldRow>
         <FieldRow v-if="state.background_overlay" :label="t('background.overlayOpacity')">
           <div class="slider-row">
-            <var-slider
+            <m3e-slider
               class="slider-row__slider"
-              :model-value="state.background_overlay_opacity"
               :min="0"
               :max="100"
               :step="5"
-              @update:model-value="setOverlayOpacity"
-            />
+              @change="onOverlayOpacity"
+            >
+              <m3e-slider-thumb :value="state.background_overlay_opacity" />
+            </m3e-slider>
             <span class="slider-row__value mono">{{ Math.round(state.background_overlay_opacity) }}%</span>
           </div>
         </FieldRow>
@@ -244,12 +243,10 @@ function applyMusicUrl() {
         </template>
 
         <div v-if="state.music_mode === 'url'" class="url-row" @keyup.enter="applyMusicUrl">
-          <var-input
-            v-model="musicUrlInput"
-            class="url-row__input"
-            :placeholder="t('background.musicUrlPlaceholder')"
-          />
-          <var-button type="primary" @click="applyMusicUrl">{{ t("common.apply") }}</var-button>
+          <m3e-form-field variant="outlined" class="url-row__input">
+            <input v-model="musicUrlInput" :placeholder="t('background.musicUrlPlaceholder')" />
+          </m3e-form-field>
+          <m3e-button variant="filled" @click="applyMusicUrl">{{ t("common.apply") }}</m3e-button>
         </div>
       </SettingCard>
     </div>

@@ -5,15 +5,14 @@
 // 各自写一份（`App.vue` 读进 ref、设置页读进另一个对象），于是"改了没反应"
 // 或者"退出后没保存"这类问题无法定位。**任何需要读写这些字段的界面都来这里取。**
 //
-// 配色由组件库（Varlet 的 `Themes.md3Light/md3Dark`）生成，见 `lib/theme.ts`；
-// 这里只负责明暗开关，不再自己算 M3 去覆盖组件库。
+// 配色由 `<m3e-theme>` 的动态配色生成（`scheme` 绑定在 App.vue）；
+// 这里只负责明暗状态与 `.dark` 钩子类。
 
 import { computed, reactive, ref } from "vue";
 import { getPersonalization, savePersonalization } from "../lib/api/config";
 import { getDefaultEffect, setWindowDarkMode, setWindowEffect } from "../lib/api/effect";
 import type { PersonalizationSettings } from "../lib/api/types";
 import { applyBackground, resolveMediaUrl } from "../lib/appearance/background";
-import { applyTheme } from "../lib/theme";
 
 /** 后端 `config/mod.rs` 的默认值镜像（读不到配置时的兜底）。 */
 export function defaultSettings(): PersonalizationSettings {
@@ -74,12 +73,10 @@ function syncWindowDark(dark: boolean) {
 }
 
 /**
- * 顶栏透明、动画速度、明暗（class + 组件库主题）、窗口材质与 DWM 暗色。
+ * 顶栏透明、动画速度、明暗钩子类、窗口材质与 DWM 暗色。
  *
- * 明暗有两套消费者、两个开关：
- * - 组件库（Varlet）的配色由 `applyTheme` 切 `Themes.md3Light/md3Dark`；
- * - 本项目自己的组件颜色靠 `tokens.css` 在 `.dark` 下的基线值，
- *   所以这里要给 `<html>` 切上 `.dark` 这个钩子类。
+ * 组件库配色由 `<m3e-theme>` 的动态配色负责（`scheme` 绑定在 `App.vue`）；
+ * 这里给 `<html>` 切 `.dark` 是为了 `tokens.css` 里字面量兜底段与非 m3e 组件。
  */
 function applyChrome() {
   const root = document.documentElement;
@@ -90,7 +87,6 @@ function applyChrome() {
     "--anim-speed",
     String(state.animation_enabled ? state.animation_speed : 1),
   );
-  applyTheme(isDark.value);
   syncWindowDark(isDark.value);
   void setWindowEffect(state.transparent_effect || platformDefaultEffect.value).catch(
     () => undefined,

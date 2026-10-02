@@ -26,7 +26,6 @@
     "@tauri-apps/api": "^2.12.1",
     "@tauri-apps/plugin-deep-link": "^2.4.9",
     "@tauri-apps/plugin-opener": "^2",
-    "@varlet/ui": "^3.20.6",
     "@vue/shared": "^3.5.40",
     "clsx": "^2.1.1",
     "material-symbols": "^0.47.6",

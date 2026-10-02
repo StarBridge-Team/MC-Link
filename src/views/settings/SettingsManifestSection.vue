@@ -86,6 +86,12 @@ function optionsOf(field: FieldMeta) {
   return field.options.map((o) => ({ label: o.label || o.value, value: o.value }));
 }
 
+/** m3e-select 的选中值经 change 事件回传。 */
+function selectValue(e: Event): string {
+  const el = e.target as HTMLElement & { value?: string };
+  return el.value ?? "";
+}
+
 function isSwitchOn(field: FieldMeta): boolean {
   const raw = valueOf(field).trim().toLowerCase();
   return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
@@ -111,39 +117,43 @@ function isSwitchOn(field: FieldMeta): boolean {
           </div>
           <p v-if="field.description" class="hint">{{ field.description }}</p>
 
-          <var-switch
+          <m3e-switch
             v-if="field.type === 'switch'"
-            :model-value="isSwitchOn(field)"
-            @update:model-value="(v: unknown) => setValue(field, v ? 'true' : 'false')"
+            :checked="isSwitchOn(field)"
+            @change="(e: Event) => setValue(field, (e.target as HTMLInputElement).checked ? 'true' : 'false')"
           />
-          <var-select
+          <m3e-select
             v-else-if="field.type === 'select' || field.type === 'chips'"
-            :model-value="valueOf(field)"
-            :options="optionsOf(field)"
-            @update:model-value="(v: string) => setValue(field, String(v))"
-          />
-          <var-input
-            v-else-if="field.type === 'textarea'"
-            :model-value="valueOf(field)"
-            textarea
-            :rows="3"
-            :placeholder="field.placeholder"
-            @update:model-value="(v: string) => setValue(field, String(v))"
-          />
-          <var-input
-            v-else
-            :model-value="valueOf(field)"
-            :type="field.type === 'number' || field.type === 'slider' ? 'number' : field.type === 'password' ? 'password' : 'text'"
-            :placeholder="field.placeholder"
-            @update:model-value="(v: string) => setValue(field, String(v))"
-          />
+            :value="valueOf(field)"
+            @change="(e: Event) => setValue(field, selectValue(e))"
+          >
+            <m3e-option v-for="opt in optionsOf(field)" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </m3e-option>
+          </m3e-select>
+          <m3e-form-field v-else-if="field.type === 'textarea'" variant="outlined">
+            <textarea
+              rows="3"
+              :placeholder="field.placeholder"
+              :value="valueOf(field)"
+              @input="(e: Event) => setValue(field, (e.target as HTMLTextAreaElement).value)"
+            />
+          </m3e-form-field>
+          <m3e-form-field v-else variant="outlined">
+            <input
+              :type="field.type === 'number' || field.type === 'slider' ? 'number' : field.type === 'password' ? 'password' : 'text'"
+              :placeholder="field.placeholder"
+              :value="valueOf(field)"
+              @input="(e: Event) => setValue(field, (e.target as HTMLInputElement).value)"
+            />
+          </m3e-form-field>
         </div>
       </div>
 
       <div class="actions">
-        <var-button type="primary" :loading="saving === section.meta.section" @click="save(section)">
+        <m3e-button variant="filled" :disabled="saving === section.meta.section" @click="save(section)">
           {{ t("common.save") }}
-        </var-button>
+        </m3e-button>
       </div>
     </SettingCard>
   </div>

@@ -150,21 +150,20 @@ const nextDisabled = computed(() => {
       </div>
 
       <footer class="oobe__foot">
-        <var-button text :disabled="!canGoBack" @click="goBack">
-          <i class="material-symbols-rounded">arrow_back</i>
+        <m3e-button :disabled="!canGoBack" @click="goBack">
+          <m3e-icon slot="icon" name="arrow_back" />
           <span>{{ t("oobe.back") }}</span>
-        </var-button>
+        </m3e-button>
         <span class="grow" />
         <!-- EULA 步骤的确认按钮在正文旁边，这里只保留前进/完成 -->
-        <var-button
+        <m3e-button
           v-if="step !== 'eula'"
-          type="primary"
-          :disabled="nextDisabled"
-          :loading="busy"
+          variant="filled"
+          :disabled="nextDisabled || busy"
           @click="goNext"
         >
           {{ step === "game" ? t("oobe.finish") : t("oobe.next") }}
-        </var-button>
+        </m3e-button>
       </footer>
     </div>
   </div>

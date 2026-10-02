@@ -9,7 +9,7 @@ import { useSettings } from "../../composables/useSettings";
 /**
  * 个性化 → 外观。
  *
- * 颜色由组件库（Varlet 的 MD3 主题）生成，这里不提供自定义配色——
+ * 颜色由组件库（@m3e/web 的动态配色）生成，这里不提供自定义配色——
  * 之前的"种子色 + 变体 + 对比度"覆盖层配色很难看且和组件库打架，已撤掉。
  * 这一页只负责：明暗模式、窗口材质、界面动画。
  *
@@ -43,19 +43,14 @@ function setEffect(value: string) {
   settings.patch({ transparent_effect: value });
 }
 
-// Varlet 的开关/滑块在类型上允许 number | number[]（区间模式），
-// 这里统一收敛成配置需要的标量，避免把数组写进 yml。
-function firstNumber(value: number | number[]): number {
-  const n = Array.isArray(value) ? value[0] : value;
-  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+// m3e 控件的值经原生事件回传，这里统一收敛成配置需要的标量。
+function onAnimationToggle(e: Event) {
+  settings.patch({ animation_enabled: (e.target as HTMLInputElement).checked });
 }
 
-function setAnimationEnabled(value: unknown) {
-  settings.patch({ animation_enabled: value !== false });
-}
-
-function setAnimationSpeed(value: number | number[]) {
-  settings.patch({ animation_speed: firstNumber(value) });
+function onAnimationSpeed(e: Event) {
+  const value = (e.target as HTMLElement & { value?: number }).value;
+  settings.patch({ animation_speed: typeof value === "number" ? value : 1 });
 }
 </script>
 
@@ -82,21 +77,22 @@ function setAnimationSpeed(value: number | number[]) {
 
       <SettingCard :icon="'auto_awesome'" :title="t('appearance.animation')" :desc="t('appearance.animationDesc')" wide>
         <FieldRow :label="t('appearance.animation')">
-          <var-switch
-            :model-value="state.animation_enabled"
-            @update:model-value="setAnimationEnabled"
+          <m3e-switch
+            :checked="state.animation_enabled"
+            @change="onAnimationToggle"
           />
         </FieldRow>
         <FieldRow v-if="state.animation_enabled" :label="t('appearance.animationSpeed')">
           <div class="slider-row">
-            <var-slider
+            <m3e-slider
               class="slider-row__slider"
-              :model-value="state.animation_speed"
               :min="0.25"
               :max="2"
               :step="0.25"
-              @update:model-value="setAnimationSpeed"
-            />
+              @change="onAnimationSpeed"
+            >
+              <m3e-slider-thumb :value="state.animation_speed" />
+            </m3e-slider>
             <span class="slider-row__value mono">{{ state.animation_speed }}x</span>
           </div>
         </FieldRow>

@@ -4,7 +4,7 @@
  *  这里只放三类东西：
  *  1. reset 与外壳布局（窗口是全透明无边框的，body 必须保持透明）；
  *  2. 与主题无关的通用工具类（页面里反复出现的小结构）；
- *  3. Varlet 组件的少量 M3 修正（默认值来自其 MD3 主题对象，这里只补差异）。
+ *  3. @m3e/web 组件的少量布局修正。
  * ============================================================ */
 
 *,
@@ -212,32 +212,11 @@ m3e-icon {
 }
 
 /* ============================================================
- *  Varlet 修正
+ *  @m3e/web 组件微调
  *
- *  组件级配色由组件库自带（Varlet 的 MD3 主题，在 `lib/theme.ts` 切换），
- *  本项目不覆盖它。这里只补它没覆盖到的地方：弹层/对话框的圆角与阴影抬到 M3 规格。
+ *  组件级配色由 `<m3e-theme>` 的动态配色驱动，本项目不覆盖它。
+ *  这里只补布局/宽度上的差异。
  * ============================================================ */
-
-/* 弹层与对话框统一 M3 观感（默认偏"安卓卡片"，圆角与阴影需要抬到 M3 规格）。 */
-.var-dialog {
-  border-radius: var(--r-xl);
-  background: var(--surface-container-high);
-  color: var(--text-primary);
-}
-
-.var-dialog__title {
-  color: var(--text-primary);
-}
-
-.var-dialog__message {
-  color: var(--text-secondary);
-}
-
-.var-snackbar {
-  border-radius: var(--r-sm);
-  background: var(--inverse-surface);
-  color: var(--inverse-on-surface);
-}
 
 /* 导航栏（@m3e/web）：紧凑宽度对齐旧设计稿的 76px，默认是 96px。 */
 m3e-nav-rail {
@@ -248,30 +227,6 @@ m3e-nav-rail {
 m3e-nav-menu {
   --m3e-nav-menu-padding-top: var(--sp-3);
   --m3e-nav-menu-padding-bottom: var(--sp-3);
-}
-
-/* 开关/复选/单选/滑块的强调色跟随 M3 primary */
-.var-switch__track,
-.var-slider__track {
-  border-radius: var(--r-full);
-}
-
-/* 表格：M3 里表格只是分隔线，不加外框 */
-.var-table {
-  border-radius: 0;
-  background: transparent;
-}
-
-/* 进度条 */
-.var-progress__track {
-  border-radius: var(--r-full);
-}
-
-/* 卡片默认贴合 M3「filled card」：低对比表面 + 无阴影 */
-.var-card {
-  border-radius: var(--r-md);
-  background: var(--card-bg);
-  color: var(--text-primary);
 }
 
 /* 页面级淡入：路由切换用，随「动画速度」缩放 —— 纯对称交叉淡入，

@@ -16,7 +16,7 @@ import type { M3Roles, M3Scheme, M3Variant } from "../lib/m3/types";
  * 配色实验室（`/m3`）。
  *
  * 纯**预览**工具：用任意种子色 + 变体 + 对比度生成一套 M3 配色，把调色板与角色
- * 展示出来，并可复制 JSON。**它不再写进应用主题**——应用配色由组件库（Varlet 的
+ * 展示出来，并可复制 JSON。**它不再写进应用主题**——应用配色由组件库（@m3e/web
  * MD3 主题）生成，见 `lib/theme.ts`。这里只是个配色生成器，方便挑颜色。
  *
  * 方案优先由后端 `generate_m3_scheme`（成熟 crate）计算；非 Tauri 环境或调用失败时
@@ -113,9 +113,9 @@ function setVariant(value: M3Variant) {
   variant.value = value;
 }
 
-function setContrast(value: number | number[]) {
-  const n = Array.isArray(value) ? value[0] : value;
-  contrast.value = typeof n === "number" ? n : 0;
+function onContrastChange(e: Event) {
+  const value = (e.target as HTMLElement & { value?: number }).value;
+  contrast.value = typeof value === "number" ? value : 0;
 }
 
 async function copyScheme() {
@@ -165,14 +165,15 @@ watch([seed, variant, contrast], () => void regenerate());
 
         <FieldRow :label="t('m3.contrast')">
           <div class="slider-row">
-            <var-slider
+            <m3e-slider
               class="slider-row__slider"
-              :model-value="contrast"
               :min="M3_CONTRAST.min"
               :max="M3_CONTRAST.max"
               :step="M3_CONTRAST.step"
-              @update:model-value="setContrast"
-            />
+              @change="onContrastChange"
+            >
+              <m3e-slider-thumb :value="contrast" />
+            </m3e-slider>
             <span class="slider-row__value mono">{{ contrast.toFixed(2) }}</span>
           </div>
         </FieldRow>
@@ -186,10 +187,10 @@ watch([seed, variant, contrast], () => void regenerate());
         </FieldRow>
 
         <div class="actions">
-          <var-button size="small" text :disabled="!scheme" @click="copyScheme">
-            <i class="material-symbols-rounded">clipboard</i>
+          <m3e-button size="small" :disabled="!scheme" @click="copyScheme">
+            <m3e-icon slot="icon" name="clipboard" />
             <span>{{ t("m3.copyJson") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
       </SettingCard>
     </div>

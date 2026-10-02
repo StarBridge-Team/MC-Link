@@ -192,26 +192,26 @@ onUnmounted(() => {
             v{{ gateway.protocolVersion }} · {{ gateway.subprotocol }}
           </span>
           <span class="grow" />
-          <var-button size="small" text @click="reload">
-            <i class="material-symbols-rounded">sync</i>
+          <m3e-button size="small" @click="reload">
+            <m3e-icon slot="icon" name="sync" />
             <span>{{ t("plugins.reload") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
       </SettingCard>
 
       <SettingCard :icon="'extension'" :title="t('plugins.title')" :desc="t('plugins.desc')" wide>
         <div class="toolbar">
-          <var-input
-            v-model="filter.query"
-            class="toolbar__search"
-            :placeholder="t('plugins.searchPlaceholder')"
-            clearable
-            @update:model-value="onSearchInput"
-          />
+          <m3e-form-field variant="outlined" class="toolbar__search">
+            <input
+              v-model="filter.query"
+              :placeholder="t('plugins.searchPlaceholder')"
+              @input="onSearchInput"
+            />
+          </m3e-form-field>
           <label class="toolbar__toggle">
-            <var-switch
-              :model-value="filter.enabledOnly"
-              @update:model-value="(v: unknown) => { filter.enabledOnly = v === true; void load(); }"
+            <m3e-switch
+              :checked="filter.enabledOnly"
+              @change="(e: Event) => { filter.enabledOnly = (e.target as HTMLInputElement).checked; void load(); }"
             />
             <span class="hint">{{ t('plugins.enabledOnly') }}</span>
           </label>
@@ -235,7 +235,7 @@ onUnmounted(() => {
         </div>
 
         <InfoBar v-if="error" kind="danger" :text="error">
-          <var-button size="small" text @click="load">{{ t("common.retry") }}</var-button>
+          <m3e-button size="small" @click="load">{{ t("common.retry") }}</m3e-button>
         </InfoBar>
 
         <p class="hint">

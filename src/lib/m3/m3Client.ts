@@ -6,7 +6,7 @@
 //   2. 本地回退 —— 非 Tauri 环境（如 vite 浏览器预览）或后端调用失败时，
 //      使用前端 TS 镜像引擎生成等价方案，保证 UI 始终可用。
 //
-// 注意：这里只"算"配色，不"应用"——应用主题由组件库（Varlet 的 MD3 主题）负责，
+// 注意：这里只"算"配色，不"应用"——应用主题由 `<m3e-theme>` 的动态配色负责，
 // 见 `lib/theme.ts`。`/m3` 配色实验室只用它来预览。
 
 import { generateM3Scheme as invokeGenerateM3Scheme } from "../api/m3";

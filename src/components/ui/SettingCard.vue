@@ -2,10 +2,9 @@
 /**
  * 设置分区卡片：图标 + 标题 + 说明 +（可选）右上角动作 + 内容插槽。
  *
- * 容器外壳直接用 Varlet 的 `<var-card variant="standard">`（基础变体，靠高程抬升，
- * 不填色）——它的 MD3 主题会把
- * 填充背景映射到 `surface-container-highest` 并随明暗切换，比手写的 `.card` 盒子协调。
- * 这里只负责头部排版（图标 + 标题 + 说明）和 grid 跨列，不再自己画边框/底色/圆角。
+ * 容器外壳用 @m3e/web 的 `<m3e-card variant="outlined">`——它由 M3 E 规范提供
+ * 填充/描边/浮起三种变体与适配形状，颜色跟随 `m3e-theme` 的动态配色，比手写盒子协调。
+ * 这里只负责头部排版（图标 + 标题 + 说明）和 grid 跨列。
  *
  * 设置页里每个分区都用它，保证标题层级、间距只有一处定义。
  */
@@ -19,7 +18,7 @@ defineProps<{
 </script>
 
 <template>
-  <var-card variant="standard" class="setting-card" :class="{ 'setting-card--wide': wide }">
+  <m3e-card variant="outlined" class="setting-card" :class="{ 'setting-card--wide': wide }">
     <div class="sc-inner">
       <header class="card__head">
         <span class="icon-badge"><i class="material-symbols-rounded">{{ icon }}</i></span>
@@ -35,11 +34,15 @@ defineProps<{
         <slot />
       </div>
     </div>
-  </var-card>
+  </m3e-card>
 </template>
 
 <style scoped>
-/* var-card 已提供填充背景 / 圆角 / 外边距；这里只管内容自身的纵向间距与跨列。 */
+/* m3e-card 已提供背景 / 圆角 / 内边距；这里只管内容自身的纵向间距与跨列。 */
+.setting-card {
+  display: block;
+}
+
 .sc-inner {
   display: flex;
   flex-direction: column;

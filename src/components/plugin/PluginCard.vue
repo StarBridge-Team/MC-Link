@@ -88,18 +88,18 @@ const permissionRows = computed(() => {
   }));
 });
 
-function toggleEnabled(value: unknown) {
-  emit("toggle-enabled", value !== false);
+function toggleEnabled(e: Event) {
+  emit("toggle-enabled", (e.target as HTMLInputElement).checked);
 }
 
-function toggleBlocked(value: unknown) {
-  emit("toggle-blocked", value !== false);
+function toggleBlocked(e: Event) {
+  emit("toggle-blocked", (e.target as HTMLInputElement).checked);
 }
 </script>
 
 <template>
-  <var-card
-    variant="standard"
+  <m3e-card
+    variant="outlined"
     class="plugin"
     :class="{ 'is-disabled': !plugin.enabled, 'is-blocked': plugin.trust === 'blocked' }"
   >
@@ -121,15 +121,15 @@ function toggleBlocked(value: unknown) {
         </div>
 
         <div class="plugin__actions">
-          <var-switch
-            :model-value="plugin.enabled"
+          <m3e-switch
+            :checked="plugin.enabled"
             :disabled="plugin.trust === 'blocked'"
-            @update:model-value="toggleEnabled"
+            @change="toggleEnabled"
           />
-          <var-button text size="small" @click="expanded = !expanded">
-            <i class="material-symbols-rounded">{{ expanded ? 'expand_less' : 'expand_more' }}</i>
+          <m3e-button size="small" @click="expanded = !expanded">
+            <m3e-icon slot="icon" :name="expanded ? 'expand_less' : 'expand_more'" />
             <span>{{ t("plugins.details") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
       </header>
 
@@ -170,10 +170,10 @@ function toggleBlocked(value: unknown) {
         <p v-if="permissionRows.length === 0" class="hint">{{ t("plugins.noPermissions") }}</p>
         <div v-else class="permissions__list">
           <label v-for="row in permissionRows" :key="row.name" class="permission" :class="{ 'is-denied': row.denied }">
-            <var-checkbox
-              :model-value="granted(row.name)"
+            <m3e-checkbox
+              :checked="granted(row.name)"
               :disabled="row.denied"
-              @update:model-value="(v: unknown) => setGranted(row.name, v)"
+              @change="(e: Event) => setGranted(row.name, (e.target as HTMLInputElement).checked)"
             />
             <span class="permission__text">
               <span class="permission__name mono">{{ row.name }}</span>
@@ -185,25 +185,25 @@ function toggleBlocked(value: unknown) {
         </div>
 
         <div class="permissions__actions">
-          <var-button size="small" type="primary" :disabled="!dirty" @click="emit('save-permissions', [...draft])">
+          <m3e-button size="small" variant="filled" :disabled="!dirty" @click="emit('save-permissions', [...draft])">
             {{ t("common.save") }}
-          </var-button>
-          <var-button size="small" text @click="emit('save-permissions', undefined)">
+          </m3e-button>
+          <m3e-button size="small" @click="emit('save-permissions', undefined)">
             {{ t("common.reset") }}
-          </var-button>
+          </m3e-button>
         </div>
       </div>
 
       <div class="block-row">
         <span class="hint">{{ t("plugins.blocked") }}</span>
-        <var-switch
-          :model-value="plugin.trust === 'blocked'"
-          @update:model-value="toggleBlocked"
+        <m3e-switch
+          :checked="plugin.trust === 'blocked'"
+          @change="toggleBlocked"
         />
       </div>
     </div>
   </div>
-  </var-card>
+  </m3e-card>
 </template>
 
 <style scoped>

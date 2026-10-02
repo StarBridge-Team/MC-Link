@@ -93,14 +93,14 @@ onMounted(async () => {
             <p class="hint">{{ t("app.tagline") }}</p>
           </div>
           <span class="grow" />
-          <var-button size="small" text @click="open(REPO_URL)">
-            <i class="material-symbols-rounded">code</i>
+          <m3e-button size="small" @click="open(REPO_URL)">
+            <m3e-icon slot="icon" name="code" />
             <span>{{ t("about.repo") }}</span>
-          </var-button>
-          <var-button size="small" text @click="open(WEBSITE_URL)">
-            <i class="material-symbols-rounded">public</i>
+          </m3e-button>
+          <m3e-button size="small" @click="open(WEBSITE_URL)">
+            <m3e-icon slot="icon" name="public" />
             <span>{{ t("about.website") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
 
         <div class="rows">
@@ -125,10 +125,10 @@ onMounted(async () => {
         </div>
 
         <div class="actions">
-          <var-button size="small" text @click="resetOobe">
-            <i class="material-symbols-rounded">refresh</i>
+          <m3e-button size="small" @click="resetOobe">
+            <m3e-icon slot="icon" name="refresh" />
             <span>{{ t("oobe.resetHint") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
       </SettingCard>
 
@@ -152,9 +152,9 @@ onMounted(async () => {
             :title="`${person.login} · ${person.contributions}`"
             @click="open(person.html_url)"
           >
-            <var-avatar :size="32">
+            <m3e-avatar>
               <img :src="person.avatar_url" :alt="person.login" />
-            </var-avatar>
+            </m3e-avatar>
             <span class="person__name ellipsis">{{ person.login }}</span>
           </button>
         </div>
@@ -175,10 +175,10 @@ onMounted(async () => {
           </button>
         </div>
         <div class="actions">
-          <var-button size="small" text @click="open(`${REPO_URL}/issues/new`)">
-            <i class="material-symbols-rounded">edit_square</i>
+          <m3e-button size="small" @click="open(`${REPO_URL}/issues/new`)">
+            <m3e-icon slot="icon" name="edit_square" />
             <span>{{ t("about.openIssue") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
       </SettingCard>
     </div>
