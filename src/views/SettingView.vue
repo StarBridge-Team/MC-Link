@@ -2,8 +2,6 @@
 import { computed, onMounted, watch, type Component } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AboutSection from "./settings/AboutSection.vue";
-import BackgroundSection from "./settings/BackgroundSection.vue";
-import GeneralSection from "./settings/GeneralSection.vue";
 import HomepageSection from "./settings/HomepageSection.vue";
 import PersonalizationSection from "./settings/PersonalizationSection.vue";
 import PluginSection from "./settings/PluginSection.vue";
@@ -14,17 +12,15 @@ import { KEYS, local } from "../lib/persist";
 /**
  * 设置页容器：按 `tab` 参数渲染对应分区。
  *
- * 分区的取舍：**同一件事只在一个分区里改**。外观与背景分成两个 tab，
- * 是因为背景那张卡片展开后很长，混在一起会让"只想换个主题色"的人翻很久。
+ * 分区的取舍：**同一件事只在一个分区里改**。所有个性化选项（外观 / 背景 /
+ * 语言与地区）已合并进「个性化」，避免同一类设置散落在多个 tab。
  */
 const route = useRoute();
 const router = useRouter();
 
 const SECTIONS: Record<SettingTab, Component> = {
   personalization: PersonalizationSection,
-  background: BackgroundSection,
   homepage: HomepageSection,
-  general: GeneralSection,
   plugins: PluginSection,
   update: UpdateSection,
   about: AboutSection,

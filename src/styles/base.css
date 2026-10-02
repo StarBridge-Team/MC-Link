@@ -203,12 +203,24 @@ p {
   font-size: inherit;
 }
 
-/* m3e-icon 的字形来自 @m3e/web 自带的 Material Symbols（outlined 变体）。
-   我们自托管的是 rounded 变体，这里统一指向已加载的 rounded 字体族，
-   使 m3e 图标与其余手写图标风格一致（FILL 由全局变量字体设置控制）。 */
+/* m3e-icon：字形在 Shadow DOM 内，外部只能用它的 CSS 变量控制。
+ * 字体族由组件按 variant 决定（默认 Material Symbols Outlined，别名已在
+ * resourceCache 注入字体 CSS 时补齐）；这里把填充态设为 M3 常规风格。 */
 m3e-icon {
-  font-family: "Material Symbols Rounded";
-  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+  --_icon-fill: var(--icon-fill, 0);
+}
+
+/* @m3e/web 组件跟随本项目的字体栈（其 typescale 令牌不含 font-family，
+ * 字体靠继承；这里显式兜一层，确保 shadow 内也拿到 Poppins）。 */
+m3e-theme {
+  font-family: var(--font-sans);
+}
+
+/* 卡片去掉水波（ripple）反馈：保留 actionable 的悬停/焦点状态层，
+ * 只把那道扩散圈关掉。`--m3e-ripple-opacity` 由 <m3e-ripple> 读取，
+ * 自定义属性会穿透 shadow 边界传进去。 */
+m3e-card {
+  --m3e-ripple-opacity: 0;
 }
 
 /* ============================================================

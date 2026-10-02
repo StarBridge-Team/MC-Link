@@ -18,8 +18,8 @@ defineProps<{
 </script>
 
 <template>
-  <m3e-card variant="outlined" class="setting-card" :class="{ 'setting-card--wide': wide }">
-    <div class="sc-inner">
+  <m3e-card variant="elevated" actionable class="setting-card" :class="{ 'setting-card--wide': wide }">
+    <div slot="content" class="sc-inner">
       <header class="card__head">
         <span class="icon-badge"><i class="material-symbols-rounded">{{ icon }}</i></span>
         <div class="card__titles">

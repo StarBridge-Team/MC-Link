@@ -44,7 +44,6 @@ export default {
     home: "首页",
     connect: "联机",
     setting: "设置",
-    m3: "配色",
     back: "返回上一步",
   },
 
@@ -75,9 +74,7 @@ export default {
   setting: {
     title: "设置",
     personalization: "个性化",
-    background: "背景",
     homepage: "首页",
-    general: "通用",
     plugins: "插件",
     update: "更新",
     about: "关于",
@@ -244,6 +241,7 @@ export default {
 
   about: {
     title: "关于",
+    buildInfo: "版本信息",
     version: "应用版本",
     tauriVersion: "Tauri 版本",
     vueVersion: "Vue 版本",
@@ -261,56 +259,6 @@ export default {
     stale: "当前显示的是缓存数据（离线）",
     communityError: "社区数据获取失败",
     thanks: "鸣谢",
-  },
-
-  /** M3 配色实验室（`/m3`，仅预览，不写进应用主题） */
-  m3: {
-    title: "配色实验室",
-    desc: "以任意种子色生成整套 M3 配色预览，方便挑颜色（不影响应用主题）",
-    seed: "种子色",
-    variant: "配色变体",
-    contrast: "对比度",
-    palette: "色调调色板",
-    roles: "颜色角色",
-    rolesLight: "浅色角色",
-    rolesDark: "深色角色",
-    copyJson: "复制方案 JSON",
-    copied: "方案 JSON 已复制到剪贴板",
-    source: "生成来源",
-    /** 变体显示名（key 与 `lib/m3/presets.ts` 的 M3_VARIANT_LABEL_KEY 对应）。 */
-    variantNames: {
-      tonalSpot: "柔和（默认）",
-      monochrome: "单色",
-      neutral: "中性",
-      vibrant: "鲜艳",
-      expressive: "表现力",
-      fidelity: "高保真",
-      content: "内容优先",
-      rainbow: "彩虹",
-      fruitSalad: "水果沙拉",
-    },
-    role: {
-      primary: "主色",
-      on_primary: "主色之上",
-      primary_container: "主色容器",
-      on_primary_container: "主色容器之上",
-      secondary: "次要色",
-      secondary_container: "次要容器",
-      tertiary: "第三色",
-      tertiary_container: "第三容器",
-      error: "错误色",
-      error_container: "错误容器",
-      surface: "表面",
-      on_surface: "表面之上",
-      surface_variant: "表面变体",
-      surface_container: "表面容器",
-      surface_container_high: "表面容器（高）",
-      surface_container_highest: "表面容器（最高）",
-      outline: "描边",
-      outline_variant: "描边变体",
-      inverse_surface: "反色表面",
-      inverse_on_surface: "反色表面之上",
-    },
   },
 
   oobe: {

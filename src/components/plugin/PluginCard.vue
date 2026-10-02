@@ -99,11 +99,12 @@ function toggleBlocked(e: Event) {
 
 <template>
   <m3e-card
-    variant="outlined"
+    variant="elevated"
+    actionable
     class="plugin"
     :class="{ 'is-disabled': !plugin.enabled, 'is-blocked': plugin.trust === 'blocked' }"
   >
-    <div class="plugin-inner">
+    <div slot="content" class="plugin-inner">
       <header class="plugin__head">
         <span class="icon-badge icon-badge--small"><i class="material-symbols-rounded">{{ kindIcon }}</i></span>
 

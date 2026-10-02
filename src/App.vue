@@ -43,8 +43,6 @@ const pageTitle = computed(() => {
   switch (route.name) {
     case "connect":
       return t("nav.connect");
-    case "m3":
-      return t("m3.title");
     case "setting": {
       const tab = isSettingTab(route.params.tab) ? route.params.tab : DEFAULT_SETTING_TAB;
       return `${t("setting.title")} · ${t(`setting.${tab}`)}`;
@@ -58,15 +56,12 @@ const pageTitle = computed(() => {
 const navItems = computed<NavItem[]>(() => [
   { id: "home", icon: "home", label: t("nav.home") },
   { id: "connect", icon: "broadcast_on_home", label: t("nav.connect") },
-  { id: "m3", icon: "palette", label: t("nav.m3") },
   { id: "setting", icon: "tune", label: t("nav.setting") },
 ]);
 
 const SETTING_TAB_ICONS: Record<string, string> = {
   personalization: "brush",
-  background: "image",
   homepage: "home",
-  general: "translate",
   plugins: "extension",
   update: "cloud_download",
   about: "info",

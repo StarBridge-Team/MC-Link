@@ -92,7 +92,7 @@
   --lh-tight: 1.25;
   --lh-normal: 1.5;
   --lh-loose: 1.7;
-  --font-sans: "Roboto", "Poppins", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Poppins", "Roboto", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
   --font-mono: "Cascadia Code", "Fira Code", Consolas, monospace;
 
   /* ---------- M3 高程 ---------- */

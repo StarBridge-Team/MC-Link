@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import ChipSelect, { type ChipOption } from "../../components/ui/ChipSelect.vue";
-import ColorField from "../../components/ui/ColorField.vue";
-import FieldRow from "../../components/ui/FieldRow.vue";
-import SettingCard from "../../components/ui/SettingCard.vue";
+import ChipSelect, { type ChipOption } from "../ui/ChipSelect.vue";
+import ColorField from "../ui/ColorField.vue";
+import FieldRow from "../ui/FieldRow.vue";
+import SettingCard from "../ui/SettingCard.vue";
 import { useSettings } from "../../composables/useSettings";
 import { getBackgroundFiles } from "../../lib/api/datadir";
 import type { BackgroundFile } from "../../lib/api/types";
 import { isRemoteUrl } from "../../lib/appearance/background";
 
 /**
- * 个性化 → 背景（背景 + 遮罩 + 背景音乐）。
+ * 个性化 · 背景（背景 + 遮罩 + 背景音乐）。
  *
  * 文件列表来自数据目录的 `Background/` 文件夹：用户把图片/视频/音频放进去，
  * 这里只做"挑选"，不做上传与删除（那是文件管理器的事）。
@@ -144,129 +144,112 @@ function applyMusicUrl() {
 </script>
 
 <template>
-  <div class="scroll-area">
-    <div class="grid stagger">
-      <SettingCard :icon="'image'" :title="t('background.title')" :desc="t('background.desc')" wide>
-        <div class="field-label">{{ t("background.type") }}</div>
-        <ChipSelect :model-value="state.background_type" :options="typeOptions" @update:model-value="setType" />
+  <SettingCard :icon="'image'" :title="t('background.title')" :desc="t('background.desc')" wide>
+    <div class="field-label">{{ t("background.type") }}</div>
+    <ChipSelect :model-value="state.background_type" :options="typeOptions" @update:model-value="setType" />
 
-        <div v-if="state.background_type === 'solid'" class="solid">
-          <ColorField :model-value="state.background_value || '#000000'" size="large" @update:model-value="setSolidColor" />
-        </div>
-
-        <template v-if="state.background_type === 'image' || state.background_type === 'video'">
-          <div class="field-label">{{ t("background.fit") }}</div>
-          <ChipSelect
-            small
-            :model-value="state.background_fit"
-            :options="fitOptions"
-            @update:model-value="setFit"
-          />
-
-          <div class="field-label">{{ t("background.localFiles") }}</div>
-          <p class="hint">{{ t("background.localFilesHint") }}</p>
-          <p v-if="filesLoading" class="hint">{{ t("background.scanning") }}</p>
-          <p v-else-if="files.length === 0" class="hint">{{ t("background.localEmpty") }}</p>
-          <div v-else class="file-list">
-            <button
-              v-for="file in files"
-              :key="file.name"
-              class="file-chip"
-              :class="{ 'is-active': isSelectedLocal(file.name) }"
-              type="button"
-              @click="selectFile(file)"
-            >
-              <i class="material-symbols-rounded">{{ file.is_video ? 'movie' : 'photo' }}</i>
-              <span class="ellipsis">{{ file.name }}</span>
-            </button>
-          </div>
-
-          <div class="field-label">{{ t("background.url") }}</div>
-          <!-- 回车监听挂在外层容器上：DOM 事件会冒泡，比依赖组件转发原生事件更可靠 -->
-          <div class="url-row" @keyup.enter="applyBackgroundUrl">
-            <m3e-form-field variant="outlined" class="url-row__input">
-              <input v-model="bgUrlInput" :placeholder="t('background.urlPlaceholder')" />
-            </m3e-form-field>
-            <m3e-button variant="filled" @click="applyBackgroundUrl">{{ t("common.apply") }}</m3e-button>
-          </div>
-
-          <p v-if="state.background_value" class="hint">
-            {{ t("background.current") }}:
-            <span class="mono">{{ state.background_value }}</span>
-          </p>
-        </template>
-      </SettingCard>
-
-      <SettingCard :icon="'layers'" :title="t('background.overlay')" :desc="t('background.overlayDesc')">
-        <FieldRow :label="t('background.overlay')">
-          <m3e-switch :checked="state.background_overlay" @change="onOverlayToggle" />
-        </FieldRow>
-        <FieldRow v-if="state.background_overlay" :label="t('background.overlayOpacity')">
-          <div class="slider-row">
-            <m3e-slider
-              class="slider-row__slider"
-              :min="0"
-              :max="100"
-              :step="5"
-              @change="onOverlayOpacity"
-            >
-              <m3e-slider-thumb :value="state.background_overlay_opacity" />
-            </m3e-slider>
-            <span class="slider-row__value mono">{{ Math.round(state.background_overlay_opacity) }}%</span>
-          </div>
-        </FieldRow>
-      </SettingCard>
-
-      <SettingCard :icon="'music_note'" :title="t('background.music')" :desc="t('background.musicDesc')">
-        <ChipSelect
-          small
-          :model-value="state.music_mode"
-          :options="musicModeOptions"
-          @update:model-value="setMusicMode"
-        />
-
-        <template v-if="state.music_mode === 'file'">
-          <p v-if="musicFiles.length === 0" class="hint">{{ t("background.musicEmpty") }}</p>
-          <div v-else class="file-list">
-            <button
-              v-for="file in musicFiles"
-              :key="file.name"
-              class="file-chip"
-              :class="{ 'is-active': isSelectedMusic(file.name) }"
-              type="button"
-              @click="selectMusic(file)"
-            >
-              <i class="material-symbols-rounded">audio_file</i>
-              <span class="ellipsis">{{ file.name }}</span>
-            </button>
-          </div>
-        </template>
-
-        <div v-if="state.music_mode === 'url'" class="url-row" @keyup.enter="applyMusicUrl">
-          <m3e-form-field variant="outlined" class="url-row__input">
-            <input v-model="musicUrlInput" :placeholder="t('background.musicUrlPlaceholder')" />
-          </m3e-form-field>
-          <m3e-button variant="filled" @click="applyMusicUrl">{{ t("common.apply") }}</m3e-button>
-        </div>
-      </SettingCard>
+    <div v-if="state.background_type === 'solid'" class="solid">
+      <ColorField :model-value="state.background_value || '#000000'" size="large" @update:model-value="setSolidColor" />
     </div>
-  </div>
+
+    <template v-if="state.background_type === 'image' || state.background_type === 'video'">
+      <div class="field-label">{{ t("background.fit") }}</div>
+      <ChipSelect
+        small
+        :model-value="state.background_fit"
+        :options="fitOptions"
+        @update:model-value="setFit"
+      />
+
+      <div class="field-label">{{ t("background.localFiles") }}</div>
+      <p class="hint">{{ t("background.localFilesHint") }}</p>
+      <p v-if="filesLoading" class="hint">{{ t("background.scanning") }}</p>
+      <p v-else-if="files.length === 0" class="hint">{{ t("background.localEmpty") }}</p>
+      <div v-else class="file-list">
+        <button
+          v-for="file in files"
+          :key="file.name"
+          class="file-chip"
+          :class="{ 'is-active': isSelectedLocal(file.name) }"
+          type="button"
+          @click="selectFile(file)"
+        >
+          <i class="material-symbols-rounded">{{ file.is_video ? 'movie' : 'photo' }}</i>
+          <span class="ellipsis">{{ file.name }}</span>
+        </button>
+      </div>
+
+      <div class="field-label">{{ t("background.url") }}</div>
+      <!-- 回车监听挂在外层容器上：DOM 事件会冒泡，比依赖组件转发原生事件更可靠 -->
+      <div class="url-row" @keyup.enter="applyBackgroundUrl">
+        <m3e-form-field variant="outlined" class="url-row__input">
+          <input v-model="bgUrlInput" :placeholder="t('background.urlPlaceholder')" />
+        </m3e-form-field>
+        <m3e-button variant="filled" @click="applyBackgroundUrl">{{ t("common.apply") }}</m3e-button>
+      </div>
+
+      <p v-if="state.background_value" class="hint">
+        {{ t("background.current") }}:
+        <span class="mono">{{ state.background_value }}</span>
+      </p>
+    </template>
+  </SettingCard>
+
+  <SettingCard :icon="'layers'" :title="t('background.overlay')" :desc="t('background.overlayDesc')">
+    <FieldRow :label="t('background.overlay')">
+      <m3e-switch :checked="state.background_overlay" @change="onOverlayToggle" />
+    </FieldRow>
+    <FieldRow v-if="state.background_overlay" :label="t('background.overlayOpacity')">
+      <div class="slider-row">
+        <m3e-slider
+          class="slider-row__slider"
+          :min="0"
+          :max="100"
+          :step="5"
+          @change="onOverlayOpacity"
+        >
+          <m3e-slider-thumb :value="state.background_overlay_opacity" />
+        </m3e-slider>
+        <span class="slider-row__value mono">{{ Math.round(state.background_overlay_opacity) }}%</span>
+      </div>
+    </FieldRow>
+  </SettingCard>
+
+  <SettingCard :icon="'music_note'" :title="t('background.music')" :desc="t('background.musicDesc')">
+    <ChipSelect
+      small
+      :model-value="state.music_mode"
+      :options="musicModeOptions"
+      @update:model-value="setMusicMode"
+    />
+
+    <template v-if="state.music_mode === 'file'">
+      <p v-if="musicFiles.length === 0" class="hint">{{ t("background.musicEmpty") }}</p>
+      <div v-else class="file-list">
+        <button
+          v-for="file in musicFiles"
+          :key="file.name"
+          class="file-chip"
+          :class="{ 'is-active': isSelectedMusic(file.name) }"
+          type="button"
+          @click="selectMusic(file)"
+        >
+          <i class="material-symbols-rounded">audio_file</i>
+          <span class="ellipsis">{{ file.name }}</span>
+        </button>
+      </div>
+    </template>
+
+    <div v-if="state.music_mode === 'url'" class="url-row" @keyup.enter="applyMusicUrl">
+      <m3e-form-field variant="outlined" class="url-row__input">
+        <input v-model="musicUrlInput" :placeholder="t('background.musicUrlPlaceholder')" />
+      </m3e-form-field>
+      <m3e-button variant="filled" @click="applyMusicUrl">{{ t("common.apply") }}</m3e-button>
+    </div>
+  </SettingCard>
 </template>
 
 <style scoped>
-.grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-4);
-  align-content: start;
-}
-
-@media (max-width: 980px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .solid {
   display: flex;
   align-items: center;

@@ -122,11 +122,37 @@ async function injectStylesheet(asset: AssetState): Promise<void> {
     });
     const style = document.createElement("style");
     style.id = id;
-    style.textContent = rewritten;
+    style.textContent = aliasIconFonts(asset.path, rewritten);
     document.head.appendChild(style);
   } catch {
     // 单个资源注入失败不影响其它资源；状态里已经记了 missing。
   }
+}
+
+/**
+ * 为自托管的 Material Symbols 补一份 `Outlined` 别名 `@font-face`。
+ *
+ * @m3e/web 的 `<m3e-icon>` 把字形画在 Shadow DOM 内的 `.icon` 上，且各变体写死了
+ * 字体名（默认 `"Material Symbols Outlined"`）；外部 CSS 进不去 shadow root，
+ * 而它的包又**不自带字体文件**。我们只自托管了 Rounded 变体，于是 m3e 图标全部
+ * 回落成 ligature 文字（显示为 "home"、"arrow_back" 这类字面词）。
+ *
+ * 这里复用同一份 woff2（已重写为 asset: 绝对地址），再用 Outlined / Sharp 两个名字
+ * 各声明一次，使三种变体都能命中同一套字形，无需再下发多份字体文件。
+ */
+function aliasIconFonts(path: string, css: string): string {
+  if (!path.includes("material-symbols")) return css;
+  const match = css.match(/url\(\s*["']?([^"')]+)["']?\s*\)/);
+  const src = match?.[1];
+  if (!src) return css;
+  const alias = ["Material Symbols Outlined", "Material Symbols Sharp"]
+    .map(
+      (family) =>
+        `@font-face{font-family:"${family}";font-style:normal;font-weight:100 700;` +
+        `font-display:block;src:url("${src}") format("woff2");}`,
+    )
+    .join("");
+  return css + alias;
 }
 
 // 地址换算逻辑在 `./cssAssets`（纯函数，可脱离运行环境直接验证）。
