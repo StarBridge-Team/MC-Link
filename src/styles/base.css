@@ -221,15 +221,21 @@ m3e-theme {
  * 而设置卡片本就是静态容器（不可点），去掉 actionable 既消波纹也更贴合语义。
  * 观感保留 `variant="elevated"`。 */
 
-/* m3e-form-field 内的原生控件：去掉浏览器/全局的聚焦外框。
- * 上面那条全局 `:focus-visible` 会给聚焦的 input 再画一圈 2px primary 描边，
- * 叠在 m3e-form-field 自己的描边内侧 → 看起来是"双框"。组件描边本身已表达聚焦态，
- * 这里显式清掉。用 `!important` 是因为实际渲染里普通特异性能赢过它并不成立
- * （M3E 的样式注入方式使常规优先级覆盖不可靠），这是刻意且窄范围的一处覆盖。 */
+/* m3e 组件内被插槽的原生控件：去掉浏览器/全局的聚焦外框。
+ *
+ * 上面那条全局 `:focus-visible` 会给聚焦的 input 再画一圈 2px 描边，叠在组件自己的
+ * 描边内侧 → 看起来是"双框"（`m3e-form-field` 与 `m3e-search-bar` 都会复现）。
+ * 组件描边本身已表达聚焦态，这里显式清掉。用 `!important` 是因为实测中普通特异性能
+ * 赢过它并不成立（M3E 的样式注入方式使常规优先级覆盖不可靠），这是窄范围的一处覆盖。
+ *
+ * 注意：**新增会插槽原生控件的 m3e 组件时必须一并加进下面的选择器**，
+ * 否则聚焦时又会出现双框。 */
 m3e-form-field input,
 m3e-form-field textarea,
 m3e-form-field select,
-m3e-form-field :focus-visible {
+m3e-form-field :focus-visible,
+m3e-search-bar input,
+m3e-search-bar :focus-visible {
   outline: none !important;
   outline-offset: 0 !important;
 }
