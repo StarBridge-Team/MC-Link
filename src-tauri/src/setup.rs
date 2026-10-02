@@ -34,7 +34,20 @@ pub const SUPPORTED_LANGUAGES: &[&str] = &["zh-CN", "en-US"];
 ///
 /// [`REGION_OTHER`] 是显式的"未列出"，避免用户所在国家不在列表里就无路可选。
 pub const SUPPORTED_REGIONS: &[&str] = &[
-    "CN", "HK", "TW", "JP", "KR", "SG", "US", "GB", "DE", "FR", "AU", "CA", "BR", REGION_OTHER,
+    "CN",
+    "HK",
+    "TW",
+    "JP",
+    "KR",
+    "SG",
+    "US",
+    "GB",
+    "DE",
+    "FR",
+    "AU",
+    "CA",
+    "BR",
+    REGION_OTHER,
 ];
 
 /// 未选择/未列出时的地区占位。
@@ -152,7 +165,11 @@ fn rfc3339_from_unix(secs: i64) -> String {
     let mp = (5 * doy + 2) / 153;
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if month <= 2 { yoe + era * 400 + 1 } else { yoe + era * 400 };
+    let year = if month <= 2 {
+        yoe + era * 400 + 1
+    } else {
+        yoe + era * 400
+    };
 
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
@@ -439,11 +456,8 @@ mod tests {
     use super::*;
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "mc-link-setup-{}-{}",
-            tag,
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("mc-link-setup-{}-{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

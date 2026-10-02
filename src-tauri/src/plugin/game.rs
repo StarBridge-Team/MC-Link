@@ -149,9 +149,9 @@ impl GameRegistry {
         if let Some(p) = self.profiles.get(&k) {
             return Some(p);
         }
-        self.profiles.values().find(|p| {
-            p.name.to_lowercase() == k || p.aliases.iter().any(|a| a.to_lowercase() == k)
-        })
+        self.profiles
+            .values()
+            .find(|p| p.name.to_lowercase() == k || p.aliases.iter().any(|a| a.to_lowercase() == k))
     }
 
     pub fn all(&self) -> Vec<&GameProfile> {

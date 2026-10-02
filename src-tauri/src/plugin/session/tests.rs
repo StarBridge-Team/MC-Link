@@ -53,7 +53,13 @@ fn open_frame_rejects_wrong_key() {
     .unwrap();
     let text = serde_json::to_string(&frame).unwrap();
     let mut replay = ReplayWindow::new();
-    assert!(open_frame(&Cipher::new(&[2u8; crypto::KEY_LEN]), "s1", &mut replay, &text).is_err());
+    assert!(open_frame(
+        &Cipher::new(&[2u8; crypto::KEY_LEN]),
+        "s1",
+        &mut replay,
+        &text
+    )
+    .is_err());
 }
 
 #[test]

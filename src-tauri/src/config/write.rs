@@ -1,12 +1,8 @@
-use std::path::Path;
 use super::PersonalizationSettings;
 use crate::persist;
+use std::path::Path;
 
-pub(crate) fn write_setting(
-    data_dir: &Path,
-    section: &str,
-    content: &str,
-) -> Result<(), String> {
+pub(crate) fn write_setting(data_dir: &Path, section: &str, content: &str) -> Result<(), String> {
     let path = super::section_path(data_dir, section)?;
     persist::atomic_write(&path, content.as_bytes())
 }

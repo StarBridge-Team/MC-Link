@@ -10,10 +10,10 @@ use crate::mgr::AppMgr;
 
 use super::download::update_cache_dir;
 use super::install::{apply_update, is_auto_install_supported};
-use super::{install_via_plugin, plugin_available, plugin_preferred};
 use super::model::{
     CheckUpdateResult, DownloadUpdateResult, InstallUpdateResult, RuntimeInfo, UpdateAsset,
 };
+use super::{install_via_plugin, plugin_available, plugin_preferred};
 
 /// 退出前的等待：让 invoke 的返回值先送达到前端，再关闭应用。
 const EXIT_DELAY: Duration = Duration::from_millis(600);

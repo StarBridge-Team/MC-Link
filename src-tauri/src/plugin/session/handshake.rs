@@ -59,7 +59,10 @@ pub(super) async fn handshake(
         } => {
             if claimed != plugin_id {
                 reject_handshake(&mut ws, "插件 ID 与清单不符").await;
-                return Err(format!("插件 ID 不符：期望 {}，声称 {}", plugin_id, claimed));
+                return Err(format!(
+                    "插件 ID 不符：期望 {}，声称 {}",
+                    plugin_id, claimed
+                ));
             }
             (plugin_version, nonce_p, proof)
         }
@@ -100,7 +103,10 @@ async fn reject_handshake(ws: &mut WebSocketStream<TcpStream>, message: &str) {
     .await;
 }
 
-async fn send_handshake(ws: &mut WebSocketStream<TcpStream>, msg: &Handshake) -> Result<(), String> {
+async fn send_handshake(
+    ws: &mut WebSocketStream<TcpStream>,
+    msg: &Handshake,
+) -> Result<(), String> {
     let text = serde_json::to_string(msg).map_err(|e| format!("序列化握手报文失败: {}", e))?;
     ws.send(WsMessage::text(text))
         .await

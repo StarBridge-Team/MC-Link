@@ -6,8 +6,8 @@
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-use crate::plugin::manifest::PluginKind;
 use crate::plugin::manager::PluginManager;
+use crate::plugin::manifest::PluginKind;
 use crate::plugin::permission::Permission;
 
 /// 列出插件，支持搜索与按维度筛选（参数全可选，不传即"全部"，与旧行为一致）。
@@ -148,7 +148,8 @@ pub(crate) fn plugin_list(
         if only_enabled && !entry.enabled {
             return false;
         }
-        if skip != Some("kinds") && !wanted_kinds.is_empty() && !wanted_kinds.contains(&entry.kind) {
+        if skip != Some("kinds") && !wanted_kinds.is_empty() && !wanted_kinds.contains(&entry.kind)
+        {
             return false;
         }
         if skip != Some("methods") && !wanted_methods.is_empty() {
@@ -199,7 +200,11 @@ pub(crate) fn plugin_list(
                 _ => entry.games.clone(),
             };
             for value in values {
-                let key = if dim == "tags" { value.to_lowercase() } else { value };
+                let key = if dim == "tags" {
+                    value.to_lowercase()
+                } else {
+                    value
+                };
                 let counter = map.entry(key).or_insert_with(|| json!(0));
                 if let Some(n) = counter.as_u64() {
                     *counter = json!(n + 1);

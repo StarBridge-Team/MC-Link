@@ -28,7 +28,8 @@ use minisign_verify::{PublicKey, Signature};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
-const B64: base64::engine::general_purpose::GeneralPurpose = base64::engine::general_purpose::STANDARD;
+const B64: base64::engine::general_purpose::GeneralPurpose =
+    base64::engine::general_purpose::STANDARD;
 
 /// 解析内置公钥。
 ///
@@ -226,8 +227,8 @@ fn check_integrity_list(dir: &Path, text: &str) -> Result<(), String> {
             ));
         }
 
-        let actual = sha256_of_file(&dir.join(&rel))
-            .map_err(|e| format!("清单里的 {}：{}", rel, e))?;
+        let actual =
+            sha256_of_file(&dir.join(&rel)).map_err(|e| format!("清单里的 {}：{}", rel, e))?;
         if !actual.eq_ignore_ascii_case(hash) {
             return Err(format!("{} 的内容与清单不符（已损坏或被人改动）", rel));
         }
@@ -258,7 +259,9 @@ fn validate_rel_path(rel: &str) -> Result<(), String> {
         || rel.starts_with('/')
         || rel.starts_with('\\')
         || rel.contains(':')
-        || rel.split('/').any(|seg| seg.is_empty() || seg == "." || seg == "..");
+        || rel
+            .split('/')
+            .any(|seg| seg.is_empty() || seg == "." || seg == "..");
     if bad {
         return Err(format!("{} 里的路径非法: {}", INTEGRITY_FILE, rel));
     }
@@ -425,7 +428,10 @@ mod tests {
         let conf = std::fs::read_to_string(&path).expect("读取 tauri.conf.json 失败");
         let json: serde_json::Value =
             serde_json::from_str(&conf).expect("tauri.conf.json 不是合法 JSON");
-        let updater = json["plugins"]["updater"]["pubkey"].as_str().unwrap_or("").trim();
+        let updater = json["plugins"]["updater"]["pubkey"]
+            .as_str()
+            .unwrap_or("")
+            .trim();
         assert_eq!(
             PUBLISHER_PUBKEY.trim(),
             updater,
@@ -462,7 +468,11 @@ mod tests {
         let dir = temp_dir("intact");
         write_file(&dir, "plugin.json", b"{}");
         write_file(&dir, "bin/adapter.exe", b"binary");
-        let list = format!("{}\n{}\n", entry(&dir, "bin/adapter.exe"), entry(&dir, "plugin.json"));
+        let list = format!(
+            "{}\n{}\n",
+            entry(&dir, "bin/adapter.exe"),
+            entry(&dir, "plugin.json")
+        );
 
         assert!(check_integrity_list(&dir, &list).is_ok());
 
@@ -536,7 +546,11 @@ mod tests {
         // 半截状态（有清单没签名）按拒绝处理
         let dir = temp_dir("nosig");
         write_file(&dir, "plugin.json", b"{}");
-        write_file(&dir, INTEGRITY_FILE, format!("{}\n", entry(&dir, "plugin.json")).as_bytes());
+        write_file(
+            &dir,
+            INTEGRITY_FILE,
+            format!("{}\n", entry(&dir, "plugin.json")).as_bytes(),
+        );
         let verdict = verify_directory_with(VECTOR_PUBKEY, &dir);
         assert!(matches!(verdict, Verdict::Invalid(_)), "实际 {:?}", verdict);
         let _ = std::fs::remove_dir_all(&dir);

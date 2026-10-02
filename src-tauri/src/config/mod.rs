@@ -1,7 +1,7 @@
+pub mod check;
 pub mod push;
 pub mod read;
 pub mod write;
-pub mod check;
 
 use serde::{Deserialize, Serialize};
 
@@ -97,7 +97,10 @@ pub(crate) fn section_path(
 ) -> Result<std::path::PathBuf, String> {
     let file = format!(
         "{}.yml",
-        section.replace(' ', "_").replace('/', "_").replace('\\', "_")
+        section
+            .replace(' ', "_")
+            .replace('/', "_")
+            .replace('\\', "_")
     );
     Ok(crate::datadir::setting_dir(data_dir)?.join(file))
 }

@@ -124,7 +124,13 @@ impl Cipher {
         let nonce = Nonce::from_slice(&nonce_bytes);
         let ct = self
             .inner
-            .encrypt(nonce, Payload { msg: plaintext, aad })
+            .encrypt(
+                nonce,
+                Payload {
+                    msg: plaintext,
+                    aad,
+                },
+            )
             .map_err(|_| "控制面报文加密失败".to_string())?;
         Ok((nonce_bytes, ct))
     }
@@ -136,7 +142,13 @@ impl Cipher {
         }
         let nonce = Nonce::from_slice(nonce);
         self.inner
-            .decrypt(nonce, Payload { msg: ciphertext, aad })
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: ciphertext,
+                    aad,
+                },
+            )
             .map_err(|_| "控制面报文解密失败（密钥不匹配或数据被篡改）".to_string())
     }
 }
@@ -177,7 +189,11 @@ impl ReplayWindow {
 
         if seq > self.highest {
             let shift = seq - self.highest;
-            self.bitmap = if shift >= 64 { 1 } else { (self.bitmap << shift) | 1 };
+            self.bitmap = if shift >= 64 {
+                1
+            } else {
+                (self.bitmap << shift) | 1
+            };
             self.highest = seq;
             return true;
         }

@@ -10,9 +10,11 @@ import "@m3e/web/slider"; // <m3e-slider>/<m3e-slider-thumb>
 import "@m3e/web/select"; // <m3e-select>/<m3e-option>
 import "@m3e/web/option"; // <m3e-option>
 import "@m3e/web/form-field"; // <m3e-form-field>
+import "@m3e/web/search"; // <m3e-search-bar>
 import "@m3e/web/avatar"; // <m3e-avatar>
 import "@m3e/web/progress-indicator"; // <m3e-linear-progress-indicator>
 import "@m3e/web/nav-rail"; // 左侧主导航
+import "@m3e/web/nav-bar"; // <m3e-nav-bar>/<m3e-nav-item>（游戏页 Tab 条）
 import "@m3e/web/nav-menu"; // 设置二级导航
 import "@m3e/web/app-bar"; // 标题栏
 import "./styles/tokens.css";

@@ -41,8 +41,7 @@ pub fn write_session_file(
     token: &str,
     heartbeat_ms: u64,
 ) -> Result<PathBuf, String> {
-    std::fs::create_dir_all(runtime_dir)
-        .map_err(|e| format!("创建插件运行时目录失败: {}", e))?;
+    std::fs::create_dir_all(runtime_dir).map_err(|e| format!("创建插件运行时目录失败: {}", e))?;
     let path = session_file(runtime_dir, plugin_id);
     let desc = SessionDescriptor {
         protocol: PROTOCOL_VERSION,
@@ -51,8 +50,8 @@ pub fn write_session_file(
         token: token.to_string(),
         heartbeat_ms,
     };
-    let text = serde_json::to_string_pretty(&desc)
-        .map_err(|e| format!("序列化会话描述失败: {}", e))?;
+    let text =
+        serde_json::to_string_pretty(&desc).map_err(|e| format!("序列化会话描述失败: {}", e))?;
     std::fs::write(&path, text).map_err(|e| format!("写入会话文件失败: {}", e))?;
     // 尽力而为地收紧权限；Windows 上退化为隐藏属性。
     crate::plugin::fs_secure::restrict_to_current_user(&path);
@@ -88,7 +87,10 @@ pub fn spawn(
 
     let workdir = manifest.resolve_workdir(&record.dir);
     if !is_within(&record.dir, &workdir) {
-        return Err(format!("拒绝在插件目录之外设置工作目录: {}", workdir.display()));
+        return Err(format!(
+            "拒绝在插件目录之外设置工作目录: {}",
+            workdir.display()
+        ));
     }
 
     let session = write_session_file(
@@ -118,7 +120,15 @@ pub fn spawn(
     // 只透传清单声明的环境变量，避免插件继承核心进程的全部环境（可能含敏感信息）。
     cmd.env_clear();
     let mut env: BTreeMap<String, String> = BTreeMap::new();
-    for key in ["PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "LANG", "HOME"] {
+    for key in [
+        "PATH",
+        "SYSTEMROOT",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+        "LANG",
+        "HOME",
+    ] {
         if let Ok(value) = std::env::var(key) {
             env.insert(key.to_string(), value);
         }
@@ -161,7 +171,6 @@ fn is_within(parent: &Path, child: &Path) -> bool {
     child.starts_with(&parent)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,9 +181,14 @@ mod tests {
             "mclink-session-{}",
             crate::plugin::crypto::random_hex(5)
         ));
-        let path =
-            write_session_file(&dir, "dev.example.a", "ws://127.0.0.1:1/plugin", "tok", 5000)
-                .unwrap();
+        let path = write_session_file(
+            &dir,
+            "dev.example.a",
+            "ws://127.0.0.1:1/plugin",
+            "tok",
+            5000,
+        )
+        .unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         let desc: SessionDescriptor = serde_json::from_str(&text).unwrap();
         assert_eq!(desc.plugin_id, "dev.example.a");

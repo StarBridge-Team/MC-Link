@@ -1,5 +1,5 @@
-use tauri::Manager;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::Manager;
 
 fn get_cursor_pos() -> (i32, i32) {
     #[cfg(windows)]
@@ -9,11 +9,15 @@ fn get_cursor_pos() -> (i32, i32) {
             fn GetCursorPos(lpPoint: *mut i32) -> i32;
         }
         let mut pt = [0i32; 2];
-        unsafe { GetCursorPos(pt.as_mut_ptr()); }
+        unsafe {
+            GetCursorPos(pt.as_mut_ptr());
+        }
         (pt[0], pt[1])
     }
     #[cfg(not(windows))]
-    { (0, 0) }
+    {
+        (0, 0)
+    }
 }
 
 pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
 /**
@@ -49,6 +49,34 @@ function normalizeHex(input: string): string | null {
   }
   return /^#[0-9a-f]{6}$/.test(value) ? value : null;
 }
+
+/**
+ * 取色器拖动时的输入合并。
+ *
+ * 原生 `<input type="color">` 在拖动过程中每秒会触发几十次 `input`，而**每一次**都会让
+ * 整条配色链路重来一遍：`<m3e-theme>` 重算 40+ 个颜色角色、重写整张 CSS 变量样式表，
+ * 并且在改 color/contrast 时还会强制一次同步回流。这就是"改配色很卡"的主因。
+ *
+ * 用 `requestAnimationFrame` 合并到每帧最多一次：拖动时依然跟手（画面本来就是一帧
+ * 一帧刷新的），但把事件洪水收敛掉了。
+ */
+let pendingColor: string | null = null;
+let rafId = 0;
+
+function onPickerInput(event: Event) {
+  pendingColor = (event.target as HTMLInputElement).value;
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    rafId = 0;
+    const next = pendingColor;
+    pendingColor = null;
+    if (next && next !== props.modelValue) emit("update:modelValue", next);
+  });
+}
+
+onBeforeUnmount(() => {
+  if (rafId) cancelAnimationFrame(rafId);
+});
 </script>
 
 <template>
@@ -58,7 +86,7 @@ function normalizeHex(input: string): string | null {
         class="color-field__input"
         type="color"
         :value="pickerValue"
-        @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+        @input="onPickerInput"
       />
       <i class="material-symbols-rounded">colorize</i>
     </label>

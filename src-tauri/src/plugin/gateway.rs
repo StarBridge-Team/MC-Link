@@ -158,7 +158,10 @@ async fn handle_connection(
         }
     };
 
-    let entry = auth.read().ok().and_then(|m| m.get(&accepted.plugin_id).cloned());
+    let entry = auth
+        .read()
+        .ok()
+        .and_then(|m| m.get(&accepted.plugin_id).cloned());
     let Some(entry) = entry else {
         eprintln!(
             "[插件网关] 未知或未启用的插件尝试连接: {}",

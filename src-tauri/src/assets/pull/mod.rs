@@ -145,11 +145,7 @@ async fn local_state(data_dir: &Path, entry: &AssetEntry) -> LocalState {
 
     if let Some(size) = entry.size {
         if meta.len() != size {
-            return LocalState::Mismatch(format!(
-                "大小不符（期望 {}，实际 {}）",
-                size,
-                meta.len()
-            ));
+            return LocalState::Mismatch(format!("大小不符（期望 {}，实际 {}）", size, meta.len()));
         }
     }
 

@@ -36,15 +36,27 @@ fn outcome_all_ready_requires_non_empty_list() {
 
     let partial = SyncOutcome {
         assets: vec![
-            AssetState { path: "a.css".into(), ready: true, reason: None },
-            AssetState { path: "b.css".into(), ready: false, reason: Some("缺失".into()) },
+            AssetState {
+                path: "a.css".into(),
+                ready: true,
+                reason: None,
+            },
+            AssetState {
+                path: "b.css".into(),
+                ready: false,
+                reason: Some("缺失".into()),
+            },
         ],
         ..Default::default()
     };
     assert!(!partial.all_ready());
 
     let full = SyncOutcome {
-        assets: vec![AssetState { path: "a.css".into(), ready: true, reason: None }],
+        assets: vec![AssetState {
+            path: "a.css".into(),
+            ready: true,
+            reason: None,
+        }],
         ..Default::default()
     };
     assert!(full.all_ready());
@@ -52,7 +64,10 @@ fn outcome_all_ready_requires_non_empty_list() {
 
 #[tokio::test]
 async fn local_state_detects_missing_and_size_mismatch() {
-    let dir = std::env::temp_dir().join(format!("mclink-assets-{}", crate::plugin::crypto::random_hex(6)));
+    let dir = std::env::temp_dir().join(format!(
+        "mclink-assets-{}",
+        crate::plugin::crypto::random_hex(6)
+    ));
     std::fs::create_dir_all(dir.join("Assets")).unwrap();
 
     let entry = AssetEntry {
@@ -60,14 +75,26 @@ async fn local_state_detects_missing_and_size_mismatch() {
         size: Some(2),
         sha256: None,
     };
-    assert!(matches!(local_state(&dir, &entry).await, LocalState::Missing));
+    assert!(matches!(
+        local_state(&dir, &entry).await,
+        LocalState::Missing
+    ));
 
     std::fs::write(dir.join("Assets").join("a.css"), b"hello").unwrap();
     // size 声明 2 字节，实际 5 字节 → 必须判为不符
-    assert!(matches!(local_state(&dir, &entry).await, LocalState::Mismatch(_)));
+    assert!(matches!(
+        local_state(&dir, &entry).await,
+        LocalState::Mismatch(_)
+    ));
 
-    let entry_ok = AssetEntry { size: Some(5), ..entry };
-    assert!(matches!(local_state(&dir, &entry_ok).await, LocalState::Ready));
+    let entry_ok = AssetEntry {
+        size: Some(5),
+        ..entry
+    };
+    assert!(matches!(
+        local_state(&dir, &entry_ok).await,
+        LocalState::Ready
+    ));
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -118,9 +145,7 @@ fn build_server(parent: &Path, files: &[(&str, &[u8])], tampered: &[&str]) -> Pa
 }
 
 /// 极简 HTTP/1.1 静态服务器，只处理 GET。返回 (base_url, stop)。
-fn spawn_asset_server(
-    root: PathBuf,
-) -> (String, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+fn spawn_asset_server(root: PathBuf) -> (String, std::sync::Arc<std::sync::atomic::AtomicBool>) {
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::sync::atomic::{AtomicBool, Ordering};

@@ -4,12 +4,12 @@
 //! [`crate::plugin::builtin::terracotta::TerracottaProvider`]，由后者把它包装成
 //! 标准的 `adapter.*` 能力。对外接口统一走插件管理器。
 
+use crate::utils::lock_or_recover;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
-use serde::{Serialize, Deserialize};
-use crate::utils::lock_or_recover;
 
 /// 适配器状态。
 ///
@@ -59,7 +59,8 @@ impl AdapterManager {
         std::net::TcpStream::connect_timeout(
             &format!("127.0.0.1:{}", port).parse().unwrap(),
             Duration::from_secs(2),
-        ).is_ok()
+        )
+        .is_ok()
     }
 
     pub fn get_status(&self) -> AdapterStatus {
@@ -127,7 +128,9 @@ impl AdapterManager {
         let start = Instant::now();
         let timeout = Duration::from_secs(12);
         loop {
-            if start.elapsed() > timeout { break; }
+            if start.elapsed() > timeout {
+                break;
+            }
             if let Ok(content) = std::fs::read_to_string(&hmcl_file) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                     if let Some(port) = json.get("port").and_then(|v| v.as_u64()) {
@@ -195,7 +198,8 @@ impl AdapterManager {
         if let Some(p) = port {
             let client = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(3))
-                .build().ok();
+                .build()
+                .ok();
             if let Some(client) = client {
                 let url = format!("http://127.0.0.1:{}/panic?peaceful=true", p);
                 let _ = client.get(&url).send();
@@ -210,5 +214,4 @@ impl AdapterManager {
         self.write_status(&status);
         println!("[适配器] 所有适配器已关闭");
     }
-
 }

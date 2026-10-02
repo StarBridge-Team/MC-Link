@@ -1,7 +1,7 @@
+use crate::plugin::manager::PluginManager;
 use std::sync::Arc;
 use tauri::Emitter;
 use tauri::Manager;
-use crate::plugin::manager::PluginManager;
 
 #[tauri::command]
 pub(crate) fn minimize_window(window: tauri::Window) {
@@ -23,7 +23,10 @@ pub(crate) fn maximize_window(window: tauri::Window) {
 /// 关闭窗口不等于退出应用（托盘左键仍可隐藏/唤出窗口），
 /// 关停网关与远程插件会让仍在运行的应用失效。
 #[tauri::command]
-pub(crate) fn close_window(window: tauri::Window, plugin_manager: tauri::State<'_, Arc<PluginManager>>) -> Result<String, String> {
+pub(crate) fn close_window(
+    window: tauri::Window,
+    plugin_manager: tauri::State<'_, Arc<PluginManager>>,
+) -> Result<String, String> {
     plugin_manager.shutdown_adapters()?;
     let _ = window.close();
     Ok("已退出".to_string())
@@ -40,7 +43,10 @@ pub(crate) fn drag_window(window: tauri::WebviewWindow) -> Result<(), String> {
 /// 完整关停（关闭远程插件与网关）由 `lib.rs` 的 `RunEvent::Exit` 处理器统一执行，
 /// 不在此处重复调用 [`PluginManager::shutdown`]。
 #[tauri::command]
-pub(crate) fn exit_app(plugin_manager: tauri::State<'_, Arc<PluginManager>>, app: tauri::AppHandle) -> Result<String, String> {
+pub(crate) fn exit_app(
+    plugin_manager: tauri::State<'_, Arc<PluginManager>>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
     plugin_manager.shutdown_adapters()?;
     app.exit(0);
     Ok("已退出".to_string())
@@ -63,11 +69,21 @@ pub(crate) fn show_main_window(app: tauri::AppHandle) {
 
 #[tauri::command]
 pub(crate) fn set_tray_size(window: tauri::Window, width: f64, height: f64) {
-    let _ = window.emit("tray-resize", serde_json::json!({"width": width, "height": height}));
+    let _ = window.emit(
+        "tray-resize",
+        serde_json::json!({"width": width, "height": height}),
+    );
 }
 
 #[tauri::command]
-pub(crate) fn resize_window(window: tauri::Window, width: f64, height: f64, min_width: Option<f64>, min_height: Option<f64>, center: bool) {
+pub(crate) fn resize_window(
+    window: tauri::Window,
+    width: f64,
+    height: f64,
+    min_width: Option<f64>,
+    min_height: Option<f64>,
+    center: bool,
+) {
     // 尺寸来自前端：NaN / 负数 / 0 会让窗口变成不可用状态（甚至直接消失），先挡住
     let valid = |v: f64| v.is_finite() && (1.0..=100_000.0).contains(&v);
     if !valid(width) || !valid(height) {
@@ -101,7 +117,10 @@ pub(crate) fn resize_window(window: tauri::Window, width: f64, height: f64, min_
 /// 效果名到平台实现的映射集中在 `effect::apply_effect_by_name`，
 /// 与启动时的预应用共用同一份逻辑，避免两处各写一份而漂移。
 #[tauri::command]
-pub(crate) fn set_window_effect(window: tauri::WebviewWindow, effect: String) -> Result<(), String> {
+pub(crate) fn set_window_effect(
+    window: tauri::WebviewWindow,
+    effect: String,
+) -> Result<(), String> {
     crate::effect::apply_effect_by_name(&window, &effect);
     Ok(())
 }

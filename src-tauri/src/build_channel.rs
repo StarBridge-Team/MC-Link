@@ -119,10 +119,7 @@ mod tests {
     #[test]
     fn release_without_stamp_is_self_built() {
         assert_eq!(resolve_channel("", "release"), BuildChannel::SelfBuilt);
-        assert_eq!(
-            resolve_channel("dev", "release"),
-            BuildChannel::SelfBuilt
-        );
+        assert_eq!(resolve_channel("dev", "release"), BuildChannel::SelfBuilt);
     }
 
     #[test]
@@ -136,7 +133,10 @@ mod tests {
     #[test]
     fn unknown_stamp_is_treated_as_self_built() {
         // 认不出的标记一律按"非官方"处理：宁可让用户手动更新，也不要误替换
-        assert_eq!(resolve_channel("nightly", "release"), BuildChannel::SelfBuilt);
+        assert_eq!(
+            resolve_channel("nightly", "release"),
+            BuildChannel::SelfBuilt
+        );
     }
 
     #[test]

@@ -30,7 +30,6 @@ impl<'a> WriteMgr<'a> {
         crate::config::write::write_personalization(self.mgr.data_dir(), settings)
     }
 
-
     pub fn clear_setting_meta_cache(&self) -> Result<(), String> {
         let _guard = self
             .mgr

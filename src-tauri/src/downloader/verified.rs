@@ -140,8 +140,7 @@ pub(crate) async fn download_verified(
                 if dest.exists() {
                     let _ = tokio::fs::remove_file(&dest).await;
                 }
-                std::fs::rename(&part, &dest)
-                    .map_err(|e| format!("重命名下载文件失败: {}", e))?;
+                std::fs::rename(&part, &dest).map_err(|e| format!("重命名下载文件失败: {}", e))?;
                 let _ = tokio::fs::remove_file(&progress_path).await;
                 return Ok(dest);
             }
@@ -276,11 +275,7 @@ async fn download_chunked(
     progress.done.dedup();
     progress.done.retain(|i| *i < chunk_count);
 
-    let done_bytes: u64 = progress
-        .done
-        .iter()
-        .map(|i| chunk_len(*i, total))
-        .sum();
+    let done_bytes: u64 = progress.done.iter().map(|i| chunk_len(*i, total)).sum();
     let counter = Arc::new(AtomicU64::new(done_bytes));
 
     let pending: Vec<u32> = (0..chunk_count)
@@ -318,8 +313,8 @@ async fn download_chunked(
                 save_progress(&progress_path, &p).await?;
             }
 
-            let done = counter.fetch_add(bytes.len() as u64, Ordering::Relaxed)
-                + bytes.len() as u64;
+            let done =
+                counter.fetch_add(bytes.len() as u64, Ordering::Relaxed) + bytes.len() as u64;
             let mut emit = emit.lock().await;
             emit(done, total);
             Ok::<(), String>(())
@@ -363,7 +358,14 @@ async fn fetch_range(
     loop {
         let step = tokio::time::timeout(IDLE_TIMEOUT, stream.next())
             .await
-            .map_err(|_| format!("分片 {}-{} 读取超时（{} 秒无数据）", start, end, IDLE_TIMEOUT.as_secs()))?;
+            .map_err(|_| {
+                format!(
+                    "分片 {}-{} 读取超时（{} 秒无数据）",
+                    start,
+                    end,
+                    IDLE_TIMEOUT.as_secs()
+                )
+            })?;
 
         let chunk = match step {
             None => break,
@@ -374,7 +376,9 @@ async fn fetch_range(
         if out.len() as u64 > expected_len {
             return Err(format!(
                 "分片 {}-{} 数据多于请求范围（已收 {} 字节）",
-                start, end, out.len()
+                start,
+                end,
+                out.len()
             ));
         }
     }
@@ -382,7 +386,10 @@ async fn fetch_range(
     if out.len() as u64 != expected_len {
         return Err(format!(
             "分片 {}-{} 数据不完整：期望 {} 字节，实际 {} 字节",
-            start, end, expected_len, out.len()
+            start,
+            end,
+            expected_len,
+            out.len()
         ));
     }
     Ok(out)
@@ -428,9 +435,7 @@ async fn download_streaming(
     loop {
         let step = tokio::time::timeout(IDLE_TIMEOUT, stream.next())
             .await
-            .map_err(|_| {
-                format!("读取超时（{} 秒无数据）", IDLE_TIMEOUT.as_secs())
-            })?;
+            .map_err(|_| format!("读取超时（{} 秒无数据）", IDLE_TIMEOUT.as_secs()))?;
 
         let chunk = match step {
             None => break,
@@ -449,7 +454,9 @@ async fn download_streaming(
         emit(downloaded, total);
     }
 
-    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
+    file.flush()
+        .await
+        .map_err(|e| format!("刷新文件失败: {}", e))?;
     Ok(())
 }
 
@@ -497,7 +504,9 @@ async fn write_at(path: &Path, offset: u64, bytes: &[u8]) -> Result<(), String> 
     file.write_all(bytes)
         .await
         .map_err(|e| format!("写入文件失败: {}", e))?;
-    file.flush().await.map_err(|e| format!("刷新文件失败: {}", e))?;
+    file.flush()
+        .await
+        .map_err(|e| format!("刷新文件失败: {}", e))?;
     Ok(())
 }
 
@@ -520,8 +529,7 @@ async fn load_progress(path: &Path, sha256: &str, total: u64) -> PartialProgress
 }
 
 async fn save_progress(path: &Path, progress: &PartialProgress) -> Result<(), String> {
-    let text = serde_json::to_string(progress)
-        .map_err(|e| format!("序列化下载进度失败: {}", e))?;
+    let text = serde_json::to_string(progress).map_err(|e| format!("序列化下载进度失败: {}", e))?;
     tokio::fs::write(path, text)
         .await
         .map_err(|e| format!("保存下载进度失败: {}", e))
@@ -650,15 +658,20 @@ mod tests {
         }
 
         let text = String::from_utf8_lossy(&head).to_lowercase();
-        let range = text
-            .lines()
-            .find_map(|l| l.trim().strip_prefix("range: bytes=").map(|v| v.to_string()));
+        let range = text.lines().find_map(|l| {
+            l.trim()
+                .strip_prefix("range: bytes=")
+                .map(|v| v.to_string())
+        });
 
         // 制造重叠窗口：并发下载才能真正被测出来
         tokio::time::sleep(Duration::from_millis(40)).await;
 
         let range = range.filter(|_| accept_ranges);
-        let (status, payload, content_range) = match range.as_deref().and_then(|r| parse_test_range(r, body.len() as u64)) {
+        let (status, payload, content_range) = match range
+            .as_deref()
+            .and_then(|r| parse_test_range(r, body.len() as u64))
+        {
             Some((start, end)) => (
                 "206 Partial Content",
                 body[start as usize..=end as usize].to_vec(),
@@ -710,7 +723,8 @@ mod tests {
     }
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("mc-link-verified-{}-{}", name, std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("mc-link-verified-{}-{}", name, std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

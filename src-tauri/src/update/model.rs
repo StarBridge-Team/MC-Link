@@ -377,8 +377,14 @@ mod tests {
         assert!(version_greater("1.0.0", "1.0.0-rc.1"));
         assert!(version_greater("1.0.0-rc.2", "1.0.0-rc.1"));
         assert!(!version_greater("1.0.0-rc.1", "1.0.0-rc.2"));
-        assert!(version_greater("1.0.0-rc.10", "1.0.0-rc.2"), "数字段应按数值比较");
-        assert!(version_greater("1.0.0-rc.1", "1.0.0-beta.9"), "字母段按字典序");
+        assert!(
+            version_greater("1.0.0-rc.10", "1.0.0-rc.2"),
+            "数字段应按数值比较"
+        );
+        assert!(
+            version_greater("1.0.0-rc.1", "1.0.0-beta.9"),
+            "字母段按字典序"
+        );
         assert!(version_greater("1.0.0-rc", "1.0.0-alpha"));
         // 构建元数据不参与比较
         assert!(!version_greater("1.0.0+build.2", "1.0.0+build.9"));
@@ -450,7 +456,10 @@ mod tests {
 
         let mut with_mirror = a.clone();
         with_mirror.urls = vec!["https://mirror/a".to_string()];
-        assert_eq!(asset_urls(&with_mirror, "https://example.com"), vec!["https://mirror/a"]);
+        assert_eq!(
+            asset_urls(&with_mirror, "https://example.com"),
+            vec!["https://mirror/a"]
+        );
     }
 
     #[test]

@@ -80,6 +80,16 @@ function syncWindowDark(dark: boolean) {
  * 组件库配色由 `<m3e-theme>` 的动态配色负责（`scheme` 绑定在 `App.vue`）；
  * 这里给 `<html>` 切 `.dark` 是为了 `tokens.css` 里字面量兜底段与非 m3e 组件。
  */
+/**
+ * 窗口材质交给原生窗口。**只在材质字段真的变化时调用** —— 它是一次 IPC 往返，
+ * 挂在每次配色变更上纯属浪费（拖动取色器时每秒几十次）。
+ */
+function syncWindowEffect() {
+  void setWindowEffect(state.transparent_effect || platformDefaultEffect.value).catch(
+    () => undefined,
+  );
+}
+
 function applyChrome() {
   const root = document.documentElement;
   root.setAttribute("data-theme-mode", state.theme_mode);
@@ -90,9 +100,6 @@ function applyChrome() {
     String(state.animation_enabled ? state.animation_speed : 1),
   );
   syncWindowDark(isDark.value);
-  void setWindowEffect(state.transparent_effect || platformDefaultEffect.value).catch(
-    () => undefined,
-  );
 
   // 主题切换淡入淡出：仅当明暗真的翻转、且动画开启时，临时给 <html> 挂
   // `.theme-transition` 让全站配色平滑过渡，动画结束（跟随「动画速度」）后移除，
@@ -130,10 +137,43 @@ async function refreshBackground() {
   applyBackground(state, bgUrl, musicUrl);
 }
 
-/** 把当前状态整体落到 DOM（外观 + 背景）。 */
+/** 把当前状态整体落到 DOM（外观 + 材质 + 背景）。启动与系统主题变化时用。 */
 async function applyAll() {
   applyChrome();
+  syncWindowEffect();
   await refreshBackground();
+}
+
+/**
+ * 只有这些字段变化才需要重解析背景与背景音乐（每次都可能是一次 IPC）。
+ *
+ * `transparent_effect` **必须在这里**：窗口材质是靠"把背景设成透明"才透得出来的
+ * （见 `lib/appearance/background.ts` 的 `effectActive`），切换材质会改变背景要不要
+ * 透明。漏掉它的后果是"选了 Mica 却没反应" —— 材质其实已经生效，只是被不透明的
+ * 背景盖住了，看起来像没生效。
+ */
+const BACKGROUND_KEYS = new Set<string>([
+  "transparent_effect",
+  "background_type",
+  "background_value",
+  "background_fit",
+  "background_overlay",
+  "background_overlay_opacity",
+  "music_mode",
+  "music_value",
+]);
+
+/**
+ * 只应用 `partial` 里真正相关的部分。
+ *
+ * 配色字段只影响 `applyChrome()`（写几个 class 与 CSS 变量，无 IPC）；窗口材质与背景
+ * 各是一次 IPC，不该被拖色事件顺带触发 —— 那是纯粹白花的往返。
+ */
+function applyChanged(partial: Partial<PersonalizationSettings>) {
+  applyChrome();
+  const keys = Object.keys(partial);
+  if (keys.includes("transparent_effect")) syncWindowEffect();
+  if (keys.some((key) => BACKGROUND_KEYS.has(key))) void refreshBackground();
 }
 
 /** 合并默认值，兼容老配置缺失字段。 */
@@ -168,7 +208,7 @@ async function load(): Promise<PersonalizationSettings> {
  */
 function patch(partial: Partial<PersonalizationSettings>, options?: { silent?: boolean }) {
   Object.assign(state, partial);
-  void applyAll();
+  applyChanged(partial);
   if (!options?.silent) scheduleSave();
 }
 

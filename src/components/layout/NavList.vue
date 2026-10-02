@@ -40,4 +40,31 @@ const emit = defineEmits<{ select: [id: string] }>();
   flex-shrink: 0;
   overflow-y: auto;
 }
+
+/* 二级导航从左往右逐项进入：进入设置页时列表像被"推"出来一样，
+   与主内容区的交叉淡入形成方向感。初始 `both` 保证延迟期间不先闪一下。
+
+   动画时长/延迟用项目令牌：`tokens.css` 里的 `.no-animations` 会把它们归零，
+   所以「设置 → 动画」关掉后这里自动变成瞬现，不需要额外判断。 */
+@keyframes nav-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.nav-list m3e-nav-menu-item {
+  animation: nav-item-in var(--motion-medium) var(--ease-standard) both;
+}
+
+.nav-list m3e-nav-menu-item:nth-child(1) { animation-delay: 0ms; }
+.nav-list m3e-nav-menu-item:nth-child(2) { animation-delay: 45ms; }
+.nav-list m3e-nav-menu-item:nth-child(3) { animation-delay: 90ms; }
+.nav-list m3e-nav-menu-item:nth-child(4) { animation-delay: 135ms; }
+.nav-list m3e-nav-menu-item:nth-child(5) { animation-delay: 180ms; }
+.nav-list m3e-nav-menu-item:nth-child(n + 6) { animation-delay: 225ms; }
 </style>

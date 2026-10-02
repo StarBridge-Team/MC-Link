@@ -23,7 +23,10 @@ impl<'a> PullMgr<'a> {
         crate::update::check_update(self.mgr.data_dir(), self.mgr.http()).await
     }
 
-    pub async fn setting_meta(&self, section: &str) -> Result<crate::setting_meta::SettingMeta, String> {
+    pub async fn setting_meta(
+        &self,
+        section: &str,
+    ) -> Result<crate::setting_meta::SettingMeta, String> {
         let _guard = self.mgr.pull_lock.lock().await;
         crate::setting_meta::fetch_setting_meta(self.mgr.data_dir(), section, self.mgr.http()).await
     }

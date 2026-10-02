@@ -94,22 +94,26 @@ pub(crate) fn pick_entry<'a>(
     manifest: &'a AdapterManifest,
     platform: &str,
 ) -> Result<&'a AdapterEntry, String> {
-    manifest.adapters.iter().find(|e| e.platform == platform).ok_or_else(|| {
-        let available = if manifest.adapters.is_empty() {
-            "无".to_string()
-        } else {
-            manifest
-                .adapters
-                .iter()
-                .map(|e| e.platform.clone())
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        format!(
-            "资源服务器未提供当前平台（{}）的适配器包，清单中的平台：{}",
-            platform, available
-        )
-    })
+    manifest
+        .adapters
+        .iter()
+        .find(|e| e.platform == platform)
+        .ok_or_else(|| {
+            let available = if manifest.adapters.is_empty() {
+                "无".to_string()
+            } else {
+                manifest
+                    .adapters
+                    .iter()
+                    .map(|e| e.platform.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            format!(
+                "资源服务器未提供当前平台（{}）的适配器包，清单中的平台：{}",
+                platform, available
+            )
+        })
 }
 
 /// 下载适配器包并校验 SHA256，返回落地的压缩包路径。
@@ -143,7 +147,10 @@ mod tests {
     use super::*;
 
     fn manifest_with(entries: Vec<AdapterEntry>) -> AdapterManifest {
-        AdapterManifest { version: "1".to_string(), adapters: entries }
+        AdapterManifest {
+            version: "1".to_string(),
+            adapters: entries,
+        }
     }
 
     fn entry(platform: &str, sha256: &str) -> AdapterEntry {
@@ -174,7 +181,11 @@ mod tests {
     fn pick_entry_reports_missing_platform_with_available_list() {
         let m = manifest_with(vec![entry("linux-x86_64", &"a".repeat(64))]);
         let err = pick_entry(&m, "windows-x86_64").unwrap_err();
-        assert!(err.contains("windows-x86_64"), "错误应包含请求的平台: {}", err);
+        assert!(
+            err.contains("windows-x86_64"),
+            "错误应包含请求的平台: {}",
+            err
+        );
         assert!(err.contains("linux-x86_64"), "错误应列出可用平台: {}", err);
     }
 

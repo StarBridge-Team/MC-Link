@@ -24,11 +24,17 @@ use tauri::Manager;
 /// 返回当前平台默认窗口效果。
 pub fn get_default_effect() -> String {
     #[cfg(target_os = "macos")]
-    { "hud_window".to_string() }
+    {
+        "hud_window".to_string()
+    }
     #[cfg(windows)]
-    { "mica".to_string() }
+    {
+        "mica".to_string()
+    }
     #[cfg(not(any(target_os = "macos", windows)))]
-    { "none".to_string() }
+    {
+        "none".to_string()
+    }
 }
 
 /// 启动时按**已保存的设置**预应用窗口效果。
@@ -156,10 +162,7 @@ mod tests {
 
     #[test]
     fn known_effect_names_map_to_official_effects() {
-        assert_eq!(
-            effects_for("mica").unwrap().effects,
-            vec![Effect::Mica]
-        );
+        assert_eq!(effects_for("mica").unwrap().effects, vec![Effect::Mica]);
         assert_eq!(
             effects_for("acrylic").unwrap().effects,
             vec![Effect::Acrylic]
@@ -176,7 +179,10 @@ mod tests {
         assert!(effects_for("none").is_none());
         assert!(effects_for("transparent").is_none());
         assert!(effects_for("").is_none());
-        assert!(effects_for("mica_dark").is_none(), "未知取值一律清空而非猜测");
+        assert!(
+            effects_for("mica_dark").is_none(),
+            "未知取值一律清空而非猜测"
+        );
     }
 
     #[test]

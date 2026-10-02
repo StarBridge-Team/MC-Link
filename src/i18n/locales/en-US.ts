@@ -39,6 +39,7 @@ export default {
   nav: {
     home: "Home",
     connect: "Connect",
+    game: "Games",
     setting: "Settings",
     back: "Go back",
   },
@@ -72,7 +73,6 @@ export default {
     personalization: "Personalization",
     homepage: "Home",
     general: "General",
-    plugins: "Plugins",
     update: "Update",
     about: "About",
   },
@@ -188,7 +188,6 @@ export default {
   plugins: {
     title: "Plugins",
     desc: "Adapters, detectors and couplers are all plugins; unknown values are ignored instead of failing",
-    searchPlaceholder: "Search plugin name or description",
     kind: "Kind",
     method: "Method",
     platform: "Platform",
@@ -226,6 +225,34 @@ export default {
     warnings: "Load warnings",
     total: "{count} in total",
     matched: "{count} matched",
+  },
+
+  // The Game page: market / games / plugins share one shell (views/GameView.vue)
+  game: {
+    tab: {
+      market: "Market",
+      games: "Games",
+      plugins: "Plugins",
+    },
+    searchPlaceholder: {
+      market: "Search market",
+      games: "Search games",
+      plugins: "Search plugins",
+    },
+    marketEmptyTitle: "Market is not open yet",
+    marketEmptyDesc:
+      "The plugin catalogue and install capability are still being built (the backend has no such commands yet). This page deliberately shows no placeholder data — a market that looks like it can install plugins but cannot is easier to mistake for a network or permission problem than an empty page.",
+    marketEmptyHint: "Until then, locally available plugins are managed on the Plugins tab.",
+    gamesTotal: "{count} games",
+    gamesMatched: "{count} matched",
+    gamesEmptyTitle: "No matching games",
+    gamesEmptyDesc: "Try another keyword, or clear the search to browse everything.",
+    gamesEmptyAllTitle: "No games defined",
+    gamesEmptyAllDesc: "The backend returned no game definitions.",
+    port: "port",
+    preferredAdapter: "Adapter",
+    requiresCoupler: "Needs a coupler",
+    errorTitle: "Could not load the game list",
   },
 
   update: {

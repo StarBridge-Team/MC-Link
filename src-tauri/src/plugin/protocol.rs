@@ -153,10 +153,7 @@ pub enum Handshake {
         heartbeat_ms: u64,
     },
     /// 任一方 → 对方：握手失败。
-    Denied {
-        code: String,
-        message: String,
-    },
+    Denied { code: String, message: String },
 }
 
 impl Handshake {

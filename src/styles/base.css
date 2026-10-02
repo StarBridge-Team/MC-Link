@@ -252,16 +252,38 @@ m3e-nav-menu {
   --m3e-nav-menu-padding-bottom: var(--sp-3);
 }
 
-/* 页面级淡入：路由切换用，随「动画速度」缩放 —— 纯对称交叉淡入，
-   不再让进入项带 translateY 而离开项只淡出（那会造成交叉时的错乱观感）。 */
-.page-enter-active,
-.page-leave-active {
-  transition: opacity var(--motion-medium) var(--ease-standard);
+/* ---------- 视图进入 ---------- */
+/*
+ * 只给**进入项**一条动画，离开项立即移除。
+ *
+ * 这是桌面外壳里最省事也最稳的一种做法：新旧两页从不同时存在，也就不会互相顶开
+ * 布局（交叉淡入最难调的就是这一点 —— 两个页面都参与布局时，纵向 flex 里会把彼此
+ * 挤开，交叉瞬间整块内容抖一下，看起来就像"淡入很诡异"）。
+ *
+ * 为什么不用 `<Transition>`：
+ * - `mode="out-in"` 会让 `<RouterView>` 在首次切换后只剩一个注释节点（懒加载 + out-in
+ *   的已知现象，见 App.vue 里的说明）；
+ * - 默认的交叉模式又会有上面那个重叠问题。
+ * 用 `:key` 保证路由/分区变化时元素重新创建，动画就会自然重播。
+ *
+ * 时长用 `--motion-short`：页面级切换要"跟手"，用中/长档会显得拖滞。
+ * 只动 `opacity`，不加位移或缩放 —— 大块内容做位移/缩放会放大"在动"的感觉。
+ *
+ * `.no-animations`（tokens.css）会把时长归零，所以「设置 → 界面动画」关掉后这里
+ * 自动变成瞬现，不需要额外判断。
+ */
+@keyframes page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-.page-enter-from,
-.page-leave-to {
-  opacity: 0;
+.shell__main > *,
+.setting > * {
+  animation: page-in var(--motion-short) var(--ease-standard) both;
 }
 
 /* ---------- 主题切换淡入淡出 ---------- */

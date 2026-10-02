@@ -43,6 +43,7 @@ export default {
   nav: {
     home: "首页",
     connect: "联机",
+    game: "游戏",
     setting: "设置",
     back: "返回上一步",
   },
@@ -76,7 +77,6 @@ export default {
     personalization: "个性化",
     homepage: "首页",
     general: "通用",
-    plugins: "插件",
     update: "更新",
     about: "关于",
   },
@@ -192,7 +192,6 @@ export default {
   plugins: {
     title: "插件",
     desc: "适配器、检测器与耦合器都由插件提供；未知取值会被忽略而不是让加载失败",
-    searchPlaceholder: "搜索插件名或说明",
     kind: "类型",
     method: "联机方式",
     platform: "平台",
@@ -230,6 +229,34 @@ export default {
     warnings: "加载告警",
     total: "共 {count} 个",
     matched: "匹配 {count} 个",
+  },
+
+  // 「游戏」页：市场 / 游戏 / 插件 三个模式共用一套外壳（views/GameView.vue）
+  game: {
+    tab: {
+      market: "市场",
+      games: "游戏",
+      plugins: "插件",
+    },
+    searchPlaceholder: {
+      market: "搜索市场",
+      games: "搜索游戏",
+      plugins: "搜索插件",
+    },
+    marketEmptyTitle: "市场尚未开放",
+    marketEmptyDesc:
+      "插件目录与安装能力还在开发中（后端目前没有对应的命令）。这里刻意不放占位数据 —— 一个看起来能装插件、实际装不了的市场，比一个空页面更容易让人误会成网络或权限问题。",
+    marketEmptyHint: "在此之前，本地已有的插件在「插件」标签页里管理。",
+    gamesTotal: "共 {count} 个游戏",
+    gamesMatched: "匹配 {count} 个",
+    gamesEmptyTitle: "没有匹配的游戏",
+    gamesEmptyDesc: "换个关键词试试，也可以清空搜索浏览全部。",
+    gamesEmptyAllTitle: "游戏表为空",
+    gamesEmptyAllDesc: "后端没有返回任何游戏定义。",
+    port: "端口",
+    preferredAdapter: "适配器",
+    requiresCoupler: "需要联机耦合器",
+    errorTitle: "读取游戏列表失败",
   },
 
   update: {

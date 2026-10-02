@@ -206,8 +206,7 @@ fn roles_from_scheme(s: &Scheme) -> M3Roles {
 
 /// 生成指定种子色在明 / 暗两套主题下的角色分配（支持变体与对比度）
 fn scheme_roles(source: Argb, variant: &Variant, contrast: f64) -> (M3Roles, M3Roles) {
-    let light: Scheme =
-        DynamicScheme::by_variant(source, variant, false, Some(contrast)).into();
+    let light: Scheme = DynamicScheme::by_variant(source, variant, false, Some(contrast)).into();
     let dark: Scheme = DynamicScheme::by_variant(source, variant, true, Some(contrast)).into();
     (roles_from_scheme(&light), roles_from_scheme(&dark))
 }

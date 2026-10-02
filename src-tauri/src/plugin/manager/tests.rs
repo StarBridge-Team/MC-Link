@@ -5,7 +5,10 @@ use std::path::PathBuf;
 use super::*;
 
 fn temp_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("mclink-mgr-{}", crate::plugin::crypto::random_hex(6)))
+    std::env::temp_dir().join(format!(
+        "mclink-mgr-{}",
+        crate::plugin::crypto::random_hex(6)
+    ))
 }
 
 #[test]

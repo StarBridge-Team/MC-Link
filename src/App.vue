@@ -6,6 +6,7 @@ import AppTitleBar from "./components/layout/AppTitleBar.vue";
 import NavList, { type NavListItem } from "./components/layout/NavList.vue";
 import NavRail, { type NavItem } from "./components/layout/NavRail.vue";
 import OobeOverlay from "./components/oobe/OobeOverlay.vue";
+import { useColorScheme } from "./composables/useColorScheme";
 import { useSettings } from "./composables/useSettings";
 import { useSetup } from "./composables/useSetup";
 import { useWindowControls } from "./composables/useWindowControls";
@@ -35,6 +36,32 @@ const scheme = computed<"light" | "dark" | "auto">(() => {
   return m === "system" ? "auto" : (m as "light" | "dark");
 });
 
+/**
+ * 动态配色走后端（`useColorScheme`），`<m3e-theme>` 只保留它独有的能力（动效变量等）。
+ *
+ * 后端一旦生效，就把它的三个入参**钉死**：只要它们还跟着用户设置走，`<m3e-theme>`
+ * 每次变化都会自己重算调色板、重写整张 CSS 变量样式表，并强制一次同步回流 ——
+ * 那正是"改配色很卡"的来源。钉死之后颜色由后端给出的变量决定（内联写在它身上，
+ * 优先于它自己算的值，所以它算出来什么都不影响）。
+ *
+ * 后端不可用（浏览器预览、命令失败）时 `active` 为假，这三个值恢复成真实设置，
+ * 重新交给 m3e 自己算 —— 慢一点，但颜色是对的。
+ */
+const colorScheme = useColorScheme();
+const themeEl = ref<HTMLElement | null>(null);
+
+const PINNED_THEME = { color: "#0066cc", variant: "tonal-spot", contrast: "standard" } as const;
+
+const themeColor = computed(() =>
+  colorScheme.active.value ? PINNED_THEME.color : settings.state.theme_color,
+);
+const themeVariant = computed(() =>
+  colorScheme.active.value ? PINNED_THEME.variant : settings.state.theme_variant,
+);
+const themeContrast = computed(() =>
+  colorScheme.active.value ? PINNED_THEME.contrast : settings.state.theme_contrast,
+);
+
 /** 把引导状态收敛成一个 ref，模板里不必写 `setup.needsOobe.value`。 */
 const needsOobe = computed(() => setup.needsOobe.value);
 
@@ -43,6 +70,8 @@ const pageTitle = computed(() => {
   switch (route.name) {
     case "connect":
       return t("nav.connect");
+    case "game":
+      return t("nav.game");
     case "setting": {
       const tab = isSettingTab(route.params.tab) ? route.params.tab : DEFAULT_SETTING_TAB;
       return `${t("setting.title")} · ${t(`setting.${tab}`)}`;
@@ -56,6 +85,7 @@ const pageTitle = computed(() => {
 const navItems = computed<NavItem[]>(() => [
   { id: "home", icon: "home", label: t("nav.home") },
   { id: "connect", icon: "broadcast_on_home", label: t("nav.connect") },
+  { id: "game", icon: "sports_esports", label: t("nav.game") },
   { id: "setting", icon: "tune", label: t("nav.setting") },
 ]);
 
@@ -63,7 +93,6 @@ const SETTING_TAB_ICONS: Record<string, string> = {
   personalization: "brush",
   homepage: "home",
   general: "translate",
-  plugins: "extension",
   update: "cloud_download",
   about: "info",
 };
@@ -111,6 +140,9 @@ onMounted(async () => {
 
   await settings.load();
 
+  // 配色元素要挂载后才存在；绑定后由 useColorScheme 自己决定何时重算
+  colorScheme.attach(themeEl.value);
+
   // 引导状态与窗口位置并行准备，两者互不依赖。
   // 窗口这一段整体兜底：非 Tauri 环境（如 vite 预览）里窗口 API 不存在，
   // 但界面仍应能正常渲染，不能因为"窗口不存在"而中断启动流程。
@@ -134,9 +166,10 @@ onMounted(async () => {
 
 <template>
   <m3e-theme
-    :color="settings.state.theme_color"
-    :variant="settings.state.theme_variant"
-    :contrast="settings.state.theme_contrast"
+    ref="themeEl"
+    :color="themeColor"
+    :variant="themeVariant"
+    :contrast="themeContrast"
     :scheme="scheme"
     motion="standard"
   >
@@ -168,17 +201,20 @@ onMounted(async () => {
       <main class="shell__main">
         <RouterView v-slot="{ Component, route: current }">
           <!--
-            刻意**不用** `mode="out-in"`：路由组件是 `() => import(...)` 懒加载的，
-            搭配 out-in 时实测第一次切换之后 `<RouterView>` 就永久只剩一个注释节点，
-            整块内容区空白（标题与侧栏正常，所以很容易被误判成"页面组件的问题"）。
-            默认的交叉淡入淡出没有这个现象，观感上也够用。
+            刻意**不用** `<Transition>`，改为只给进入项一条 CSS 动画（base.css 的
+            `page-in`）：
 
-            `:key="current.path"` 是必要的：同一组件实例在 `/setting/a` → `/setting/b`
-            之间会被复用，不加 key 时组件内的 `onMounted` 不会再跑。
+            - 默认的交叉模式会让新旧两页同时存在、一起参与布局，在纵向 flex 里互相挤，
+              交叉那一瞬间整块内容会抖一下 —— 这就是"淡入看起来很诡异"的根源；
+            - `mode="out-in"` 实测更糟：路由组件是 `() => import(...)` 懒加载的，搭配
+              out-in 后第一次切换之后 `<RouterView>` 就永久只剩一个注释节点，整块内容区
+              空白（标题与侧栏正常，很容易被误判成"页面组件的问题"）。
+
+            `:key="current.path"` 有两个作用：同一组件实例在 `/setting/a` → `/setting/b`
+            之间会被复用，不加 key 时组件内的 `onMounted` 不会再跑；同时它保证路由变化时
+            元素是重新创建的，进入动画才会重播。
           -->
-          <Transition name="page">
-            <component :is="Component" :key="current.path" />
-          </Transition>
+          <component :is="Component" :key="current.path" />
         </RouterView>
       </main>
     </div>

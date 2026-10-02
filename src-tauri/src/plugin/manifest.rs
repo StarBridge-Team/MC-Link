@@ -23,18 +23,18 @@ pub enum PluginKind {
     Detector,
     /// 耦合类：把具体游戏接入 MC Link 的统一调度流程。
     Coupler,
-    }
+}
 
-    /// 工作方式：插件靠什么把局域网暴露给对端。
-    ///
-    /// 与自由 `tags` 的区别在于**它必须可靠**——界面上的"按方式筛选"与 OOBE 的
-    /// 推荐展示都直接依赖它，所以这里是枚举而非字符串：写错的取值会在解析期被拒，
-    /// 不会变成筛选栏里第四个莫名的选项。
-    ///
-    /// 刻意与"具体用什么软件"解耦：`bundled` 只说明"打包了第三方本体"，
-    /// 具体是哪个软件由插件自己声明（`tags` / 清单其它字段）。
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    pub enum ConnectionMethod {
+/// 工作方式：插件靠什么把局域网暴露给对端。
+///
+/// 与自由 `tags` 的区别在于**它必须可靠**——界面上的"按方式筛选"与 OOBE 的
+/// 推荐展示都直接依赖它，所以这里是枚举而非字符串：写错的取值会在解析期被拒，
+/// 不会变成筛选栏里第四个莫名的选项。
+///
+/// 刻意与"具体用什么软件"解耦：`bundled` 只说明"打包了第三方本体"，
+/// 具体是哪个软件由插件自己声明（`tags` / 清单其它字段）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConnectionMethod {
     /// 捆绑第三方软件本体（把别人家的整包带进来）。
     #[serde(rename = "bundled")]
     Bundled,
@@ -47,9 +47,9 @@ pub enum PluginKind {
     /// 内网映射 / 端口映射。
     #[serde(rename = "port-mapping")]
     PortMapping,
-    }
+}
 
-    impl ConnectionMethod {
+impl ConnectionMethod {
     /// 全部取值，供筛选界面与校验使用。
     pub const ALL: &'static [ConnectionMethod] = &[
         ConnectionMethod::Bundled,
@@ -75,14 +75,14 @@ pub enum PluginKind {
             .copied()
             .find(|m| m.as_str() == normalized)
     }
-    }
+}
 
-    /// 已知平台取值。未知值在**展示层**被丢弃并留痕，但不会让插件加载失败——
-    /// 开发者写错一个平台名，不该让整个插件不可用。
-    pub const KNOWN_PLATFORMS: &[&str] = &["windows", "linux", "macos"];
+/// 已知平台取值。未知值在**展示层**被丢弃并留痕，但不会让插件加载失败——
+/// 开发者写错一个平台名，不该让整个插件不可用。
+pub const KNOWN_PLATFORMS: &[&str] = &["windows", "linux", "macos"];
 
-    /// 归一化平台取值：去空白、小写、去重，并丢掉不在 [`KNOWN_PLATFORMS`] 里的。
-    pub fn normalize_platforms(raw: &[String]) -> Vec<String> {
+/// 归一化平台取值：去空白、小写、去重，并丢掉不在 [`KNOWN_PLATFORMS`] 里的。
+pub fn normalize_platforms(raw: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for item in raw {
         let value = item.trim().to_ascii_lowercase();
@@ -98,35 +98,35 @@ pub enum PluginKind {
         }
     }
     out
-    }
+}
 
-    /// 归一化工作方式：丢掉未知取值并留痕。
-    ///
-    /// 与 [`normalize_platforms`] 同口径——写错的取值只影响这一项，不会让插件不可用。
-    pub fn normalize_methods(raw: &[String]) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
-        for item in raw {
-            match ConnectionMethod::parse(item) {
-                Some(method) => {
-                    let value = method.as_str().to_string();
-                    if !out.contains(&value) {
-                        out.push(value);
-                    }
+/// 归一化工作方式：丢掉未知取值并留痕。
+///
+/// 与 [`normalize_platforms`] 同口径——写错的取值只影响这一项，不会让插件不可用。
+pub fn normalize_methods(raw: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for item in raw {
+        match ConnectionMethod::parse(item) {
+            Some(method) => {
+                let value = method.as_str().to_string();
+                if !out.contains(&value) {
+                    out.push(value);
                 }
-                None => eprintln!(
-                    "[插件] 未知工作方式「{}」已忽略（可选：bundled/p2p/relay/port-mapping）",
-                    item.trim()
-                ),
             }
+            None => eprintln!(
+                "[插件] 未知工作方式「{}」已忽略（可选：bundled/p2p/relay/port-mapping）",
+                item.trim()
+            ),
         }
-        out
     }
+    out
+}
 
-    /// 归一化自由标签：去空白、去重、限长限量。
-    ///
-    /// **不做白名单**（开发者可自定义，中文标签是允许的），只做防脏数据的清洗：
-    /// 一个插件写 200 个标签会让筛选栏彻底不可用。
-    pub fn normalize_tags(raw: &[String]) -> Vec<String> {
+/// 归一化自由标签：去空白、去重、限长限量。
+///
+/// **不做白名单**（开发者可自定义，中文标签是允许的），只做防脏数据的清洗：
+/// 一个插件写 200 个标签会让筛选栏彻底不可用。
+pub fn normalize_tags(raw: &[String]) -> Vec<String> {
     const MAX_TAGS: usize = 12;
     const MAX_LEN: usize = 24;
     let mut out: Vec<String> = Vec::new();
@@ -144,7 +144,7 @@ pub enum PluginKind {
         }
     }
     out
-    }
+}
 
 impl PluginKind {
     pub fn as_str(&self) -> &'static str {
@@ -395,7 +395,9 @@ impl PluginManifest {
         if self.games.is_empty() {
             self.games.push("*".to_string());
         }
-        self.games.iter_mut().for_each(|g| *g = g.trim().to_lowercase());
+        self.games
+            .iter_mut()
+            .for_each(|g| *g = g.trim().to_lowercase());
         self.games.dedup();
         self.permissions.sort();
         self.permissions.dedup();
@@ -418,11 +420,10 @@ impl PluginManifest {
             ));
         }
         if self.runtime.kind == RuntimeKind::Process {
-            let entry = self
-                .runtime
-                .entry
-                .as_deref()
-                .ok_or_else(|| "process 型插件必须在 runtime.entry 指定可执行文件".to_string())?;
+            let entry =
+                self.runtime.entry.as_deref().ok_or_else(|| {
+                    "process 型插件必须在 runtime.entry 指定可执行文件".to_string()
+                })?;
             if !is_safe_relative_path(entry) {
                 return Err(format!("runtime.entry 必须是不越界的相对路径: {}", entry));
             }
@@ -443,7 +444,9 @@ impl PluginManifest {
 
     /// 该插件是否覆盖指定游戏。
     pub fn covers_game(&self, game_id: &str) -> bool {
-        self.games.iter().any(|g| g == "*" || g.eq_ignore_ascii_case(game_id))
+        self.games
+            .iter()
+            .any(|g| g == "*" || g.eq_ignore_ascii_case(game_id))
     }
 
     /// 解析出绝对工作目录。
@@ -456,10 +459,7 @@ impl PluginManifest {
 
     /// 解析出可执行文件的绝对路径。
     pub fn resolve_entry(&self, plugin_dir: &Path) -> Option<PathBuf> {
-        self.runtime
-            .entry
-            .as_deref()
-            .map(|e| plugin_dir.join(e))
+        self.runtime.entry.as_deref().map(|e| plugin_dir.join(e))
     }
 }
 
@@ -471,9 +471,9 @@ pub fn validate_plugin_id(id: &str) -> Result<(), String> {
     if !id.contains('.') {
         return Err(format!("插件 ID 必须是反向域名风格（至少两段）: {}", id));
     }
-    let ok = id.chars().all(|c| {
-        c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '-' | '_')
-    });
+    let ok = id
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '-' | '_'));
     if !ok {
         return Err(format!("插件 ID 含非法字符: {}", id));
     }
@@ -519,7 +519,10 @@ mod tests {
         })
     }
 
-    fn parse(mut value: serde_json::Value, patch: impl FnOnce(&mut serde_json::Value)) -> Result<PluginManifest, String> {
+    fn parse(
+        mut value: serde_json::Value,
+        patch: impl FnOnce(&mut serde_json::Value),
+    ) -> Result<PluginManifest, String> {
         patch(&mut value);
         PluginManifest::parse(&value.to_string())
     }
@@ -565,14 +568,18 @@ mod tests {
 
     #[test]
     fn rejects_escaping_entry() {
-        assert!(parse(sample(), |v| v["runtime"]["entry"] = "../../evil.exe".into()).is_err());
+        assert!(parse(sample(), |v| v["runtime"]["entry"] =
+            "../../evil.exe".into())
+        .is_err());
         assert!(parse(sample(), |v| v["runtime"]["entry"] = "C:/evil.exe".into()).is_err());
         assert!(parse(sample(), |v| v["runtime"]["entry"] = "/etc/passwd".into()).is_err());
     }
 
     #[test]
     fn process_runtime_requires_entry() {
-        assert!(parse(sample(), |v| v["runtime"]["entry"] = serde_json::Value::Null).is_err());
+        assert!(parse(sample(), |v| v["runtime"]["entry"] =
+            serde_json::Value::Null)
+        .is_err());
     }
 
     #[test]
@@ -615,11 +622,7 @@ mod tests {
     /// 标签是开发者自定义的：不设白名单（中文允许），但要去重、截长、限量。
     #[test]
     fn tag_normalization_is_lenient_but_bounded() {
-        let out = normalize_tags(&[
-            "免登录".to_string(),
-            "免登录".to_string(),
-            "x".repeat(200),
-        ]);
+        let out = normalize_tags(&["免登录".to_string(), "免登录".to_string(), "x".repeat(200)]);
         assert_eq!(out.len(), 2, "重复标签必须合并: {out:?}");
         assert_eq!(out[0], "免登录");
         assert_eq!(out[1].chars().count(), 24, "超长标签必须截断");
@@ -633,7 +636,10 @@ mod tests {
     fn connection_method_parsing_is_tolerant_and_stable() {
         assert_eq!(ConnectionMethod::P2p.as_str(), "p2p");
         assert_eq!(ConnectionMethod::PortMapping.as_str(), "port-mapping");
-        assert_eq!(ConnectionMethod::parse(" P2P "), Some(ConnectionMethod::P2p));
+        assert_eq!(
+            ConnectionMethod::parse(" P2P "),
+            Some(ConnectionMethod::P2p)
+        );
         assert_eq!(
             ConnectionMethod::parse("port_mapping"),
             Some(ConnectionMethod::PortMapping)
