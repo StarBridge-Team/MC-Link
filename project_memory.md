@@ -389,6 +389,27 @@ region: CN           # 同上
 `prepareLegal` 生成，含 GPLv3 全文）；`legal/EULA-*.md` 目前是**占位稿**，带
 `PLACEHOLDER-NOT-FOR-RELEASE` 标记会被拒绝上传——这正是客户端"拉不到"分支的触发条件。
 
+### 第三方许可声明是生成的，不要手写（2026-10-02）
+
+`pnpm licenses` 生成 `legal/THIRD-PARTY.md`（含**内嵌的许可证全文**）与 `legal/third-party.json`；
+`pnpm licenses:check` 只比对是否与当前依赖一致，**CI 里是阻塞步骤**。
+
+- 收集范围：Rust 走 `cargo metadata`（含传递依赖）；前端**遍历 `node_modules/.pnpm` 实际安装树**
+  （只看 `package.json` 直接依赖会漏掉被 Vite 打进产物的传递依赖）。
+- **手工登记在 `scripts/gen-licenses.mjs` 的 `MANUAL` 里**：那些"下载来直接分发、不在任何依赖清单里"
+  的第三方件——目前是 Terracotta（陶瓦）。**漏掉这一类的后果最重**，因为 AGPL/GPL 的义务正是冲着
+  分发二进制来的，而它们不会出现在任何包管理器清单里。
+- 许可证正文放 `legal/licenses/<SPDX>.txt`（`-only` / `-or-later` 后缀会被归一到同一份文本），
+  缺哪份脚本会直接列出来。
+- 输出**不含时间戳**，因此同样的依赖树产出逐字节相同的文件——不会每跑一次就产生无意义的 diff；
+  依赖变化时跑一次 `pnpm licenses` 即可，无需手改。
+
+**已核实的许可证结论（2026-10-02）**：Rust 依赖树无 GPL/AGPL/LGPL，仅有 MPL-2.0（与 GPLv3 兼容）
+与常见宽松许可；前端 23 个直接依赖为 MIT/Apache/ISC 加一个 OFL-1.1（`@fontsource/poppins`）。
+**Terracotta 是 AGPL-3.0-or-later**，但其 README 给了例外：以未经修改的二进制整包分发、
+或不链接地通过其进程间接口调用（并在界面明显处标注其版权），不会让本程序被 AGPL 覆盖。
+WGP Core（AGPL）同理——**必须保持"独立程序"边界，不得直接链接进主二进制**，否则整体要么转 AGPL。
+
 ### 插件清单的三个筛选维度（2026-10-01 实现）
 
 `platforms` / `methods`（`bundled`|`p2p`|`relay`|`port-mapping`）/ `tags`（开发者自定义，不设白名单）。

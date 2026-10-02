@@ -82,3 +82,9 @@ jobs:
 
       - name: 架构守卫
         run: node scripts/check-arch.mjs
+
+      # 第三方许可声明必须与当前依赖一致。这一关刻意设成**阻塞**：
+      # 过期的声明比没有更糟——它会让"已履行分发义务"变成一句无法核实的话。
+      # 依赖变化后本地执行 `pnpm licenses` 重新生成即可（输出确定性，不含时间戳）。
+      - name: 第三方许可声明与依赖一致
+        run: node scripts/gen-licenses.mjs --check

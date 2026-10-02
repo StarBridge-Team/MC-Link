@@ -35,6 +35,7 @@ import {
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 
@@ -276,6 +277,18 @@ function prepareLegal() {
   const sha256 = (data) => createHash("sha256").update(data).digest("hex");
   const documents = [];
 
+  // 先按当前依赖树重新生成第三方声明，避免发出过期的声明（过期的声明比没有更糟）
+  try {
+    // 用子进程调用而不是 import：生成器与发布脚本因此互不耦合，
+    // 失败边界也清晰——不会把发布脚本本身一起带崩
+    execFileSync(process.execPath, [join(ROOT, "scripts", "gen-licenses.mjs")], {
+      cwd: ROOT,
+      stdio: "inherit",
+    });
+  } catch (e) {
+    console.warn(`[sync-assets] 生成第三方声明失败（继续发布，但声明可能过期）: ${e.message}`);
+  }
+
   // GPLv3 全文：只展示，不要求"同意"
   if (existsSync(GPL_SRC)) {
     const buf = readFileSync(GPL_SRC);
@@ -322,6 +335,25 @@ function prepareLegal() {
     });
   } else {
     console.warn("[sync-assets] 未生成 EULA 文档：客户端会走「拉不到条款」分支");
+  }
+
+  // 第三方开源许可声明：与 EULA 不同，它只需要展示、不需要用户同意
+  const thirdParty = join(LEGAL_SRC_DIR, "THIRD-PARTY.md");
+  if (existsSync(thirdParty)) {
+    const text = readFileSync(thirdParty, "utf8");
+    const name = "THIRD-PARTY.md";
+    writeFileSync(join(out, name), text);
+    // 文档是"随程序分发"的许可证声明，与语言无关：中英都指同一份
+    documents.push({
+      id: "third-party",
+      version: "1",
+      title: "Third-Party Open Source Licenses",
+      requiresAcceptance: false,
+      files: { "en-US": name, "zh-CN": name },
+      sha256: { "en-US": sha256(text), "zh-CN": sha256(text) },
+    });
+  } else {
+    console.warn("[sync-assets] 缺少 legal/THIRD-PARTY.md：请先执行 pnpm licenses");
   }
 
   writeFileSync(

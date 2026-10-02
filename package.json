@@ -14,6 +14,8 @@
     "tauri": "node scripts/tauri-build.mjs",
     "build:release": "node scripts/tauri-build.mjs build",
     "sync:assets": "node scripts/sync-assets.mjs",
+    "licenses": "node scripts/gen-licenses.mjs",
+    "licenses:check": "node scripts/gen-licenses.mjs --check",
     "signer:generate": "node scripts/gen-signer.mjs",
     "signer:sync": "node scripts/gen-signer.mjs --sync"
   },
