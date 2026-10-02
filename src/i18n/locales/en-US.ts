@@ -61,6 +61,13 @@ export default {
     webpageMissingUrlHint: "Set the address in Settings → Home.",
     defaultTitle: "Start connecting",
     defaultDesc: "Connectivity is being re-wired through the plugin system.",
+    scanning: "Looking for local games…",
+    scanRetry: "Rescan",
+    noAdapter: "No recommended adapter",
+    member: "Member",
+    host: "Host",
+    modeHint: "Tap to switch Member / Host",
+    startCoop: "Start co-op",
   },
 
   connect: {

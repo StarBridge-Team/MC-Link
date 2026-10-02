@@ -173,7 +173,8 @@ onMounted(async () => {
     :scheme="scheme"
     motion="standard"
   >
-    <div class="shell">
+    <Transition name="win" appear>
+    <div class="shell" :class="{ 'is-exiting': windowCtl.isExiting.value }">
     <!-- 背景层：图片背景走 CSS 变量，视频走 <video>（CSS 背景不支持视频） -->
     <div class="shell__bg" />
     <video id="bg-video" class="shell__video" autoplay loop playsinline muted />
@@ -220,7 +221,8 @@ onMounted(async () => {
     </div>
 
     <OobeOverlay v-if="needsOobe" />
-  </div>
+    </div>
+  </Transition>
   </m3e-theme>
 </template>
 
@@ -282,5 +284,24 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 窗口过渡：打开时由 <Transition appear> 播放淡入 + 轻微放大（.win-enter-*），
+   关闭/最小化时由 .shell.is-exiting 播放淡出 + 缩小。仅用 transition，不写 @keyframes。 */
+.win-enter-from {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.win-enter-active {
+  transition: opacity var(--motion-medium) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-standard);
+}
+
+.shell.is-exiting {
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity var(--motion-medium) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-standard);
 }
 </style>

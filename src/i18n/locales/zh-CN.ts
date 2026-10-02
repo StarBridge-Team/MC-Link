@@ -65,6 +65,13 @@ export default {
     webpageMissingUrlHint: "请在「设置 → 首页」里填写要显示的网页地址。",
     defaultTitle: "开始联机",
     defaultDesc: "联机能力正在通过插件系统重新接入，暂未开放。",
+    scanning: "正在寻找本地游戏…",
+    scanRetry: "重新扫描",
+    noAdapter: "无推荐适配器",
+    member: "成员",
+    host: "房主",
+    modeHint: "点击切换成员 / 房主",
+    startCoop: "开始联机",
   },
 
   connect: {

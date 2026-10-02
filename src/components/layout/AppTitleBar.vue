@@ -142,7 +142,9 @@ const { t } = useI18n();
   cursor: default;
 }
 
-.titlebar__btn--danger:hover {
+/* 与通用悬停 `.titlebar__btn:hover:not(:disabled)` 特异性相同（0,3,0），
+   且本规则写在后面 → 关闭按钮悬停时优先取红色，不会被灰色通用态覆盖。 */
+.titlebar__btn--danger:hover:not(:disabled) {
   background: var(--error);
   color: var(--on-error);
 }
