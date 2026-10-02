@@ -15,6 +15,7 @@ pub(crate) use window::*;
 pub(crate) use crate::assets::{get_asset_url, read_asset_text};
 pub(crate) use crate::config::push::*;
 pub(crate) use crate::plugin::commands::*;
+pub(crate) use crate::plugin::connect::*;
 pub(crate) use crate::setting_meta::{
     clear_setting_meta_cache_command, get_setting_manifest, get_setting_meta,
 };

@@ -291,6 +291,19 @@ impl BuiltinCapability for TerracottaProvider {
                     "ready": mgr.get_status().running,
                     "protocol": "terracotta",
                     "version": env!("CARGO_PKG_VERSION"),
+                    // 自声明「加入房间需要哪些字段」，前端据此动态渲染表单。
+                    // 房主/访客需要的玩家名由核心从设置里自动带入，不在此列出。
+                    "join_fields": [
+                        {
+                            "key": "room_code",
+                            "label": "房间码 / 邀请码",
+                            "type": "text",
+                            "required": true,
+                            "autofill_from_invite": true,
+                            "pattern": "^[A-Za-z0-9-]{4,}$",
+                            "placeholder": "ABCD-1234",
+                        }
+                    ],
                 }))
             }
             adapter_method::STATUS | adapter_method::PROBE => self.status(),
