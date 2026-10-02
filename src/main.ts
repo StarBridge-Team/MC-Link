@@ -2,6 +2,7 @@ import { createApp } from "vue";
 import Varlet from "@varlet/ui";
 // Varlet 基线样式必须先于本项目的 token / base 载入，后写的才能覆盖它。
 import "@varlet/ui/es/varlet.css";
+import "@m3e/web/theme"; // 注册 <m3e-theme> 自定义元素（动态配色 + 动效方案）
 import "./styles/tokens.css";
 import "./styles/base.css";
 import App from "./App.vue";

@@ -7,7 +7,16 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [vue()],
+  plugins: [
+    vue({
+      template: {
+        compilerOptions: {
+          // @m3e/web 是 Web Components，标签以 m3e- 开头，放行让 Vue 当作原生元素处理
+          isCustomElement: (tag) => tag.startsWith("m3e-"),
+        },
+      },
+    }),
+  ],
   
   resolve: {
     alias: {

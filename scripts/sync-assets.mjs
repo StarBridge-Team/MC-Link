@@ -599,6 +599,42 @@ function httpGetBuffer(url, redirects = 0) {
 }
 
 // 镜像 Rust 侧 prepare_from_npm：从 npm 包同步字体/图标到 Assets/
+function syncFontsource(npm, pkg, outName, weights) {
+  const src = join(npm, pkg);
+  if (!existsSync(src)) return;
+  const dst = join(ASSETS_DIR, "fonts");
+  mkdirSync(dst, { recursive: true });
+  let combined = "";
+  for (const w of weights) {
+    // @fontsource v5：latin 子集命名可能是 `${w}.css`（roboto）或 `latin-${w}.css`（poppins）
+    const cssPath = existsSync(join(src, `${w}.css`))
+      ? join(src, `${w}.css`)
+      : join(src, `latin-${w}.css`);
+    if (!existsSync(cssPath)) continue;
+    const css = readFileSync(cssPath, "utf8");
+    let rewritten = css;
+    let idx = 0;
+    while (true) {
+      const pos = css.slice(idx).indexOf("url(");
+      if (pos < 0) break;
+      const start = idx + pos + 4;
+      const end = css.indexOf(")", start);
+      if (end < 0) break;
+      const raw = css.slice(start, end);
+      const url = raw.replace(/['"]/g, "");
+      if (url.startsWith("./files/")) {
+        const filename = url.slice("./files/".length);
+        const srcFile = join(src, "files", filename);
+        if (existsSync(srcFile)) cpSync(srcFile, join(dst, filename));
+        rewritten = rewritten.split(url).join(`./${filename}`);
+      }
+      idx = end + 1;
+    }
+    combined += rewritten + "\n";
+  }
+  if (combined) writeFileSync(join(dst, `${outName}.css`), combined);
+}
+
 function syncFromNpm() {
   const npm = join(ROOT, "node_modules");
   if (!existsSync(npm)) {
@@ -617,39 +653,10 @@ function syncFromNpm() {
     writeFileSync(join(dst, "material-symbols.css"), msCss);
   }
 
-  // Poppins：读取 latin-*.css，复制 woff2/woff 并合并为 poppins.css
-  const popSrc = join(npm, "@fontsource", "poppins");
-  if (existsSync(popSrc)) {
-    const dst = join(ASSETS_DIR, "fonts");
-    mkdirSync(dst, { recursive: true });
-    const weights = ["300", "400", "500", "600", "700"];
-    let combined = "";
-    for (const w of weights) {
-      const cssPath = join(popSrc, `latin-${w}.css`);
-      if (!existsSync(cssPath)) continue;
-      const css = readFileSync(cssPath, "utf8");
-      let rewritten = css;
-      let idx = 0;
-      while (true) {
-        const pos = css.slice(idx).indexOf("url(");
-        if (pos < 0) break;
-        const start = idx + pos + 4;
-        const end = css.indexOf(")", start);
-        if (end < 0) break;
-        const raw = css.slice(start, end);
-        const url = raw.replace(/['"]/g, "");
-        if (url.startsWith("./files/")) {
-          const filename = url.slice("./files/".length);
-          const srcFile = join(popSrc, "files", filename);
-          if (existsSync(srcFile)) cpSync(srcFile, join(dst, filename));
-          rewritten = rewritten.split(url).join(`./${filename}`);
-        }
-        idx = end + 1;
-      }
-      combined += rewritten + "\n";
-    }
-    if (combined) writeFileSync(join(dst, "poppins.css"), combined);
-  }
+  // Poppins（UI 字体）/ Roboto（m3e 组件默认字体）：从 @fontsource 合并 latin 子集并离线自托管，
+  // 不依赖 Google Fonts CDN（满足「换镜像 / 离线」要求）。
+  syncFontsource(npm, "@fontsource/poppins", "poppins", ["300", "400", "500", "600", "700"]);
+  syncFontsource(npm, "@fontsource/roboto", "roboto", ["300", "400", "500", "600", "700"]);
 
   console.log("[sync-assets] 已从 node_modules 同步字体/图标到 Assets/");
 }

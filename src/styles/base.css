@@ -268,18 +268,14 @@ p {
   color: var(--text-primary);
 }
 
-/* 页面级淡入：路由切换用，随「动画速度」缩放 */
+/* 页面级淡入：路由切换用，随「动画速度」缩放 —— 纯对称交叉淡入，
+   不再让进入项带 translateY 而离开项只淡出（那会造成交叉时的错乱观感）。 */
 .page-enter-active,
 .page-leave-active {
-  transition: opacity var(--motion-medium) var(--ease-standard),
-    transform var(--motion-medium) var(--ease-standard);
+  transition: opacity var(--motion-medium) var(--ease-standard);
 }
 
-.page-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
+.page-enter-from,
 .page-leave-to {
   opacity: 0;
 }

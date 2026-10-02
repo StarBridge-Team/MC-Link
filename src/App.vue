@@ -29,6 +29,12 @@ const settings = useSettings();
 const setup = useSetup();
 const windowCtl = useWindowControls();
 
+// m3e-theme 的明暗方案：system 映射到 auto（跟随系统），light/dark 直传。
+const scheme = computed<"light" | "dark" | "auto">(() => {
+  const m = settings.state.theme_mode;
+  return m === "system" ? "auto" : (m as "light" | "dark");
+});
+
 /** 把引导状态收敛成一个 ref，模板里不必写 `setup.needsOobe.value`。 */
 const needsOobe = computed(() => setup.needsOobe.value);
 
@@ -131,7 +137,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="shell">
+  <m3e-theme
+    :color="settings.state.theme_color"
+    :scheme="scheme"
+    motion="standard"
+    variant="tonal-spot"
+  >
+    <div class="shell">
     <!-- 背景层：图片背景走 CSS 变量，视频走 <video>（CSS 背景不支持视频） -->
     <div class="shell__bg" />
     <video id="bg-video" class="shell__video" autoplay loop playsinline muted />
@@ -176,6 +188,7 @@ onMounted(async () => {
 
     <OobeOverlay v-if="needsOobe" />
   </div>
+  </m3e-theme>
 </template>
 
 <style scoped>

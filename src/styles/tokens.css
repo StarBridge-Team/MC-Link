@@ -178,3 +178,46 @@
   animation-delay: 0s !important;
   transition-delay: 0s !important;
 }
+
+/* ============================================================
+ *  m3e-theme 动态配色桥接
+ *  ------------------------------------------------------------
+ *  <m3e-theme> 在其作用域内生成 M3 标准令牌 `--md-sys-color-*`；
+ *  这里把本项目原有「角色令牌」重定义为它们的别名（带字面量兜底，
+ *  防止令牌名偏差导致整片失效）。语义别名（--text-* / --text-on-accent
+ *  等）因使用 var() 引用，会自动跟随这里的重定义，无需逐一改写。
+ *
+ *  success / warning / info 没有对应的标准 md-sys 令牌，仍由 :root /
+ *  .dark 段落按明暗给出，保持原语义色。
+ * ============================================================ */
+m3e-theme {
+  --primary: var(--md-sys-color-primary, #6750a4);
+  --on-primary: var(--md-sys-color-on-primary, #ffffff);
+  --primary-container: var(--md-sys-color-primary-container, #eaddff);
+  --on-primary-container: var(--md-sys-color-on-primary-container, #21005d);
+  --secondary-container: var(--md-sys-color-secondary-container, #e8def8);
+  --on-secondary-container: var(--md-sys-color-on-secondary-container, #1d192b);
+  --tertiary: var(--md-sys-color-tertiary, #7d5260);
+  --tertiary-container: var(--md-sys-color-tertiary-container, #ffd8e4);
+  --on-tertiary-container: var(--md-sys-color-on-tertiary-container, #31111d);
+  --error: var(--md-sys-color-error, #b3261e);
+  --on-error: var(--md-sys-color-on-error, #ffffff);
+  --error-container: var(--md-sys-color-error-container, #f9dedc);
+  --on-error-container: var(--md-sys-color-on-error-container, #410e0b);
+  --surface: var(--md-sys-color-surface, #fef7ff);
+  --on-surface: var(--md-sys-color-on-surface, #1d1b20);
+  --surface-variant: var(--md-sys-color-surface-variant, #e7e0ec);
+  --on-surface-variant: var(--md-sys-color-on-surface-variant, #49454f);
+  --surface-container-lowest: var(--md-sys-color-surface-container-lowest, #ffffff);
+  --surface-container-low: var(--md-sys-color-surface-container-low, #f7f2fa);
+  --surface-container: var(--md-sys-color-surface-container, #f3edf7);
+  --surface-container-high: var(--md-sys-color-surface-container-high, #ece6f0);
+  --surface-container-highest: var(--md-sys-color-surface-container-highest, #e6e0e9);
+  --inverse-surface: var(--md-sys-color-inverse-surface, #322f35);
+  --inverse-on-surface: var(--md-sys-color-inverse-on-surface, #f5eff7);
+  --outline: var(--md-sys-color-outline, #79747e);
+  --outline-variant: var(--md-sys-color-outline-variant, #cac4d0);
+  --scrim: var(--md-sys-color-scrim, #000000);
+  /* 卡片表面：抬升表面，亮色/暗色都跟随容器层级 */
+  --card-bg: var(--md-sys-color-surface-container-high, #ffffff);
+}
