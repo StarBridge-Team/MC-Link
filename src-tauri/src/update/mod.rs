@@ -58,8 +58,8 @@ pub(crate) use commands::*;
 pub(crate) use download::{clear_update_cache, download_asset};
 pub(crate) use fetch::check_update;
 pub(crate) use install::cleanup_leftovers;
+pub(crate) use plugin_updater::record_configured as plugin_record_configured;
 pub(crate) use plugin_updater::{
     available as plugin_available, configured as plugin_configured, install_via_plugin,
     preferred as plugin_preferred,
 };
-pub(crate) use plugin_updater::record_configured as plugin_record_configured;

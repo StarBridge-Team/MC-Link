@@ -1,6 +1,6 @@
-use std::path::Path;
 use super::CONFIG_VERSION;
 use crate::datadir::setting_dir;
+use std::path::Path;
 
 /// 读取本地记录的配置版本号，若不存在返回 0。
 fn read_recorded_version(data_dir: &Path) -> u32 {

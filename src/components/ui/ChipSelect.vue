@@ -35,7 +35,7 @@ const emit = defineEmits<{ "update:modelValue": [value: T] }>();
       :disabled="disabled"
       @click="emit('update:modelValue', option.value)"
     >
-      <i v-if="option.icon" :class="option.icon" />
+      <i v-if="option.icon" class="material-symbols-rounded chip__icon">{{ option.icon }}</i>
       <span>{{ option.label }}</span>
     </button>
   </div>
@@ -67,6 +67,12 @@ const emit = defineEmits<{ "update:modelValue": [value: T] }>();
   height: 30px;
   padding: 0 var(--sp-3);
   font-size: var(--fs-label);
+}
+
+/* 芯片图标：跟随芯片字号缩放（图标字体类默认 24px，会撑大芯片）。 */
+.chip__icon {
+  font-size: 1.25em;
+  flex-shrink: 0;
 }
 
 .chip:hover:not(:disabled) {

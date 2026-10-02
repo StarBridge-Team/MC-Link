@@ -9,7 +9,6 @@ export * from "./app";
 export * from "./config";
 export * from "./effect";
 export * from "./datadir";
-export * from "./m3";
 export * from "./update";
 export * from "./setup";
 export * from "./legal";

@@ -1,14 +1,22 @@
+pub mod check;
 pub mod push;
 pub mod read;
 pub mod write;
-pub mod check;
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
+// 容器级 serde 默认：缺失字段回落到 `Default::default()` 的取值。
+// 新增字段时**必须**靠它兜底——`config/read.rs` 是直接 `from_str` 反序列化，
+// 没有"合并默认值"的步骤，缺字段会被判为"文件损坏"从而把用户设置整份隔离重置。
+#[serde(default)]
 pub struct PersonalizationSettings {
     pub theme_color: String,
     pub theme_mode: String,
+    /// 配色变体（M3E `ThemeVariant` 取值：tonal-spot / vibrant / expressive / neutral / …）。
+    pub theme_variant: String,
+    /// 配色对比度（M3E `ContrastLevel` 取值：standard / medium / high）。
+    pub theme_contrast: String,
     pub animation_enabled: bool,
     pub animation_speed: f64,
     pub transparent_effect: String,
@@ -28,6 +36,8 @@ impl Default for PersonalizationSettings {
         Self {
             theme_color: "#0066cc".to_string(),
             theme_mode: "system".to_string(),
+            theme_variant: "tonal-spot".to_string(),
+            theme_contrast: "standard".to_string(),
             animation_enabled: true,
             animation_speed: 1.0,
             // 平台默认效果（Windows 为 mica、macOS 为 hud_window）：
@@ -87,7 +97,10 @@ pub(crate) fn section_path(
 ) -> Result<std::path::PathBuf, String> {
     let file = format!(
         "{}.yml",
-        section.replace(' ', "_").replace('/', "_").replace('\\', "_")
+        section
+            .replace(' ', "_")
+            .replace('/', "_")
+            .replace('\\', "_")
     );
     Ok(crate::datadir::setting_dir(data_dir)?.join(file))
 }

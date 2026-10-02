@@ -60,9 +60,9 @@ async function openFallback() {
         :text="t('oobe.eulaAgreed', { version: alreadyAccepted.version })"
       />
 
-      <var-button type="primary" block @click="emit('agree')">
+      <m3e-button variant="filled" class="block-btn" @click="emit('agree')">
         {{ t("oobe.eulaAgree") }}
-      </var-button>
+      </m3e-button>
     </template>
 
     <template v-else>
@@ -74,8 +74,8 @@ async function openFallback() {
         :text="`${t('oobe.eulaUnfetchedNotice')} ${bundle.error}`"
       />
       <div class="actions">
-        <var-button text @click="openFallback">{{ t("oobe.eulaOpenWebsite") }}</var-button>
-        <var-button type="primary" @click="emit('agree')">{{ t("oobe.eulaAgree") }}</var-button>
+        <m3e-button @click="openFallback">{{ t("oobe.eulaOpenWebsite") }}</m3e-button>
+        <m3e-button variant="filled" @click="emit('agree')">{{ t("oobe.eulaAgree") }}</m3e-button>
       </div>
     </template>
 

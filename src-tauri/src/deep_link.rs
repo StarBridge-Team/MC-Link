@@ -1,5 +1,5 @@
-use tauri::{AppHandle, Emitter};
 use serde::Serialize;
+use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, Serialize, Debug)]
 struct DeepLinkEvent {

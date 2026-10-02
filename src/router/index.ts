@@ -3,8 +3,7 @@ import { createRouter, createWebHashHistory } from "vue-router";
 /**
  * 路由表。
  *
- * 路径与路由名沿用重构前的结构（`/` → `/home`、`/connect`、`/setting/:tab?`、`/m3`），
- * 只有 `tab` 参数的可选值变了：现在指向新的设置分区。
+ * 路径与路由名沿用重构前的结构（`/` → `/home`、`/connect`、`/setting/:tab?`）。
  * 视图放在 `src/views/`，与可复用组件（`src/components/`）分开。
  */
 const routes = [
@@ -20,25 +19,28 @@ const routes = [
     component: () => import("@/views/ConnectView.vue"),
   },
   {
+    path: "/game/:tab?",
+    name: "game",
+    component: () => import("@/views/GameView.vue"),
+    props: true,
+  },
+  {
     path: "/setting/:tab?",
     name: "setting",
     component: () => import("@/views/SettingView.vue"),
     props: true,
   },
-  {
-    path: "/m3",
-    name: "m3",
-    component: () => import("@/views/M3LabView.vue"),
-  },
 ];
 
-/** 设置页的分区 id，顺序即侧栏顺序。`SettingView` 与侧栏共用这份定义。 */
+/**
+ * 设置页的分区 id，顺序即侧栏顺序。`SettingView` 与侧栏共用这份定义。
+ *
+ * 插件**不在这里**：它已移到「游戏」页（`views/GameView.vue`）。
+ */
 export const SETTING_TABS = [
   "personalization",
-  "background",
   "homepage",
   "general",
-  "plugins",
   "update",
   "about",
 ] as const;
@@ -49,6 +51,18 @@ export const DEFAULT_SETTING_TAB: SettingTab = "personalization";
 
 export function isSettingTab(value: unknown): value is SettingTab {
   return typeof value === "string" && (SETTING_TABS as readonly string[]).includes(value);
+}
+
+/** 「游戏」页的三个模式，顺序即工具栏上的 Tab 顺序。 */
+export const GAME_TABS = ["market", "games", "plugins"] as const;
+
+export type GameTab = (typeof GAME_TABS)[number];
+
+/** 默认落在「游戏」而不是最左边的「市场」：市场暂时是空的，落地页不该是个空页面。 */
+export const DEFAULT_GAME_TAB: GameTab = "games";
+
+export function isGameTab(value: unknown): value is GameTab {
+  return typeof value === "string" && (GAME_TABS as readonly string[]).includes(value);
 }
 
 export const router = createRouter({

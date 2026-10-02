@@ -15,16 +15,16 @@ withDefaults(
 );
 
 const DEFAULT_ICON: Record<string, string> = {
-  info: "bi bi-info-circle",
-  success: "bi bi-check-circle",
-  warning: "bi bi-exclamation-triangle",
-  danger: "bi bi-x-octagon",
+  info: "info",
+  success: "check_circle",
+  warning: "warning",
+  danger: "cancel",
 };
 </script>
 
 <template>
   <div class="info-bar" :class="`info-bar--${kind}`">
-    <i :class="icon || DEFAULT_ICON[kind]" class="info-bar__icon" />
+    <i class="material-symbols-rounded info-bar__icon">{{ icon || DEFAULT_ICON[kind] }}</i>
     <span class="info-bar__text">{{ text }}</span>
     <div v-if="$slots.default" class="info-bar__actions">
       <slot />

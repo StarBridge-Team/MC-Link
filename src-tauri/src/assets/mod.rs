@@ -1,11 +1,11 @@
-pub mod pull;
 pub(crate) mod adapter;
+pub mod pull;
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use crate::cache::cache_path;
 use crate::datadir::assets_dir;
 use crate::mgr::AppMgr;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// 资源缓存根目录下的相对路径转换为完整路径。
 pub(crate) fn asset_cache_path(data_dir: &Path, relative: &str) -> Result<PathBuf, String> {

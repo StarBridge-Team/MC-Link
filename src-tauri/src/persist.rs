@@ -72,8 +72,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
             .map_err(|e| format!("写入临时文件 {} 失败: {}", tmp.display(), e))?;
         file.sync_all()
             .map_err(|e| format!("刷新临时文件 {} 失败: {}", tmp.display(), e))?;
-        std::fs::rename(&tmp, path)
-            .map_err(|e| format!("替换 {} 失败: {}", path.display(), e))
+        std::fs::rename(&tmp, path).map_err(|e| format!("替换 {} 失败: {}", path.display(), e))
     })();
 
     if let Err(e) = written {
@@ -82,7 +81,11 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     }
 
     if cfg!(debug_assertions) {
-        eprintln!("[persist] 已保存 {}（{} 字节）", path.display(), bytes.len());
+        eprintln!(
+            "[persist] 已保存 {}（{} 字节）",
+            path.display(),
+            bytes.len()
+        );
     }
     Ok(())
 }
@@ -180,7 +183,8 @@ mod tests {
     }
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("mc-link-persist-{}-{}", tag, std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("mc-link-persist-{}-{}", tag, std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         dir
     }
@@ -196,7 +200,10 @@ mod tests {
     #[test]
     fn round_trip_preserves_values() {
         let path = temp_dir("roundtrip").join("sample.yml");
-        let value = Sample { name: "mc".into(), count: 7 };
+        let value = Sample {
+            name: "mc".into(),
+            count: 7,
+        };
         save_yaml(&path, &value).unwrap();
 
         let loaded = load_yaml::<Sample>(&path).unwrap();
@@ -207,8 +214,22 @@ mod tests {
     #[test]
     fn save_overwrites_existing_file() {
         let path = temp_dir("overwrite").join("sample.yml");
-        save_yaml(&path, &Sample { name: "a".into(), count: 1 }).unwrap();
-        save_yaml(&path, &Sample { name: "b".into(), count: 2 }).unwrap();
+        save_yaml(
+            &path,
+            &Sample {
+                name: "a".into(),
+                count: 1,
+            },
+        )
+        .unwrap();
+        save_yaml(
+            &path,
+            &Sample {
+                name: "b".into(),
+                count: 2,
+            },
+        )
+        .unwrap();
 
         let loaded = load_yaml::<Sample>(&path).unwrap();
         assert_eq!(loaded.value.name, "b");
@@ -227,7 +248,9 @@ mod tests {
         let backup = loaded.backup.expect("应产生备份文件");
         assert!(backup.exists(), "备份应保留");
         assert!(
-            std::fs::read_to_string(&backup).unwrap().contains("not: valid"),
+            std::fs::read_to_string(&backup)
+                .unwrap()
+                .contains("not: valid"),
             "备份内容应为原始损坏内容"
         );
         assert!(!path.exists(), "损坏的原文件应已被隔离改名");
@@ -247,7 +270,10 @@ mod tests {
     fn json_round_trip_and_corruption() {
         let dir = temp_dir("json");
         let path = dir.join("state.json");
-        let value = Sample { name: "p".into(), count: 3 };
+        let value = Sample {
+            name: "p".into(),
+            count: 3,
+        };
         save_json(&path, &value).unwrap();
         assert_eq!(load_json::<Sample>(&path).unwrap().value, value);
 

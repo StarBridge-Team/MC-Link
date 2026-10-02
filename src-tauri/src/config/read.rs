@@ -1,7 +1,7 @@
-use std::path::Path;
 use super::PersonalizationSettings;
 use crate::datadir::setting_dir;
 use crate::persist;
+use std::path::Path;
 
 pub(crate) fn read_setting(data_dir: &Path, section: &str) -> Result<String, String> {
     let path = super::section_path(data_dir, section)?;

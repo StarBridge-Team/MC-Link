@@ -15,9 +15,9 @@
 
 mod handshake;
 mod io;
-mod wire;
 #[cfg(test)]
 mod tests;
+mod wire;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};

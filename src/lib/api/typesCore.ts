@@ -28,6 +28,10 @@ export interface AdapterStatus {
 export interface PersonalizationSettings {
   theme_color: string;
   theme_mode: string;
+  /** 配色变体（M3E ThemeVariant）。 */
+  theme_variant: string;
+  /** 配色对比度（M3E ContrastLevel）。 */
+  theme_contrast: string;
   animation_enabled: boolean;
   animation_speed: number;
   transparent_effect: string;

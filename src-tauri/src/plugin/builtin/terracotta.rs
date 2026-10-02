@@ -135,11 +135,10 @@ impl TerracottaProvider {
     fn get_json(&self, path: &str) -> Result<Value, ErrorInfo> {
         let port = self.port()?;
         let url = format!("http://127.0.0.1:{}{}", port, path);
-        let resp = self
-            .http
-            .get(&url)
-            .send()
-            .map_err(|e| ErrorInfo::new(error_code::UNAVAILABLE, format!("请求陶瓦失败: {}", e)))?;
+        let resp =
+            self.http.get(&url).send().map_err(|e| {
+                ErrorInfo::new(error_code::UNAVAILABLE, format!("请求陶瓦失败: {}", e))
+            })?;
         if !resp.status().is_success() {
             return Err(ErrorInfo::new(
                 error_code::UNAVAILABLE,
@@ -211,11 +210,9 @@ impl TerracottaProvider {
         let query = Self::terracotta_args(&params);
         let port = self.port()?;
         let url = format!("http://127.0.0.1:{}/state/scanning", port);
-        self.http
-            .get(&url)
-            .query(&query)
-            .send()
-            .map_err(|e| ErrorInfo::new(error_code::UNAVAILABLE, format!("启动陶瓦主机失败: {}", e)))?;
+        self.http.get(&url).query(&query).send().map_err(|e| {
+            ErrorInfo::new(error_code::UNAVAILABLE, format!("启动陶瓦主机失败: {}", e))
+        })?;
         self.poll_state(120, 500)
     }
 
@@ -231,12 +228,9 @@ impl TerracottaProvider {
         let query = Self::terracotta_args(&params);
         let port = self.port()?;
         let url = format!("http://127.0.0.1:{}/state/guesting", port);
-        let resp = self
-            .http
-            .get(&url)
-            .query(&query)
-            .send()
-            .map_err(|e| ErrorInfo::new(error_code::UNAVAILABLE, format!("加入陶瓦房间失败: {}", e)))?;
+        let resp = self.http.get(&url).query(&query).send().map_err(|e| {
+            ErrorInfo::new(error_code::UNAVAILABLE, format!("加入陶瓦房间失败: {}", e))
+        })?;
         if !resp.status().is_success() {
             return Err(ErrorInfo::new(
                 error_code::UNAVAILABLE,
@@ -338,9 +332,18 @@ mod tests {
 
     #[test]
     fn state_parsing_matches_upstream_strings() {
-        assert_eq!(TerracottaState::from_str("host-ok"), TerracottaState::HostOk);
-        assert_eq!(TerracottaState::from_str("guest-ok"), TerracottaState::GuestOk);
-        assert_eq!(TerracottaState::from_str("exception"), TerracottaState::Exception);
+        assert_eq!(
+            TerracottaState::from_str("host-ok"),
+            TerracottaState::HostOk
+        );
+        assert_eq!(
+            TerracottaState::from_str("guest-ok"),
+            TerracottaState::GuestOk
+        );
+        assert_eq!(
+            TerracottaState::from_str("exception"),
+            TerracottaState::Exception
+        );
         assert_eq!(TerracottaState::from_str("???"), TerracottaState::Unknown);
         assert!(TerracottaState::HostOk.is_terminal());
         assert!(!TerracottaState::HostScanning.is_terminal());

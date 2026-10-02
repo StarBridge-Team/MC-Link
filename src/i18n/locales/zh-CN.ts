@@ -43,8 +43,8 @@ export default {
   nav: {
     home: "首页",
     connect: "联机",
+    game: "游戏",
     setting: "设置",
-    m3: "配色",
     back: "返回上一步",
   },
 
@@ -75,19 +75,16 @@ export default {
   setting: {
     title: "设置",
     personalization: "个性化",
-    background: "背景",
     homepage: "首页",
     general: "通用",
-    plugins: "插件",
     update: "更新",
     about: "关于",
   },
 
   appearance: {
     title: "外观",
-    desc: "主题色即 M3 配色的种子色，改动立即生效并自动保存",
     themeColor: "主题色",
-    custom: "自定义",
+    desc: "明暗、窗口材质与界面动画。配色由组件库自身生成，保持协调统一",
     mode: "明暗模式",
     modeSystem: "跟随系统",
     modeLight: "浅色",
@@ -101,14 +98,32 @@ export default {
     animation: "界面动画",
     animationDesc: "关闭后所有过渡立即完成",
     animationSpeed: "动画速度",
-    m3Title: "M3 观感",
-    m3Desc: "配色变体与对比度，仅影响本机观感，不改主题色",
-    variant: "配色变体",
-    contrast: "对比度",
-    presets: "预设种子色",
-    schemeSource: "配色来源",
     schemeSourceBackend: "后端引擎",
     schemeSourceFrontend: "内置引擎（回退）",
+  },
+
+  color: {
+    title: "配色",
+    desc: "以种子色生成整套动态配色，随明暗与对比度自动调整",
+    seed: "种子色",
+    variant: "配色风格",
+    contrast: "对比度",
+    variantNames: {
+      tonalSpot: "柔和",
+      vibrant: "鲜艳",
+      expressive: "表现力",
+      neutral: "中性",
+      monochrome: "单色",
+      fidelity: "高保真",
+      content: "内容优先",
+      rainbow: "彩虹",
+      fruitSalad: "水果沙拉",
+    },
+    contrastNames: {
+      standard: "标准",
+      medium: "中等",
+      high: "高",
+    },
   },
 
   background: {
@@ -177,7 +192,6 @@ export default {
   plugins: {
     title: "插件",
     desc: "适配器、检测器与耦合器都由插件提供；未知取值会被忽略而不是让加载失败",
-    searchPlaceholder: "搜索插件名或说明",
     kind: "类型",
     method: "联机方式",
     platform: "平台",
@@ -217,6 +231,34 @@ export default {
     matched: "匹配 {count} 个",
   },
 
+  // 「游戏」页：市场 / 游戏 / 插件 三个模式共用一套外壳（views/GameView.vue）
+  game: {
+    tab: {
+      market: "市场",
+      games: "游戏",
+      plugins: "插件",
+    },
+    searchPlaceholder: {
+      market: "搜索市场",
+      games: "搜索游戏",
+      plugins: "搜索插件",
+    },
+    marketEmptyTitle: "市场尚未开放",
+    marketEmptyDesc:
+      "插件目录与安装能力还在开发中（后端目前没有对应的命令）。这里刻意不放占位数据 —— 一个看起来能装插件、实际装不了的市场，比一个空页面更容易让人误会成网络或权限问题。",
+    marketEmptyHint: "在此之前，本地已有的插件在「插件」标签页里管理。",
+    gamesTotal: "共 {count} 个游戏",
+    gamesMatched: "匹配 {count} 个",
+    gamesEmptyTitle: "没有匹配的游戏",
+    gamesEmptyDesc: "换个关键词试试，也可以清空搜索浏览全部。",
+    gamesEmptyAllTitle: "游戏表为空",
+    gamesEmptyAllDesc: "后端没有返回任何游戏定义。",
+    port: "端口",
+    preferredAdapter: "适配器",
+    requiresCoupler: "需要联机耦合器",
+    errorTitle: "读取游戏列表失败",
+  },
+
   update: {
     title: "应用更新",
     desc: "是否可自动更新取决于构建渠道与安装形态",
@@ -252,6 +294,7 @@ export default {
 
   about: {
     title: "关于",
+    buildInfo: "版本信息",
     version: "应用版本",
     tauriVersion: "Tauri 版本",
     vueVersion: "Vue 版本",
@@ -269,57 +312,6 @@ export default {
     stale: "当前显示的是缓存数据（离线）",
     communityError: "社区数据获取失败",
     thanks: "鸣谢",
-  },
-
-  /** M3 配色实验室（`/m3`） */
-  m3: {
-    title: "配色实验室",
-    desc: "以种子色生成整套 M3 配色，并应用到整个界面",
-    seed: "种子色",
-    applied: "已应用到主题色",
-    variant: "配色变体",
-    contrast: "对比度",
-    palette: "色调调色板",
-    roles: "颜色角色",
-    rolesLight: "浅色角色",
-    rolesDark: "深色角色",
-    copyJson: "复制方案 JSON",
-    copied: "方案 JSON 已复制到剪贴板",
-    source: "生成来源",
-    /** 变体显示名（key 与 `lib/m3/presets.ts` 的 M3_VARIANT_LABEL_KEY 对应）。 */
-    variantNames: {
-      tonalSpot: "柔和（默认）",
-      monochrome: "单色",
-      neutral: "中性",
-      vibrant: "鲜艳",
-      expressive: "表现力",
-      fidelity: "高保真",
-      content: "内容优先",
-      rainbow: "彩虹",
-      fruitSalad: "水果沙拉",
-    },
-    role: {
-      primary: "主色",
-      on_primary: "主色之上",
-      primary_container: "主色容器",
-      on_primary_container: "主色容器之上",
-      secondary: "次要色",
-      secondary_container: "次要容器",
-      tertiary: "第三色",
-      tertiary_container: "第三容器",
-      error: "错误色",
-      error_container: "错误容器",
-      surface: "表面",
-      on_surface: "表面之上",
-      surface_variant: "表面变体",
-      surface_container: "表面容器",
-      surface_container_high: "表面容器（高）",
-      surface_container_highest: "表面容器（最高）",
-      outline: "描边",
-      outline_variant: "描边变体",
-      inverse_surface: "反色表面",
-      inverse_on_surface: "反色表面之上",
-    },
   },
 
   oobe: {
@@ -356,8 +348,8 @@ export default {
   /** 地区代码 → 显示名。取不到的名称由界面回退成原始代码。 */
   region: {
     CN: "中国大陆",
-    HK: "香港",
-    TW: "台湾",
+    HK: "中国香港",
+    TW: "中国台湾",
     JP: "日本",
     KR: "韩国",
     SG: "新加坡",

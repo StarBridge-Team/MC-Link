@@ -5,8 +5,8 @@
  *
  * 通过 asset 协议加载的 CSS，其内部相对 `url()` 会被解析失败：`convertFileSrc` 会把
  * **整条绝对路径百分号编码成单个路径段**（连 `/` 都编码成 `%2F`），浏览器从 URL 角度
- * 看"目录"就是 asset 根，于是 `url("./bootstrap-icons.woff2")` 落到
- * `http://asset.localhost/bootstrap-icons.woff2` → 404 → 字体不加载 → 图标全变豆腐块。
+ * 看"目录"就是 asset 根，于是 `url("./material-symbols-rounded.woff2")` 落到
+ * `http://asset.localhost/material-symbols-rounded.woff2` → 404 → 字体不加载 → 图标全变豆腐块。
  *
  * 解决办法是把每个相对引用换算成它在 Assets 下的相对路径，再交由调用方转成绝对地址。
  *
@@ -33,8 +33,8 @@ export function isAbsoluteRef(value: string): boolean {
 /**
  * 按 CSS 自身所在目录，把引用换算成 Assets 下的相对路径。
  *
- * 例：CSS 在 `bootstrap-icons/bootstrap-icons.css`，引用 `./x.woff2`
- * → `bootstrap-icons/x.woff2`；引用 `../fonts/y.css` → `fonts/y.css`。
+ * 例：CSS 在 `material-symbols/material-symbols.css`，引用 `./x.woff2`
+ * → `material-symbols/x.woff2`；引用 `../fonts/y.css` → `fonts/y.css`。
  */
 export function resolveAgainst(cssPath: string, ref: string): string {
   // 去掉 ?query 与 #fragment，它们不参与文件定位

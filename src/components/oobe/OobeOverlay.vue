@@ -31,9 +31,9 @@ const gameId = ref("");
 const busy = ref(false);
 
 const STEPS: { id: OobeStep; labelKey: string; icon: string }[] = [
-  { id: "language", labelKey: "oobe.stepLanguage", icon: "bi bi-translate" },
-  { id: "eula", labelKey: "oobe.stepEula", icon: "bi bi-file-earmark-text" },
-  { id: "game", labelKey: "oobe.stepGame", icon: "bi bi-controller" },
+  { id: "language", labelKey: "oobe.stepLanguage", icon: "translate" },
+  { id: "eula", labelKey: "oobe.stepEula", icon: "description" },
+  { id: "game", labelKey: "oobe.stepGame", icon: "sports_esports" },
 ];
 
 const stepIndex = computed(() => STEPS.findIndex((s) => s.id === step.value));
@@ -101,7 +101,7 @@ const nextDisabled = computed(() => {
   <div class="oobe">
     <div class="oobe__card">
       <header class="oobe__head">
-        <span class="oobe__logo"><i class="bi bi-boxes" /></span>
+        <span class="oobe__logo"><i class="material-symbols-rounded">category</i></span>
         <div>
           <h1 class="oobe__title">{{ t("oobe.title") }}</h1>
           <p class="oobe__subtitle">{{ t("oobe.subtitle") }}</p>
@@ -119,7 +119,7 @@ const nextDisabled = computed(() => {
           }"
         >
           <span class="steps__dot">
-            <i :class="index < stepIndex ? 'bi bi-check-lg' : item.icon" />
+            <i class="material-symbols-rounded">{{ index < stepIndex ? 'check' : item.icon }}</i>
           </span>
           <span class="steps__label">{{ t(item.labelKey) }}</span>
         </li>
@@ -150,21 +150,20 @@ const nextDisabled = computed(() => {
       </div>
 
       <footer class="oobe__foot">
-        <var-button text :disabled="!canGoBack" @click="goBack">
-          <i class="bi bi-arrow-left" />
+        <m3e-button :disabled="!canGoBack" @click="goBack">
+          <m3e-icon slot="icon" name="arrow_back" />
           <span>{{ t("oobe.back") }}</span>
-        </var-button>
+        </m3e-button>
         <span class="grow" />
         <!-- EULA 步骤的确认按钮在正文旁边，这里只保留前进/完成 -->
-        <var-button
+        <m3e-button
           v-if="step !== 'eula'"
-          type="primary"
-          :disabled="nextDisabled"
-          :loading="busy"
+          variant="filled"
+          :disabled="nextDisabled || busy"
           @click="goNext"
         >
           {{ step === "game" ? t("oobe.finish") : t("oobe.next") }}
-        </var-button>
+        </m3e-button>
       </footer>
     </div>
   </div>
@@ -253,6 +252,10 @@ const nextDisabled = computed(() => {
   border-radius: var(--r-full);
   background: var(--surface-container-highest);
   color: var(--text-secondary);
+  font-size: var(--fs-label);
+}
+
+.steps__dot .material-symbols-rounded {
   font-size: var(--fs-label);
 }
 

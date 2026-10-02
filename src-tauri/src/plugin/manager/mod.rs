@@ -98,7 +98,9 @@ impl PluginManager {
             warnings: RwLock::new(warnings),
         };
 
-        Ok(Arc::new(Self { inner: Arc::new(inner) }))
+        Ok(Arc::new(Self {
+            inner: Arc::new(inner),
+        }))
     }
 
     pub fn data_dir(&self) -> &Path {
@@ -117,7 +119,13 @@ impl PluginManager {
         if self.inner.shutdown.load(Ordering::SeqCst) {
             return Err("插件管理器已关闭".to_string());
         }
-        if self.inner.gateway.read().map(|g| g.is_some()).unwrap_or(false) {
+        if self
+            .inner
+            .gateway
+            .read()
+            .map(|g| g.is_some())
+            .unwrap_or(false)
+        {
             return Ok(());
         }
 
@@ -128,12 +136,7 @@ impl PluginManager {
             *slot = Some(gateway.clone());
         }
 
-        let rx = self
-            .inner
-            .inbound_rx
-            .lock()
-            .ok()
-            .and_then(|mut g| g.take());
+        let rx = self.inner.inbound_rx.lock().ok().and_then(|mut g| g.take());
 
         if let Some(rx) = rx {
             let inner = self.inner.clone();
@@ -229,9 +232,9 @@ impl PluginManager {
                     p.close("插件已被停用");
                 }
                 providers.remove(plugin_id);
-                }
-                // 进程也要收掉：只关会话时插件可以选择不理会，进程会继续跑
-                self.reap_child(plugin_id, "插件已被停用");
+            }
+            // 进程也要收掉：只关会话时插件可以选择不理会，进程会继续跑
+            self.reap_child(plugin_id, "插件已被停用");
         }
         Ok(())
     }
@@ -438,9 +441,8 @@ impl PluginManager {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            ErrorInfo::new(error_code::UNAVAILABLE, "全部候选插件均调用失败")
-        }))
+        Err(last_error
+            .unwrap_or_else(|| ErrorInfo::new(error_code::UNAVAILABLE, "全部候选插件均调用失败")))
     }
 
     /// 向所有已就绪插件广播上下文（游戏信息 / 房间信息 / 其他插件信息）。

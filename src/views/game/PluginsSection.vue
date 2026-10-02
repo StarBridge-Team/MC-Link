@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import PluginCard from "../../components/plugin/PluginCard.vue";
 import InfoBar from "../../components/ui/InfoBar.vue";
 import SettingCard from "../../components/ui/SettingCard.vue";
+import { useGameSearch } from "../../composables/useGameSearch";
 import { showError, showSuccess } from "../../composables/useToast";
 import {
   getPluginGateway,
@@ -18,7 +19,10 @@ import {
 import type { PluginFacets, PluginGateway, PluginInfo } from "../../lib/api/types";
 
 /**
- * 个性化 → 插件。
+ * 「游戏」页 → 插件。
+ *
+ * 搜索框在页面的工具栏上（**唯一**的输入框，切换模式时位置与外观都不变），这里只订阅
+ * `useGameSearch()` 里属于插件模式的那个词，变化时重新向后端要一次列表。
  *
  * # 筛选走后端
  *
@@ -30,6 +34,7 @@ import type { PluginFacets, PluginGateway, PluginInfo } from "../../lib/api/type
  * 平台/方式/标签里的未知值由后端丢弃并在 `warnings` 里留痕，界面只负责显示这条告警。
  */
 const { t } = useI18n();
+const { queries } = useGameSearch();
 
 const plugins = ref<PluginInfo[]>([]);
 const facets = ref<PluginFacets | null>(null);
@@ -41,8 +46,8 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const gateway = ref<PluginGateway | null>(null);
 
+// 搜索词不在这里：它在「游戏」页的工具栏上（`useGameSearch`），本组件只订阅插件模式那个
 const filter = reactive({
-  query: "",
   kinds: [] as string[],
   methods: [] as string[],
   platforms: [] as string[],
@@ -70,7 +75,7 @@ async function load() {
   error.value = null;
   try {
     const result = await listPlugins({
-      query: filter.query || undefined,
+      query: queries.plugins.trim() || undefined,
       kinds: filter.kinds.length ? filter.kinds : undefined,
       methods: filter.methods.length ? filter.methods : undefined,
       platforms: filter.platforms.length ? filter.platforms : undefined,
@@ -98,11 +103,14 @@ async function loadGateway() {
   }
 }
 
-/** 搜索框输入：350ms 防抖，避免每敲一个字就跨一次 IPC。 */
+/** 搜索词变化：350ms 防抖，避免每敲一个字就跨一次 IPC。 */
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer);
   searchTimer = setTimeout(() => void load(), 350);
 }
+
+// 搜索框在「游戏」页的工具栏上（切换模式时它不该动），这里只订阅插件模式的那个词
+watch(() => queries.plugins, onSearchInput);
 
 function toggleFacet(key: (typeof FACET_KEYS)[number], value: string) {
   const list = filter[key] as string[];
@@ -179,8 +187,8 @@ onUnmounted(() => {
 
 <template>
   <div class="scroll-area">
-    <div class="stack">
-      <SettingCard :icon="'bi bi-hdd-network'" :title="t('plugins.gateway')" wide>
+    <div class="stack stagger">
+      <SettingCard :icon="'router'" :title="t('plugins.gateway')" wide>
         <div class="gateway">
           <span class="tag" :class="gateway?.running ? 'tag--ok' : 'tag--off'">
             {{ gateway?.running ? t("plugins.gatewayRunning") : t("plugins.gatewayStopped") }}
@@ -192,26 +200,20 @@ onUnmounted(() => {
             v{{ gateway.protocolVersion }} · {{ gateway.subprotocol }}
           </span>
           <span class="grow" />
-          <var-button size="small" text @click="reload">
-            <i class="bi bi-arrow-repeat" />
+          <m3e-button size="small" @click="reload">
+            <m3e-icon slot="icon" name="sync" />
             <span>{{ t("plugins.reload") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-puzzle'" :title="t('plugins.title')" :desc="t('plugins.desc')" wide>
+      <SettingCard :icon="'extension'" :title="t('plugins.title')" :desc="t('plugins.desc')" wide>
         <div class="toolbar">
-          <var-input
-            v-model="filter.query"
-            class="toolbar__search"
-            :placeholder="t('plugins.searchPlaceholder')"
-            clearable
-            @update:model-value="onSearchInput"
-          />
+          <!-- 搜索框已上移到「游戏」页的工具栏：切换模式时它必须待着不动 -->
           <label class="toolbar__toggle">
-            <var-switch
-              :model-value="filter.enabledOnly"
-              @update:model-value="(v: unknown) => { filter.enabledOnly = v === true; void load(); }"
+            <m3e-switch
+              :checked="filter.enabledOnly"
+              @change="(e: Event) => { filter.enabledOnly = (e.target as HTMLInputElement).checked; void load(); }"
             />
             <span class="hint">{{ t('plugins.enabledOnly') }}</span>
           </label>
@@ -235,7 +237,7 @@ onUnmounted(() => {
         </div>
 
         <InfoBar v-if="error" kind="danger" :text="error">
-          <var-button size="small" text @click="load">{{ t("common.retry") }}</var-button>
+          <m3e-button size="small" @click="load">{{ t("common.retry") }}</m3e-button>
         </InfoBar>
 
         <p class="hint">
@@ -245,10 +247,11 @@ onUnmounted(() => {
 
         <p v-if="loading" class="hint">{{ t("common.loading") }}</p>
         <p v-else-if="plugins.length === 0" class="hint">{{ t("plugins.empty") }}</p>
-        <div v-else class="plugins">
+        <div v-else class="plugins stagger">
           <PluginCard
-            v-for="plugin in plugins"
+            v-for="(plugin, index) in plugins"
             :key="plugin.id"
+            :style="{ '--stagger-index': index }"
             :plugin="plugin"
             @toggle-enabled="(v) => toggleEnabled(plugin, v)"
             @toggle-blocked="(v) => toggleBlocked(plugin, v)"
@@ -279,12 +282,6 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--sp-4);
   flex-wrap: wrap;
-}
-
-.toolbar__search {
-  flex: 1;
-  min-width: 220px;
-  max-width: 420px;
 }
 
 .toolbar__toggle {

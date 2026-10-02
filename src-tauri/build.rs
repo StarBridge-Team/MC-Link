@@ -68,10 +68,7 @@ fn is_windows_target() -> bool {
 fn embed_app_manifest() {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-app.manifest");
     if !manifest.is_file() {
-        panic!(
-            "缺少 Windows 应用清单 {}，构建无法继续",
-            manifest.display()
-        );
+        panic!("缺少 Windows 应用清单 {}，构建无法继续", manifest.display());
     }
 
     println!("cargo:rerun-if-changed=windows-app.manifest");

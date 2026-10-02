@@ -1,12 +1,12 @@
+pub mod pull;
 pub mod read;
 pub mod write;
-pub mod pull;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
-use tokio::sync::Mutex as AsyncMutex;
 use std::time::Duration;
+use tokio::sync::Mutex as AsyncMutex;
 
 /// 应用全局管理器。
 ///

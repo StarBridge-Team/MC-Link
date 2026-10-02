@@ -7,9 +7,9 @@
 //! 这样做的好处是：将来接入第二个适配器（例如自研打洞或 ZeroTier）时，
 //! 只需要在插件注册表里加一条记录，这里的命令一行都不用改。
 
+use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
-use serde_json::{json, Value};
 use tauri::Emitter;
 
 use crate::adapter::AdapterStatus;
@@ -33,7 +33,10 @@ pub(crate) async fn download_adapter(
     std::fs::create_dir_all(&adapter_dir).map_err(|e| format!("创建目录失败: {}", e))?;
 
     window
-        .emit("app-log", "[下载] 正在从资源服务器获取适配器校验清单...".to_string())
+        .emit(
+            "app-log",
+            "[下载] 正在从资源服务器获取适配器校验清单...".to_string(),
+        )
         .ok();
 
     let data_dir = plugin_manager.data_dir().to_path_buf();
@@ -50,7 +53,10 @@ pub(crate) async fn download_adapter(
     window
         .emit(
             "app-log",
-            format!("[下载] 目标：{}（版本 {}），开始下载...", entry.file, entry.version),
+            format!(
+                "[下载] 目标：{}（版本 {}），开始下载...",
+                entry.file, entry.version
+            ),
         )
         .ok();
     window.emit("download-progress", 0u8).ok();
@@ -73,8 +79,8 @@ pub(crate) async fn download_adapter(
         const MAX_EXTRACT_BYTES: u64 = 512 * 1024 * 1024;
         const MAX_EXTRACT_ENTRIES: usize = 4096;
 
-        let file = std::fs::File::open(&archive_path)
-            .map_err(|e| format!("打开下载文件失败: {}", e))?;
+        let file =
+            std::fs::File::open(&archive_path).map_err(|e| format!("打开下载文件失败: {}", e))?;
         let mut probe = tar::Archive::new(flate2::read::GzDecoder::new(file));
         let mut total: u64 = 0;
         let mut count: usize = 0;
@@ -94,7 +100,8 @@ pub(crate) async fn download_adapter(
         }
     }
 
-    let file = std::fs::File::open(&archive_path).map_err(|e| format!("打开下载文件失败: {}", e))?;
+    let file =
+        std::fs::File::open(&archive_path).map_err(|e| format!("打开下载文件失败: {}", e))?;
     let decoder = flate2::read::GzDecoder::new(file);
     let mut archive = tar::Archive::new(decoder);
     archive
@@ -104,7 +111,10 @@ pub(crate) async fn download_adapter(
     std::fs::remove_file(&archive_path).map_err(|e| format!("删除安装包失败: {}", e))?;
 
     window
-        .emit("app-log", "[下载] 陶瓦联机已安装完成，正在启动...".to_string())
+        .emit(
+            "app-log",
+            "[下载] 陶瓦联机已安装完成，正在启动...".to_string(),
+        )
         .ok();
 
     // 落地完成后交给适配器插件自己去启动与轮询，命令层不关心它怎么实现的。
@@ -159,7 +169,10 @@ pub(crate) async fn start_terracotta_host(
     player_name: String,
 ) -> Result<serde_json::Value, String> {
     window
-        .emit("app-log", "[陶瓦] 准备房间并开始扫描本地服务器...".to_string())
+        .emit(
+            "app-log",
+            "[陶瓦] 准备房间并开始扫描本地服务器...".to_string(),
+        )
         .ok();
 
     let result = plugin_manager
@@ -215,7 +228,10 @@ fn emit_state_log(window: &tauri::Window, result: &serde_json::Value) {
     let state = result.get("state").and_then(|v| v.as_str()).unwrap_or("");
     match state {
         "host-ok" => {
-            let room = result.get("room").and_then(|v| v.as_str()).unwrap_or("未知");
+            let room = result
+                .get("room")
+                .and_then(|v| v.as_str())
+                .unwrap_or("未知");
             window
                 .emit("app-log", format!("[陶瓦] 房间已创建! 房间码: {}", room))
                 .ok();
@@ -227,10 +243,7 @@ fn emit_state_log(window: &tauri::Window, result: &serde_json::Value) {
                 .ok();
         }
         "exception" => {
-            let code = result
-                .get("type")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(99);
+            let code = result.get("type").and_then(|v| v.as_u64()).unwrap_or(99);
             window
                 .emit("app-log", format!("[陶瓦] 异常退出 (代码: {})", code))
                 .ok();

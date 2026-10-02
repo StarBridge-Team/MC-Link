@@ -40,7 +40,7 @@ const { t } = useI18n();
           <span class="mono">{{ game.id }}</span>
           <span v-if="game.requiresCoupler" class="tag">{{ t("oobe.gameRequiresCoupler") }}</span>
         </span>
-        <i v-if="game.id === selected" class="bi bi-check-circle-fill game__check" />
+        <i v-if="game.id === selected" class="material-symbols-rounded game__check">check_circle</i>
       </button>
     </div>
   </div>
@@ -112,6 +112,7 @@ const { t } = useI18n();
   position: absolute;
   top: var(--sp-3);
   right: var(--sp-3);
+  font-size: 20px;
   color: var(--primary);
 }
 

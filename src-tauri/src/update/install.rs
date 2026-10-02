@@ -82,8 +82,7 @@ pub(crate) fn apply_update(
         return Err(format!("更新包不存在: {}", payload.display()));
     }
 
-    let target =
-        exe_path().ok_or_else(|| "无法定位当前可执行文件，更新已中止".to_string())?;
+    let target = exe_path().ok_or_else(|| "无法定位当前可执行文件，更新已中止".to_string())?;
     let log = install_log_path(data_dir);
     if let Some(parent) = log.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("创建更新缓存目录失败: {}", e))?;
@@ -248,7 +247,10 @@ fn spawn_hidden_powershell(_script: &str) -> Result<(), String> {
 fn encode_powershell(script: &str) -> String {
     use base64::Engine as _;
 
-    let bytes: Vec<u8> = script.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    let bytes: Vec<u8> = script
+        .encode_utf16()
+        .flat_map(|u| u.to_le_bytes())
+        .collect();
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
@@ -259,10 +261,7 @@ mod tests {
     #[test]
     fn bak_path_keeps_extension_and_sits_next_to_exe() {
         let exe = Path::new("C:\\portable\\MC Link.exe");
-        assert_eq!(
-            bak_path(exe),
-            Path::new("C:\\portable\\MC Link.exe.bak")
-        );
+        assert_eq!(bak_path(exe), Path::new("C:\\portable\\MC Link.exe.bak"));
     }
 
     #[test]
@@ -290,6 +289,9 @@ mod tests {
 
     #[test]
     fn ps_quote_escapes_single_quotes() {
-        assert_eq!(ps_quote(Path::new("C:\\it's here\\a.exe")), "C:\\it''s here\\a.exe");
+        assert_eq!(
+            ps_quote(Path::new("C:\\it's here\\a.exe")),
+            "C:\\it''s here\\a.exe"
+        );
     }
 }

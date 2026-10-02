@@ -4,7 +4,7 @@
  *  这里只放三类东西：
  *  1. reset 与外壳布局（窗口是全透明无边框的，body 必须保持透明）；
  *  2. 与主题无关的通用工具类（页面里反复出现的小结构）；
- *  3. Varlet 组件的少量 M3 修正（默认值来自其 MD3 主题对象，这里只补差异）。
+ *  3. @m3e/web 组件的少量布局修正。
  * ============================================================ */
 
 *,
@@ -192,82 +192,140 @@ p {
   border-radius: var(--r-sm);
 }
 
+/* Material Symbols（M3 原生图标字体，变量字体）：
+ * - FILL 轴全局设为 1 = 填充态（M3 常规/选中图标风格）；
+ * - 尺寸默认跟随 rounded.css 的 24px，徽标容器内继承容器字号。 */
+.material-symbols-rounded {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+.icon-badge .material-symbols-rounded {
+  font-size: inherit;
+}
+
+/* m3e-icon：字形在 Shadow DOM 内，外部只能用它的 CSS 变量控制。
+ * 字体族由组件按 variant 决定（默认 Material Symbols Outlined，别名已在
+ * resourceCache 注入字体 CSS 时补齐）；这里把填充态设为 M3 常规风格。 */
+m3e-icon {
+  --_icon-fill: var(--icon-fill, 0);
+}
+
+/* @m3e/web 组件跟随本项目的字体栈（其 typescale 令牌不含 font-family，
+ * 字体靠继承；这里显式兜一层，确保 shadow 内也拿到 Poppins）。 */
+m3e-theme {
+  font-family: var(--font-sans);
+}
+
+/* 卡片不用 `actionable`：它的波纹是 WAAPI 驱动的，`--m3e-ripple-opacity` 关不掉。
+ * 组件在非 actionable 时会自行 `display: none` 掉 ripple / state-layer / focus-ring，
+ * 而设置卡片本就是静态容器（不可点），去掉 actionable 既消波纹也更贴合语义。
+ * 观感保留 `variant="elevated"`。 */
+
+/* m3e-form-field 内的原生控件：去掉浏览器/全局的聚焦外框。
+ * 上面那条全局 `:focus-visible` 会给聚焦的 input 再画一圈 2px primary 描边，
+ * 叠在 m3e-form-field 自己的描边内侧 → 看起来是"双框"。组件描边本身已表达聚焦态，
+ * 这里显式清掉。用 `!important` 是因为实际渲染里普通特异性能赢过它并不成立
+ * （M3E 的样式注入方式使常规优先级覆盖不可靠），这是刻意且窄范围的一处覆盖。 */
+m3e-form-field input,
+m3e-form-field textarea,
+m3e-form-field select,
+m3e-form-field :focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
 /* ============================================================
- *  Varlet 修正
+ *  @m3e/web 组件微调
  *
- *  组件级颜色/圆角已由 `Themes.md3Light|Dark` 提供；这里只补它没覆盖到的部分。
+ *  组件级配色由 `<m3e-theme>` 的动态配色驱动，本项目不覆盖它。
+ *  这里只补布局/宽度上的差异。
  * ============================================================ */
 
-/* 弹层与对话框统一 M3 观感（默认偏"安卓卡片"，圆角与阴影需要抬到 M3 规格）。 */
-.var-dialog {
-  border-radius: var(--r-xl);
-  background: var(--surface-container-high);
-  color: var(--text-primary);
+/* 导航栏（@m3e/web）：紧凑宽度对齐旧设计稿的 76px，默认是 96px。 */
+m3e-nav-rail {
+  --m3e-nav-rail-compact-width: var(--rail-width);
 }
 
-.var-dialog__title {
-  color: var(--text-primary);
+/* 二级导航（@m3e/web nav-menu）：作为设置抽屉使用时去掉多余内外边距。 */
+m3e-nav-menu {
+  --m3e-nav-menu-padding-top: var(--sp-3);
+  --m3e-nav-menu-padding-bottom: var(--sp-3);
 }
 
-.var-dialog__message {
-  color: var(--text-secondary);
+/* ---------- 视图进入 ---------- */
+/*
+ * 只给**进入项**一条动画，离开项立即移除。
+ *
+ * 这是桌面外壳里最省事也最稳的一种做法：新旧两页从不同时存在，也就不会互相顶开
+ * 布局（交叉淡入最难调的就是这一点 —— 两个页面都参与布局时，纵向 flex 里会把彼此
+ * 挤开，交叉瞬间整块内容抖一下，看起来就像"淡入很诡异"）。
+ *
+ * 为什么不用 `<Transition>`：
+ * - `mode="out-in"` 会让 `<RouterView>` 在首次切换后只剩一个注释节点（懒加载 + out-in
+ *   的已知现象，见 App.vue 里的说明）；
+ * - 默认的交叉模式又会有上面那个重叠问题。
+ * 用 `:key` 保证路由/分区变化时元素重新创建，动画就会自然重播。
+ *
+ * 时长用 `--motion-short`：页面级切换要"跟手"，用中/长档会显得拖滞。
+ * 只动 `opacity`，不加位移或缩放 —— 大块内容做位移/缩放会放大"在动"的感觉。
+ *
+ * `.no-animations`（tokens.css）会把时长归零，所以「设置 → 界面动画」关掉后这里
+ * 自动变成瞬现，不需要额外判断。
+ */
+@keyframes page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-.var-snackbar {
-  border-radius: var(--r-sm);
-  background: var(--inverse-surface);
-  color: var(--inverse-on-surface);
+.shell__main > *,
+.setting > * {
+  animation: page-in var(--motion-short) var(--ease-standard) both;
 }
 
-/* 侧边导航：选中态用 secondary-container，与 M3 Navigation Rail 一致。 */
-.var-rail-navigation {
-  background: transparent;
-  width: var(--rail-width);
-  padding: var(--sp-2) 0;
-  gap: var(--sp-1);
-  border-radius: 0;
+/* ---------- 主题切换淡入淡出 ---------- */
+/* 仅由 useSettings 在明暗真正翻转的瞬间临时挂到 <html>，切换后移除，
+   避免长期用 `*` 过渡覆盖组件自身 transition。受「动画」开关与速度控制。 */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color var(--motion-long) var(--ease-standard),
+    color var(--motion-long) var(--ease-standard),
+    border-color var(--motion-long) var(--ease-standard),
+    fill var(--motion-long) var(--ease-standard),
+    stroke var(--motion-long) var(--ease-standard) !important;
 }
 
-.var-rail-navigation-item {
-  border-radius: var(--r-full);
+/* ---------- 列表/分区错峰入场 ---------- */
+@keyframes mc-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
-/* 开关/复选/单选/滑块的强调色跟随 M3 primary */
-.var-switch__track,
-.var-slider__track {
-  border-radius: var(--r-full);
+.stagger > * {
+  animation: mc-fade-up var(--motion-long) var(--ease-standard) both;
+  animation-delay: calc(var(--stagger-index, 0) * var(--stagger-step, 45ms));
 }
 
-/* 表格：M3 里表格只是分隔线，不加外框 */
-.var-table {
-  border-radius: 0;
-  background: transparent;
-}
-
-/* 进度条 */
-.var-progress__track {
-  border-radius: var(--r-full);
-}
-
-/* 卡片默认贴合 M3「filled card」：低对比表面 + 无阴影 */
-.var-card {
-  border-radius: var(--r-md);
-  background: var(--surface-container-low);
-  color: var(--text-primary);
-}
-
-/* 页面级淡入：路由切换用，随「动画速度」缩放 */
-.page-enter-active,
-.page-leave-active {
-  transition: opacity var(--motion-medium) var(--ease-standard),
-    transform var(--motion-medium) var(--ease-standard);
-}
-
-.page-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-.page-leave-to {
-  opacity: 0;
-}
+/* 容器直接子项按出现顺序错峰；超过 10 个统一落在最后一级。 */
+.stagger > *:nth-child(1)  { --stagger-index: 0; }
+.stagger > *:nth-child(2)  { --stagger-index: 1; }
+.stagger > *:nth-child(3)  { --stagger-index: 2; }
+.stagger > *:nth-child(4)  { --stagger-index: 3; }
+.stagger > *:nth-child(5)  { --stagger-index: 4; }
+.stagger > *:nth-child(6)  { --stagger-index: 5; }
+.stagger > *:nth-child(7)  { --stagger-index: 6; }
+.stagger > *:nth-child(8)  { --stagger-index: 7; }
+.stagger > *:nth-child(9)  { --stagger-index: 8; }
+.stagger > *:nth-child(10) { --stagger-index: 9; }
+.stagger > *:nth-child(n + 11) { --stagger-index: 10; }

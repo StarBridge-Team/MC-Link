@@ -16,9 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 use crate::plugin::manifest::PluginKind;
-use crate::plugin::protocol::{
-    adapter_method, coupler_method, detector_method, ErrorInfo,
-};
+use crate::plugin::protocol::{adapter_method, coupler_method, detector_method, ErrorInfo};
 
 /// 插件可申请的权限项。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -131,10 +129,7 @@ impl TrustLevel {
 
     /// 该信任度下允许申请的权限上限。
     pub fn ceiling(&self) -> &'static [Permission] {
-        const LOCAL_ONLY: &[Permission] = &[
-            Permission::NetConnectLocal,
-            Permission::FsPluginData,
-        ];
+        const LOCAL_ONLY: &[Permission] = &[Permission::NetConnectLocal, Permission::FsPluginData];
         const UNSIGNED: &[Permission] = &[
             Permission::NetListenLocal,
             Permission::NetConnectLocal,
@@ -271,7 +266,6 @@ impl PermissionSet {
             perm_name(perm)
         )))
     }
-
 }
 
 /// 某能力方法所要求的最小权限。
@@ -348,7 +342,10 @@ mod tests {
         let declared = [Permission::NetListenPublic, Permission::NetUdp];
         let set = PermissionSet::resolve(&declared, TrustLevel::Unsigned, None);
         assert!(!set.contains(Permission::NetListenPublic));
-        assert!(!set.contains(Permission::NetUdp), "未授权时不得自动拿到 UDP");
+        assert!(
+            !set.contains(Permission::NetUdp),
+            "未授权时不得自动拿到 UDP"
+        );
         assert_eq!(set.denied_by_ceiling(), &[Permission::NetListenPublic]);
         assert!(set.require(Permission::NetListenPublic).is_err());
     }
@@ -402,9 +399,15 @@ mod tests {
 
     #[test]
     fn baseline_permission_per_kind() {
-        assert_eq!(kind_baseline(PluginKind::Adapter), Permission::NetConnectAny);
+        assert_eq!(
+            kind_baseline(PluginKind::Adapter),
+            Permission::NetConnectAny
+        );
         assert_eq!(kind_baseline(PluginKind::Detector), Permission::GameScan);
-        assert_eq!(kind_baseline(PluginKind::Coupler), Permission::ProcSpawnGame);
+        assert_eq!(
+            kind_baseline(PluginKind::Coupler),
+            Permission::ProcSpawnGame
+        );
     }
 
     #[test]
