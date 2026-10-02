@@ -19,6 +19,8 @@ export function defaultSettings(): PersonalizationSettings {
   return {
     theme_color: "#0066cc",
     theme_mode: "system",
+    theme_variant: "tonal-spot",
+    theme_contrast: "standard",
     animation_enabled: true,
     animation_speed: 1,
     transparent_effect: "",

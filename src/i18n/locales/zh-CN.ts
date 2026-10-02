@@ -82,6 +82,7 @@ export default {
 
   appearance: {
     title: "外观",
+    themeColor: "主题色",
     desc: "明暗、窗口材质与界面动画。配色由组件库自身生成，保持协调统一",
     mode: "明暗模式",
     modeSystem: "跟随系统",
@@ -98,6 +99,30 @@ export default {
     animationSpeed: "动画速度",
     schemeSourceBackend: "后端引擎",
     schemeSourceFrontend: "内置引擎（回退）",
+  },
+
+  color: {
+    title: "配色",
+    desc: "以种子色生成整套动态配色，随明暗与对比度自动调整",
+    seed: "种子色",
+    variant: "配色风格",
+    contrast: "对比度",
+    variantNames: {
+      tonalSpot: "柔和",
+      vibrant: "鲜艳",
+      expressive: "表现力",
+      neutral: "中性",
+      monochrome: "单色",
+      fidelity: "高保真",
+      content: "内容优先",
+      rainbow: "彩虹",
+      fruitSalad: "水果沙拉",
+    },
+    contrastNames: {
+      standard: "标准",
+      medium: "中等",
+      high: "高",
+    },
   },
 
   background: {

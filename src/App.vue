@@ -134,9 +134,10 @@ onMounted(async () => {
 <template>
   <m3e-theme
     :color="settings.state.theme_color"
+    :variant="settings.state.theme_variant"
+    :contrast="settings.state.theme_contrast"
     :scheme="scheme"
     motion="standard"
-    variant="tonal-spot"
   >
     <div class="shell">
     <!-- 背景层：图片背景走 CSS 变量，视频走 <video>（CSS 背景不支持视频） -->

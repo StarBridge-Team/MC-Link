@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppearanceCard from "../../components/settings/AppearanceCard.vue";
 import BackgroundCard from "../../components/settings/BackgroundCard.vue";
+import ColorCard from "../../components/settings/ColorCard.vue";
 import GeneralCard from "../../components/settings/GeneralCard.vue";
 import SettingsManifestSection from "./SettingsManifestSection.vue";
 
@@ -16,6 +17,7 @@ import SettingsManifestSection from "./SettingsManifestSection.vue";
 <template>
   <div class="scroll-area">
     <div class="grid stagger">
+      <ColorCard />
       <AppearanceCard />
       <BackgroundCard />
       <GeneralCard />
