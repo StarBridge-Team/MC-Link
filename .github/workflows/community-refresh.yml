@@ -1,0 +1,34 @@
+# 每日刷新关于页的社区数据（贡献者 / 开放 Issues）。
+#
+# 客户端不直连 GitHub（国内经常不可达，且未认证配额只有 60 次/小时每 IP），
+# 只读资源服务器上的两个静态 JSON；由本流程在 GitHub 的 runner 上抓取并上传
+# —— runner 访问 GitHub 天然可达，且自带 GITHUB_TOKEN（5000 次/小时）。
+# 详见 scripts/sync-community.mjs 的说明。
+name: Community Refresh
+
+on:
+  schedule:
+    # 每天 20:17 UTC（北京时间次日 04:17）：避开整点的排队高峰，也不在白天打扰任何人
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 不需要 pnpm install：这个脚本只用 Node 内置模块，没有第三方依赖
+      - name: 抓取并上传
+        run: node scripts/sync-community.mjs --prod
+        env:
+          ASSET_UPLOAD_TOKEN: ${{ secrets.ASSET_UPLOAD_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,9 +1,9 @@
-# 发布：打 tag（v*）时构建、签名并把更新资产发布到资源服务器。
+# 发布：构建、签名，并把更新资产发布到资源服务器（用户据此自动更新）。
 #
-# 必须走 `scripts/tauri-build.mjs`（而不是裸 `pnpm tauri build`）：
-# 只有它会给构建注入 `MC_LINK_BUILD_CHANNEL=official`，客户端据此才允许自动更新
-# （见 src-tauri/src/build_channel.rs）。裸构建出来的产物会被判为"自行构建"，
-# **不会报错，只是永远更新不了** —— 这是最难排查的一类问题。
+# 两条入口：
+# - 推 tag（v*）：常规路径
+# - workflow_dispatch（手动）：当"自动构建"已经替这个版本建过发行版、tag 也随之存在时，
+#   再推同一个 tag 不会触发本流程 —— 用这个入口做正式的"发布给用户"。
 name: Release
 
 on:
@@ -13,69 +13,15 @@ on:
       # 排除带后缀的预发布/快照标签（如 v0.4.0-snapshot）：
       # 否则推一个内部快照标签就会触发完整发布流程（构建 + 签名 + 上传更新资产）。
       - "!v*-*"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  windows:
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: 安装 Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      # 同 check.yml：不能与 package.json 的 packageManager 重复声明版本，
-      # 否则 action-setup 会以「Multiple versions of pnpm specified」直接失败。
-      - name: 安装 pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: 安装 Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: 缓存 Rust 构建产物
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: 安装前端依赖
-        run: pnpm install --frozen-lockfile
-
-      # 发布构建 + 签名 + 生成更新清单
-      #
-      # --no-bump：版本号以仓库为准，CI 不会去改动 package.json / tauri.conf.json
-      #           （包装脚本默认会自增版本号，那是给本地发版用的）
-      # 官方更新插件的签名私钥经环境变量传入；TAURI_SIGNING_PRIVATE_KEY 收**内容**，
-      # 若改用文件路径请换成 TAURI_SIGNING_PRIVATE_KEY_PATH。
-      # 没有私钥时 make-update 会跳过 tauri.json（插件路径不可用），但 Windows
-      # 安装版仍能通过自研路径更新，因此不会卡住发布。
-      - name: 构建并签名
-        run: node scripts/tauri-build.mjs build --no-bump --no-upload
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-      # 上传更新资产到资源服务器（客户端真正读取的更新源）
-      # 需要 secret：ASSET_UPLOAD_TOKEN；可选 variable：ASSET_SERVER_URL
-      - name: 发布更新资产
-        run: node scripts/sync-assets.mjs --prod
-        env:
-          ASSET_UPLOAD_TOKEN: ${{ secrets.ASSET_UPLOAD_TOKEN }}
-          ASSET_UPLOAD_REQUIRED: "1"
-
-      # 同时把安装包与便携整包挂到这次运行上，便于人工下载/归档
-      - name: 收集产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: mc-link-windows-${{ github.ref_name }}
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            assets-server/Assets/update/*.zip
-          if-no-files-found: warn
+  build:
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      # 这一步会刷新更新清单，让所有客户端开始自动更新 —— 发布路径的意义就在这里
+      publish_assets: true
+    secrets: inherit

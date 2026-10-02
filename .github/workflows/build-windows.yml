@@ -1,0 +1,107 @@
+# 可复用的 Windows 构建：构建 + 签名，可选"发布到资源服务器"。
+#
+# 被两条路径调用，差别只在最后一步：
+# - release.yml（推 tag v* / 手动触发）→ publish_assets: true，用户会收到自动更新
+# - auto-release.yml（版本号变更的提交）→ publish_assets: false，只挂 GitHub 发行版
+#
+# **为什么把"构建归档"和"发布给用户"分开**：构建产物挂到发行版只是归档，不碰任何
+# 现有用户；而发布更新资产会让**所有**客户端立刻开始自动更新。后者必须是一个明确的
+# 人工动作 —— 否则任何一个改到版本号的提交都会直接推给全体用户。
+name: Build (Windows)
+
+on:
+  workflow_call:
+    inputs:
+      publish_assets:
+        description: "构建后把更新资产发布到资源服务器（会让用户收到自动更新）"
+        type: boolean
+        default: false
+    outputs:
+      version:
+        description: "仓库里构建出的版本号"
+        value: ${{ jobs.build.outputs.version }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版本号以仓库为准（release.yml 传 --no-bump）：tag、发行版标题与产物名都用它，
+      # 所以先读出来给后面几步共用，避免三处各读一次读岔。
+      - name: 读取版本号
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if (-not $v) { throw "package.json 里没有 version" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "版本号 = $v"
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 同 check.yml：不能与 package.json 的 packageManager 重复声明版本，
+      # 否则 action-setup 会以「Multiple versions of pnpm specified」直接失败。
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 Rust 构建产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      # 发布构建 + 签名 + 生成更新清单
+      #
+      # 必须走 scripts/tauri-build.mjs（而不是裸 pnpm tauri build）：只有它会给构建注入
+      # MC_LINK_BUILD_CHANNEL=official，客户端据此才允许自动更新。裸构建出来的产物会被判为
+      # "自行构建" —— 不会报错，只是永远更新不了，属于最难排查的一类问题。
+      #
+      # --no-bump：版本号以仓库为准，CI 不改动 package.json / tauri.conf.json
+      - name: 构建并签名
+        run: node scripts/tauri-build.mjs build --no-bump --no-upload
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # 以下两步只在"发布"路径执行：它们会刷新客户端读取的更新清单，从而让用户开始更新
+      - name: 发布更新资产到资源服务器
+        if: ${{ inputs.publish_assets }}
+        run: node scripts/sync-assets.mjs --prod
+        env:
+          ASSET_UPLOAD_TOKEN: ${{ secrets.ASSET_UPLOAD_TOKEN }}
+          ASSET_UPLOAD_REQUIRED: "1"
+
+      # 顺带刷新关于页的社区数据（同一台资源服务器，不额外增加流程）
+      - name: 刷新社区数据（贡献者 / Issues）
+        if: ${{ inputs.publish_assets }}
+        run: node scripts/sync-community.mjs --prod
+        env:
+          ASSET_UPLOAD_TOKEN: ${{ secrets.ASSET_UPLOAD_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 收集产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: mc-link-windows-${{ steps.version.outputs.version }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            assets-server/Assets/update/*.zip
+          if-no-files-found: warn

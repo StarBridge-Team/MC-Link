@@ -115,9 +115,16 @@ const isUpdate = (f) => f.rel.startsWith("update/");
 //   2. 客户端无法自校验它（哈希不可能包含自身），列进去只会引入鸡生蛋问题。
 // 它由客户端自己按远程清单重建本地副本。
 const isManifest = (f) => f.rel === "manifest.json";
+// community/ 是"动态数据"而不是版本化资源：它由 CI 每日刷新（scripts/sync-community.mjs）。
+// 若把它算进资源集合，每天都会生成一个新版本号，逼所有客户端把字体、图标、适配器
+// 逐个重新校验一遍 —— 而那些内容一个字节都没变。
+const isCommunity = (f) => f.rel.startsWith("community/");
 const adapterFiles = allFiles.filter(isAdapter);
 const updateFiles = allFiles.filter(isUpdate);
-const files = allFiles.filter((f) => !isAdapter(f) && !isUpdate(f) && !isManifest(f));
+const communityFiles = allFiles.filter(isCommunity);
+const files = allFiles.filter(
+  (f) => !isAdapter(f) && !isUpdate(f) && !isManifest(f) && !isCommunity(f),
+);
 
 const UPDATE_MANIFEST = join(ASSETS_DIR, "update", "latest.json");
 if (updateFiles.length > 0 && !existsSync(UPDATE_MANIFEST)) {
@@ -154,6 +161,8 @@ if (SKIP) {
 // 4) 上传：内容文件先传，各级 manifest 最后传，避免客户端拉到半更新状态
 const ordered = [
   ...files,
+  // 社区数据是内容而非清单，跟着内容一批上传即可（它不进资源清单，见上面的 isCommunity）
+  ...communityFiles,
   // 更新包必须先于 update/latest.json 可见，否则客户端会拿到指向不存在文件的清单
   ...updateFiles.filter((f) => f.rel !== "update/latest.json"),
   // 适配器包必须先于其清单可见，否则客户端会拿到指向不存在文件的清单

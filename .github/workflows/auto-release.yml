@@ -1,0 +1,87 @@
+# 版本号变更即自动构建，并把产物挂到该版本的 GitHub 发行版上。
+#
+# 触发：推送到 main 且改动命中任一版本号文件。
+# 这三个文件必须同步（发布流程用 --no-bump，版本号以仓库为准）：
+#   package.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml
+#
+# **刻意不发布更新资产**：那会让所有客户端立刻自动更新，必须由人决定。
+# 要让用户收到这一版，请手动跑 Release 流程（见 release.yml）。
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "src-tauri/tauri.conf.json"
+      - "src-tauri/Cargo.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 串行执行：两次版本变更同时推上来时，避免两个流程抢同一个发行版
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      publish_assets: false
+    secrets: inherit
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读取版本号
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "版本号 = $VERSION"
+
+      # 已存在的发行版不覆写：人工发过的版本不该被后一次构建悄悄替换
+      - name: 发行版是否已存在
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "已有 ${{ steps.version.outputs.tag }} 发行版：跳过创建，只补挂产物"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --target 会一并创建 tag。经 API 创建的 tag 不会触发 push 事件，
+      # 所以不会把 release.yml 再带一轮（避免一次版本变更构建两遍）。
+      - name: 创建发行版
+        if: steps.exists.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --title "MC Link ${{ steps.version.outputs.version }}" \
+            --generate-notes
+
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: mc-link-windows-${{ steps.version.outputs.version }}
+          path: dist
+
+      # 产物路径在 artifact 里保留了目录层级，所以用 find 列出文件再逐个挂上
+      - name: 挂载安装包与便携整包
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "待挂载的文件："
+          find dist -type f
+          gh release upload "${{ steps.version.outputs.tag }}" $(find dist -type f) --clobber

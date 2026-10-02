@@ -1,57 +1,58 @@
-//! 社区信息：GitHub 上的贡献者与 Issues（"关于 / 鸣谢"页的数据来源）。
+//! 社区信息：贡献者与 Issues（"关于 / 鸣谢"页的数据来源）。
 //!
-//! # 为什么不引 GitHub SDK crate
+//! # 数据从哪来
 //!
-//! 需求只有两个只读 GET。现有 `reqwest` + `serde_json` 已足够表达它们，而
-//! `octocrab` 一类会带进近百个传递依赖：构建时间变长，且每一份都要同步进
-//! `legal/THIRD-PARTY.md`（CI 里有阻塞检查），换来的抽象我们一处也用不上。
+//! 客户端**不直接访问 GitHub**，只从资源服务器取两个静态 JSON：
+//! `community/contributors.json` 与 `community/issues.json`。
 //!
-//! # 三条硬规则
+//! 为什么不直连 GitHub：`api.github.com` 在中国大陆经常不可达，而未认证配额只有
+//! 60 次/小时**每 IP**。放到资源服务器（部署在亚太）走的是同一套已就绪的 HTTPS 通道，
+//! 既能到得了，也不受配额约束。
 //!
-//! 1. **绝不因为拉不到而失败**：关于页必须能离线渲染。网络失败时回退到旧缓存，
-//!    并用 `stale` / `error` 如实标注，而不是把异常抛给界面。
-//! 2. **缓存放磁盘**：未认证的 GitHub API 只有 60 次/小时**每 IP**，
-//!    每次打开页面都拉必然被限流（贡献者名单变化很慢，7 天足够）。
-//! 3. **缓存原子写**：先写临时文件再 rename。那份缓存是离线回退的唯一依靠，
-//!    半截 JSON 会让"离线时什么都看不到"。
+//! 这两个 JSON 由 CI 生成 —— GitHub Actions 的 runner 访问 GitHub 天然可达，且自带
+//! `GITHUB_TOKEN`（5000 次/小时）。见 `scripts/sync-community.mjs` 与
+//! `.github/workflows/community-refresh.yml`（每日刷新 + 发版时一并刷新）。
+//!
+//! # 三条硬规则（与 `setting_meta.rs` 同一套）
+//!
+//! 1. **绝不因为拉不到而失败**：失败时回退旧缓存并标 `stale` + `error`，
+//!    关于页必须能离线渲染。
+//! 2. **缓存放磁盘**：没必要每次打开页面都打一次网络。
+//! 3. **缓存原子写**：先写临时文件再 rename —— 那份缓存是离线回退的唯一依靠。
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 
+use crate::asset_server::{assets_server_url, join};
 use crate::cache::{cache_path, ensure_cache_dir, is_cached};
 
-/// 规范仓库。
-///
-/// 曾经的 `DogerMMC/mc-link` 会被 GitHub 301 重定向到这里（仓库已转入组织），
-/// 两者取到的数据相同，但列表接口用规范名可以少一跳重定向。
+/// 规范仓库。旧地址 `DogerMMC/mc-link` 会被 GitHub 301 重定向到这里（仓库已转入组织）。
 pub const REPO: &str = "StarBridge-Team/MC-Link";
-
-/// 仓库主页（给界面直接用的链接，省得前端自己拼）。
 pub const REPO_URL: &str = "https://github.com/StarBridge-Team/MC-Link";
 
-const API_BASE: &str = "https://api.github.com";
+/// 服务器上的路径（与 `scripts/sync-community.mjs` 的产出位置一一对应）。
+const CONTRIBUTORS_PATH: &str = "community/contributors.json";
+const ISSUES_PATH: &str = "community/issues.json";
 
-/// GitHub **强制**要求请求带 `User-Agent`（缺了直接 403），而 reqwest 默认不发。
-const USER_AGENT: &str = concat!("MC-Link/", env!("CARGO_PKG_VERSION"));
-
-/// 贡献者缓存时长：名单变化很慢，而配额只有 60 次/小时。
-const CONTRIBUTORS_TTL: Duration = Duration::from_secs(7 * 24 * 3600);
-/// Issues 缓存时长：它是"活"数据，但也没必要每次开页面都拉。
-const ISSUES_TTL: Duration = Duration::from_secs(3600);
+/// 缓存时长。
+///
+/// 比"服务器多久刷新"短一档：服务器每日刷新（`community-refresh.yml`），客户端 1 小时
+/// 检查一次，新数据最多滞后一小时可见。取 1 小时而不是更短，是因为打开关于页属于
+/// 高频操作，没必要每次都打网络。
+const CACHE_TTL: Duration = Duration::from_secs(3600);
 
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// 单页条数（GitHub 上限 100）。
-const CONTRIBUTORS_PER_PAGE: u32 = 100;
-const ISSUES_PER_PAGE: u32 = 30;
-
 // ------------------------------------------------------------------
-// 数据结构
+// 数据结构（与服务器发布的 JSON 对齐）
 // ------------------------------------------------------------------
 
-/// 一位贡献者（只保留界面需要的字段，其余由 serde 忽略）。
+/// 一位贡献者。
+///
+/// `login` 既是 GitHub 用户名，也用作界面上的显示名。
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Contributor {
     pub login: String,
@@ -82,9 +83,10 @@ pub struct Issue {
     pub labels: Vec<Label>,
     #[serde(default)]
     pub user: Option<IssueUser>,
-    /// Pull Request 也会出现在 `/issues` 里，靠这个字段区分。
+    /// Pull Request 在 GitHub 的 `/issues` 里与 issue 混在一起，靠这个字段区分。
     ///
-    /// `skip` 掉：它是判据，不是要给界面的内容。
+    /// 服务器侧已经滤掉（见 `sync-community.mjs`）；这里保留判据做二次防御，
+    /// 且 `skip_serializing` 不把它带给界面 —— 它是判据，不是内容。
     #[serde(default, skip_serializing)]
     pub pull_request: Option<serde_json::Value>,
 }
@@ -105,6 +107,32 @@ pub struct IssueUser {
     pub html_url: String,
 }
 
+/// 服务器发布的贡献者文档。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct ContributorsDoc {
+    /// **必填**：用来确认"这确实是我们发布的文档"。
+    ///
+    /// serde 允许结构体从 JSON 数组反序列化（`[]` 会把所有有默认值的字段填成空），
+    /// 所以只有"存在无默认值的字段"才能真正挡住格式回归 —— 否则服务器哪天退回旧格式，
+    /// 客户端会安静地显示空列表，而不是给出可诊断的错误。
+    repo: String,
+    #[serde(default)]
+    repo_url: String,
+    #[serde(default)]
+    contributors: Vec<Contributor>,
+}
+
+/// 服务器发布的 Issues 文档。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct IssuesDoc {
+    /// **必填**，理由同 [`ContributorsDoc::repo`]。
+    repo: String,
+    #[serde(default)]
+    repo_url: String,
+    #[serde(default)]
+    issues: Vec<Issue>,
+}
+
 /// 交给界面的社区数据。
 ///
 /// **刻意不是 `Result`**：拉不到时给的是"空列表 + 原因"，界面照常渲染，
@@ -115,7 +143,7 @@ pub struct Community {
     pub repo_url: String,
     pub contributors: Vec<Contributor>,
     pub issues: Vec<Issue>,
-    /// 数据来自缓存（离线、限流或请求失败时为 true）。
+    /// 数据来自缓存（离线或请求失败时为 true）。
     pub stale: bool,
     /// 失败原因；`None` 表示本次是新鲜数据。界面请放在次要位置，不要当错误弹窗。
     pub error: Option<String>,
@@ -125,38 +153,37 @@ pub struct Community {
 // 纯函数：解析与过滤（可离线单测）
 // ------------------------------------------------------------------
 
-/// 机器人账号（`dependabot[bot]` 等）不该出现在鸣谢名单里。
+/// 机器人账号（`dependabot[bot]` 等）不该出现在鸣谢名单或社区反馈里。
 pub fn is_bot(login: &str) -> bool {
     login.ends_with("[bot]")
 }
 
-/// 解析贡献者：滤掉机器人，按提交数降序。
-pub fn parse_contributors(text: &str) -> Result<Vec<Contributor>, String> {
-    let raw: Vec<Contributor> =
+/// 解析贡献者文档：滤掉机器人，按提交数降序。
+pub fn parse_contributors(text: &str) -> Result<ContributorsDoc, String> {
+    let mut doc: ContributorsDoc =
         serde_json::from_str(text).map_err(|e| format!("解析贡献者列表失败: {e}"))?;
-    let mut list: Vec<Contributor> = raw.into_iter().filter(|c| !is_bot(&c.login)).collect();
-    list.sort_by(|a, b| {
+    doc.contributors.retain(|c| !is_bot(&c.login));
+    doc.contributors.sort_by(|a, b| {
         b.contributions
             .cmp(&a.contributions)
             .then_with(|| a.login.cmp(&b.login))
     });
-    Ok(list)
+    Ok(doc)
 }
 
-/// 解析 Issues：**滤掉 Pull Request**（它们混在同一接口里），按更新时间降序。
+/// 解析 Issues 文档：**滤掉 Pull Request**，按更新时间降序。
 ///
 /// 不滤掉的话，"社区反馈"里会混进一批代码 PR，界面上看起来就像有人开了 issue。
-pub fn parse_issues(text: &str) -> Result<Vec<Issue>, String> {
-    let raw: Vec<Issue> =
+pub fn parse_issues(text: &str) -> Result<IssuesDoc, String> {
+    let mut doc: IssuesDoc =
         serde_json::from_str(text).map_err(|e| format!("解析 Issues 失败: {e}"))?;
-    let mut list: Vec<Issue> = raw
-        .into_iter()
-        .filter(|i| i.pull_request.is_none())
-        .filter(|i| i.user.as_ref().map(|u| !is_bot(&u.login)).unwrap_or(true))
-        .collect();
+    doc.issues.retain(|i| {
+        i.pull_request.is_none()
+            && i.user.as_ref().map(|u| !is_bot(&u.login)).unwrap_or(true)
+    });
     // RFC3339 定长字符串，字典序即时间序
-    list.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-    Ok(list)
+    doc.issues.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    Ok(doc)
 }
 
 // ------------------------------------------------------------------
@@ -179,59 +206,27 @@ fn write_atomic(path: &Path, content: &str) {
     }
 }
 
-/// 可选令牌：设了就把握把配额从 60/小时 提到 5000/小时。
-///
-/// 只认环境变量，**不做进设置界面**：普通用户不该被要求提供 GitHub 令牌，
-/// 而默认的 60/小时配上磁盘缓存完全够用。
-fn token() -> Option<String> {
-    std::env::var("MC_LINK_GITHUB_TOKEN")
-        .ok()
-        .map(|t| t.trim().to_string())
-        .filter(|t| !t.is_empty())
-}
-
-async fn request_json<T>(
+async fn request_doc<T>(
     client: &reqwest::Client,
     url: &str,
     parse: fn(&str) -> Result<T, String>,
 ) -> Result<T, String> {
-    let mut req = client
+    let resp = client
         .get(url)
-        .header("User-Agent", USER_AGENT)
-        .header("Accept", "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", "2022-11-28")
-        .timeout(HTTP_TIMEOUT);
-    if let Some(t) = token() {
-        req = req.header("Authorization", format!("Bearer {t}"));
-    }
-
-    let resp = req
+        .timeout(HTTP_TIMEOUT)
         .send()
         .await
-        .map_err(|e| format!("请求 GitHub 失败: {e}"))?;
-    let status = resp.status();
+        .map_err(|e| format!("请求社区数据失败: {e}"))?;
 
+    let status = resp.status();
     if !status.is_success() {
-        // 限流是这里最常见的失败（未认证 60 次/小时/IP）。单独说清楚，
-        // 否则用户只看到"403"，不知道等一会儿就好。
-        let remaining = resp
-            .headers()
-            .get("x-ratelimit-remaining")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if remaining == "0" || status.as_u16() == 429 {
-            return Err(format!("GitHub 接口限流（未认证每小时 60 次）：{status}"));
-        }
-        if status.as_u16() == 404 {
-            return Err(format!("仓库不存在或不可见：{REPO}（{status}）"));
-        }
-        return Err(format!("GitHub 返回 {status}（{url}）"));
+        return Err(format!("资源服务器返回 {status}（{url}）"));
     }
 
     let text = resp
         .text()
         .await
-        .map_err(|e| format!("读取 GitHub 响应失败: {e}"))?;
+        .map_err(|e| format!("读取社区数据失败: {e}"))?;
     parse(&text)
 }
 
@@ -241,20 +236,19 @@ async fn request_json<T>(
 async fn fetch_cached<T>(
     data_dir: &Path,
     cache_name: &str,
-    ttl: Duration,
     url: &str,
     client: &reqwest::Client,
     parse: fn(&str) -> Result<T, String>,
 ) -> (T, bool, Option<String>)
 where
-    T: Serialize + serde::de::DeserializeOwned + Default,
+    T: Serialize + DeserializeOwned + Default,
 {
     let dir = cache_dir(data_dir);
     // 建目录失败不该让整件事失败：只是这一次没缓存
     let _ = ensure_cache_dir(&dir);
     let file = cache_path(&dir, cache_name);
 
-    if is_cached(&file, Some(ttl)) {
+    if is_cached(&file, Some(CACHE_TTL)) {
         if let Ok(text) = std::fs::read_to_string(&file) {
             if let Ok(value) = serde_json::from_str::<T>(&text) {
                 return (value, false, None);
@@ -263,7 +257,7 @@ where
         // 缓存坏了就当作没有，继续走网络
     }
 
-    match request_json(client, url, parse).await {
+    match request_doc(client, url, parse).await {
         Ok(value) => {
             if let Ok(text) = serde_json::to_string(&value) {
                 write_atomic(&file, &text);
@@ -271,7 +265,7 @@ where
             (value, false, None)
         }
         Err(err) => {
-            // 网络失败：退回旧缓存（哪怕已过期）。过期的名单也远好过一片空白。
+            // 网络失败：退回旧缓存（哪怕已过期）。过期名单也远好过一片空白。
             if let Ok(text) = std::fs::read_to_string(&file) {
                 if let Ok(value) = serde_json::from_str::<T>(&text) {
                     return (value, true, Some(err));
@@ -284,31 +278,21 @@ where
 
 /// 拉取社区数据（贡献者 + Issues）。**永不返回 `Err`**，理由见模块头注释。
 pub async fn fetch(data_dir: &Path, client: &reqwest::Client) -> Community {
-    let contributors_url =
-        format!("{API_BASE}/repos/{REPO}/contributors?per_page={CONTRIBUTORS_PER_PAGE}");
-    let issues_url = format!(
-        "{API_BASE}/repos/{REPO}/issues?state=open&per_page={ISSUES_PER_PAGE}&sort=updated"
-    );
+    let base = assets_server_url(data_dir);
+    let contributors_url = join(&base, CONTRIBUTORS_PATH);
+    let issues_url = join(&base, ISSUES_PATH);
 
-    let (contributors, c_stale, c_err) = fetch_cached(
+    let (c_doc, c_stale, c_err) = fetch_cached::<ContributorsDoc>(
         data_dir,
         "contributors.json",
-        CONTRIBUTORS_TTL,
         &contributors_url,
         client,
         parse_contributors,
     )
     .await;
 
-    let (issues, i_stale, i_err) = fetch_cached(
-        data_dir,
-        "issues.json",
-        ISSUES_TTL,
-        &issues_url,
-        client,
-        parse_issues,
-    )
-    .await;
+    let (i_doc, i_stale, i_err) =
+        fetch_cached::<IssuesDoc>(data_dir, "issues.json", &issues_url, client, parse_issues).await;
 
     let error = match (c_err, i_err) {
         (None, None) => None,
@@ -317,11 +301,20 @@ pub async fn fetch(data_dir: &Path, client: &reqwest::Client) -> Community {
         (Some(a), Some(b)) => Some(format!("{a}；{b}")),
     };
 
+    // 仓库信息以服务器发布的为准（换仓库不用跟着发一次客户端），缺失时退回内置常量
+    let repo_url = if !c_doc.repo_url.is_empty() {
+        c_doc.repo_url.clone()
+    } else if !i_doc.repo_url.is_empty() {
+        i_doc.repo_url.clone()
+    } else {
+        REPO_URL.to_string()
+    };
+
     Community {
-        repo: REPO.to_string(),
-        repo_url: REPO_URL.to_string(),
-        contributors,
-        issues,
+        repo: c_doc.repo.clone(),
+        repo_url,
+        contributors: c_doc.contributors,
+        issues: i_doc.issues,
         stale: c_stale || i_stale,
         error,
     }
@@ -353,50 +346,80 @@ mod tests {
 
     #[test]
     fn contributors_parse_filters_bots_and_sorts_by_contributions() {
-        let json = r#"[
-            {"login":"alice","avatar_url":"a","html_url":"h","contributions":3},
-            {"login":"dependabot[bot]","contributions":99},
-            {"login":"bob","contributions":10}
-        ]"#;
-        let list = parse_contributors(json).unwrap();
+        let json = r#"{
+            "repo":"StarBridge-Team/MC-Link",
+            "repo_url":"https://github.com/StarBridge-Team/MC-Link",
+            "contributors":[
+                {"login":"alice","avatar_url":"a","html_url":"h","contributions":3},
+                {"login":"dependabot[bot]","contributions":99},
+                {"login":"bob","contributions":10}
+            ]
+        }"#;
+        let doc = parse_contributors(json).unwrap();
         assert_eq!(
-            list.iter().map(|c| c.login.as_str()).collect::<Vec<_>>(),
+            doc.contributors
+                .iter()
+                .map(|c| c.login.as_str())
+                .collect::<Vec<_>>(),
             vec!["bob", "alice"],
             "机器人必须被滤掉，且按提交数降序"
         );
+        assert_eq!(doc.repo, "StarBridge-Team/MC-Link");
     }
 
     /// PR 与 issue 共用 `/issues` 接口：不滤掉的话"社区反馈"里会混进代码 PR。
     #[test]
     fn issues_parse_drops_pull_requests() {
-        let json = r#"[
-            {"number":1,"title":"真 issue","updated_at":"2026-01-02T00:00:00Z",
-             "user":{"login":"alice"}},
-            {"number":2,"title":"一个 PR","updated_at":"2026-03-02T00:00:00Z",
-             "pull_request":{"url":"x"},"user":{"login":"bob"}},
-            {"number":3,"title":"机器人提的","updated_at":"2026-04-02T00:00:00Z",
-             "user":{"login":"github-actions[bot]"}}
-        ]"#;
-        let list = parse_issues(json).unwrap();
-        assert_eq!(list.len(), 1, "PR 与机器人提交都该被滤掉: {list:?}");
-        assert_eq!(list[0].number, 1);
-        assert_eq!(list[0].title, "真 issue");
+        let json = r#"{
+            "repo":"StarBridge-Team/MC-Link",
+            "issues":[
+                {"number":1,"title":"真 issue","updated_at":"2026-01-02T00:00:00Z",
+                 "user":{"login":"alice"}},
+                {"number":2,"title":"一个 PR","updated_at":"2026-03-02T00:00:00Z",
+                 "pull_request":{"url":"x"},"user":{"login":"bob"}},
+                {"number":3,"title":"机器人提的","updated_at":"2026-04-02T00:00:00Z",
+                 "user":{"login":"github-actions[bot]"}}
+            ]
+        }"#;
+        let doc = parse_issues(json).unwrap();
+        assert_eq!(doc.issues.len(), 1, "PR 与机器人提交都该被滤掉");
+        assert_eq!(doc.issues[0].number, 1);
+        assert_eq!(doc.issues[0].title, "真 issue");
     }
 
     #[test]
     fn issues_parse_sorts_by_updated_desc() {
-        let json = r#"[
+        let json = r#"{"repo":"r","issues":[
             {"number":1,"title":"旧","updated_at":"2026-01-01T00:00:00Z"},
             {"number":2,"title":"新","updated_at":"2026-09-01T00:00:00Z"}
-        ]"#;
-        let list = parse_issues(json).unwrap();
-        assert_eq!(list[0].number, 2);
+        ]}"#;
+        let doc = parse_issues(json).unwrap();
+        assert_eq!(doc.issues[0].number, 2);
     }
 
+    /// 空列表是常态（仓库可能还没有 issue），不是错误。
     #[test]
-    fn malformed_json_is_reported_not_panicking() {
+    fn empty_documents_are_valid() {
+        let c = parse_contributors(r#"{"repo":"r","contributors":[]}"#).unwrap();
+        assert!(c.contributors.is_empty());
+        assert_eq!(c.repo, "r");
+        assert!(parse_issues(r#"{"repo":"r","issues":[]}"#)
+            .unwrap()
+            .issues
+            .is_empty());
+    }
+
+    /// 缺 `repo` 的文档一律不接受。
+    ///
+    /// serde 会把 JSON 数组（`[]`）也当成"所有字段取默认值"的结构体，所以只有必填字段
+    /// 能挡住格式回归 —— 否则服务器退回旧格式时，客户端会安静地显示空列表。
+    #[test]
+    fn documents_without_repo_are_rejected() {
         assert!(parse_contributors("{").is_err());
         assert!(parse_issues("[]x").is_err());
+        assert!(parse_contributors("[]").is_err());
+        assert!(parse_contributors("{}").is_err());
+        assert!(parse_issues(r#"{"issues":[]}"#).is_err());
     }
 
     #[test]
@@ -410,55 +433,59 @@ mod tests {
     #[tokio::test]
     async fn fresh_cache_is_used_without_network() {
         let dir = temp_dir("fresh");
-        let cache_dir = cache_dir(&dir);
-        std::fs::create_dir_all(&cache_dir).unwrap();
+        let cache = cache_dir(&dir);
+        std::fs::create_dir_all(&cache).unwrap();
         std::fs::write(
-            cache_dir.join("contributors.json"),
-            r#"[{"login":"cached","contributions":1}]"#,
+            cache.join("contributors.json"),
+            r#"{"repo":"cached-repo","contributors":[{"login":"cached","contributions":1}]}"#,
         )
         .unwrap();
 
-        let (list, stale, err) = fetch_cached(
+        let (doc, stale, err) = fetch_cached(
             &dir,
             "contributors.json",
-            Duration::from_secs(3600),
             DEAD_URL,
             &reqwest::Client::new(),
             parse_contributors,
         )
         .await;
 
-        assert_eq!(list.len(), 1);
-        assert_eq!(list[0].login, "cached");
+        assert_eq!(doc.contributors.len(), 1);
+        assert_eq!(doc.contributors[0].login, "cached");
         assert!(!stale, "新鲜缓存不该被标成 stale");
         assert!(err.is_none(), "走缓存时不该有错误: {err:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// ttl 为 0 时缓存一律视为过期 → 请求网络 → 失败 → 回退旧缓存并标注。
+    /// 缓存过期 → 请求网络 → 失败 → 回退旧缓存并如实标注。
     #[tokio::test]
-    async fn expired_cache_falls_back_when_network_fails() {
+    async fn expired_cache_used_when_network_fails() {
         let dir = temp_dir("stale");
-        let cache_dir = cache_dir(&dir);
-        std::fs::create_dir_all(&cache_dir).unwrap();
+        let cache = cache_dir(&dir);
+        std::fs::create_dir_all(&cache).unwrap();
         std::fs::write(
-            cache_dir.join("contributors.json"),
-            r#"[{"login":"old","contributions":7}]"#,
+            cache.join("contributors.json"),
+            r#"{"repo":"r","contributors":[{"login":"old","contributions":7}]}"#,
         )
         .unwrap();
 
-        let (list, stale, err) = fetch_cached(
+        // 让缓存立刻过期：把 mtime 改成很久以前
+        let file = cache.join("contributors.json");
+        let old = std::time::SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 30);
+        let f = std::fs::File::options().write(true).open(&file).unwrap();
+        let _ = f.set_modified(old);
+
+        let (doc, stale, err) = fetch_cached(
             &dir,
             "contributors.json",
-            Duration::ZERO,
             DEAD_URL,
             &reqwest::Client::new(),
             parse_contributors,
         )
         .await;
 
-        assert_eq!(list.len(), 1, "网络失败时必须回退旧缓存");
-        assert_eq!(list[0].login, "old");
+        assert_eq!(doc.contributors.len(), 1, "网络失败时必须回退旧缓存");
+        assert_eq!(doc.contributors[0].login, "old");
         assert!(stale, "来自旧缓存必须标注为 stale");
         assert!(err.is_some(), "失败原因要如实带上，供界面提示");
         let _ = std::fs::remove_dir_all(&dir);
@@ -468,17 +495,16 @@ mod tests {
     #[tokio::test]
     async fn no_cache_and_failure_yields_empty_not_error() {
         let dir = temp_dir("empty");
-        let (list, stale, err) = fetch_cached(
+        let (doc, stale, err) = fetch_cached(
             &dir,
             "contributors.json",
-            Duration::ZERO,
             DEAD_URL,
             &reqwest::Client::new(),
             parse_contributors,
         )
         .await;
 
-        assert!(list.is_empty());
+        assert!(doc.contributors.is_empty());
         assert!(stale);
         assert!(err.is_some());
         let _ = std::fs::remove_dir_all(&dir);
