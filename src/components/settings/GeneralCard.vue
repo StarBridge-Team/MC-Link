@@ -111,8 +111,12 @@ function onRegionChange(e: Event) {
   <SettingCard :icon="'person'" :title="t('general.playerTitle')">
     <div class="player">
       <m3e-form-field variant="outlined" class="player__input">
-        <label slot="label">{{ t("general.playerName") }}</label>
-        <input v-model="playerName" maxlength="32" :placeholder="t('general.playerNamePlaceholder')" />
+        <input
+          v-model="playerName"
+          maxlength="32"
+          :aria-label="t('general.playerName')"
+          :placeholder="t('general.playerNamePlaceholder')"
+        />
       </m3e-form-field>
       <m3e-button variant="filled" @click="savePlayerName">{{ t("common.save") }}</m3e-button>
     </div>
