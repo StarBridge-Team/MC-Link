@@ -221,6 +221,16 @@ m3e-theme {
  * 而设置卡片本就是静态容器（不可点），去掉 actionable 既消波纹也更贴合语义。
  * 观感保留 `variant="elevated"`。 */
 
+/* m3e-form-field 内的原生控件：去掉浏览器默认的聚焦外框。
+ * 组件自己的 `::slotted(input){outline:unset}` 压不住 UA 的 `:focus-visible` 焦点环，
+ * 于是聚焦时会在组件描边内部再画一圈（"双框"）。组件描边本身已表达聚焦态，
+ * 这里从文档层（优先级高于 shadow 的 ::slotted 与 UA 样式）彻底清掉。 */
+m3e-form-field input,
+m3e-form-field textarea,
+m3e-form-field select {
+  outline: none;
+}
+
 /* ============================================================
  *  @m3e/web 组件微调
  *
