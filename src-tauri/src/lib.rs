@@ -249,6 +249,7 @@ pub fn run() {
             plugin_set_blocked,
             plugin_reload,
             connect_adapters,
+            connect_scan,
             connect_start_host,
             connect_join,
             connect_status,

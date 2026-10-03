@@ -54,7 +54,7 @@ fn emit_event(app: &AppHandle, evt: ConnectEvent) {
     let _ = app.emit("connect-event", &evt);
 }
 
-/// 列出可用于联机的适配器，并带上各适配器自声明的 `join_fields`。
+/// 列出可用于联机的适配器，并带上各适配器自声明的 `host_fields` / `join_fields`。
 #[tauri::command]
 pub async fn connect_adapters(
     manager: tauri::State<'_, Arc<PluginManager>>,
@@ -66,8 +66,8 @@ pub async fn connect_adapters(
         let Some(record) = manager.get(&candidate.plugin_id) else {
             continue;
         };
-        // 让适配器自报 join 字段；拿不到就当没有（前端按"无需字段"处理）。
-        let join_fields = manager
+        // 让适配器自报房主/访客两侧字段；拿不到就当没有（前端按"无需字段"处理）。
+        let init = manager
             .invoke(
                 PluginKind::Adapter,
                 game_id.as_deref(),
@@ -76,17 +76,50 @@ pub async fn connect_adapters(
             )
             .await
             .ok()
-            .and_then(|(_, v)| v.get("join_fields").cloned())
+            .map(|(_, v)| v);
+        let host_fields = init
+            .as_ref()
+            .and_then(|v| v.get("host_fields").cloned())
+            .unwrap_or(Value::Array(vec![]));
+        let join_fields = init
+            .as_ref()
+            .and_then(|v| v.get("join_fields").cloned())
             .unwrap_or(Value::Array(vec![]));
         adapters.push(json!({
             "pluginId": record.manifest.id,
             "name": record.manifest.name,
             "trust": record.trust,
             "ready": record.enabled && record.trust.is_runnable(),
+            "hostFields": host_fields,
             "joinFields": join_fields,
         }));
     }
     Ok(json!({ "adapters": adapters }))
+}
+
+/// 扫描本机游戏实例（经检测器插件），返回发现到的游戏数组（可能为空）。
+///
+/// 房主模式据此展示「扫到的所有游戏」卡片；空数组即「没扫到游戏」，前端呈现空状态。
+#[tauri::command]
+pub async fn connect_scan(
+    manager: tauri::State<'_, Arc<PluginManager>>,
+    game_id: Option<String>,
+) -> Result<Value, String> {
+    let res = manager
+        .invoke(
+            PluginKind::Detector,
+            game_id.as_deref(),
+            detector_method::SCAN,
+            json!({}),
+        )
+        .await
+        .map_err(|e| e.message)?;
+    // 统一成数组返回，便于前端 v-for。
+    let arr = match res.1 {
+        Value::Array(a) => a,
+        other => vec![other],
+    };
+    Ok(json!(arr))
 }
 
 /// 以房主身份创建房间：detector.scan → adapter.host.start → coupler.attach → 广播上下文。
@@ -114,20 +147,35 @@ pub async fn connect_start_host(
             }
         };
 
-        // 1) 扫描本地游戏（best-effort），拿到端口用于游戏上下文。
-        let port = match mgr
-            .invoke(
-                PluginKind::Detector,
-                game_id.as_deref(),
-                detector_method::SCAN,
-                json!({}),
-            )
-            .await
+        // 1) 端口：优先用房主所选游戏的端口（由前端经 fields.game.port 传入），
+        //    缺失时再 best-effort 扫描一次。用于游戏上下文与耦合器广播。
+        let port = if let Some(p) = fields
+            .get("game")
+            .and_then(|g| g.get("port"))
+            .and_then(|p| p.as_u64())
+            .map(|p| p as u16)
         {
-            Ok((_, v)) => v.get("port").and_then(|p| p.as_u64()).map(|p| p as u16),
-            Err(e) => {
-                eprintln!("[联机] 本地游戏扫描失败（不影响建房间）: {}", e.message);
-                None
+            Some(p)
+        } else {
+            match mgr
+                .invoke(
+                    PluginKind::Detector,
+                    game_id.as_deref(),
+                    detector_method::SCAN,
+                    json!({}),
+                )
+                .await
+            {
+                Ok((_, v)) => v
+                    .as_array()
+                    .and_then(|a| a.first())
+                    .and_then(|g| g.get("port"))
+                    .and_then(|p| p.as_u64())
+                    .map(|p| p as u16),
+                Err(e) => {
+                    eprintln!("[联机] 本地游戏扫描失败（不影响建房间）: {}", e.message);
+                    None
+                }
             }
         };
 

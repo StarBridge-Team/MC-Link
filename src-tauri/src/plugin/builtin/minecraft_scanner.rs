@@ -99,19 +99,20 @@ impl MinecraftScannerProvider {
 
     fn scan(&self) -> Result<Value, ErrorInfo> {
         let servers = scan_lan_servers().map_err(|e| ErrorInfo::new(error_code::UNAVAILABLE, e))?;
-        let server = servers.into_iter().next().ok_or_else(|| {
-            ErrorInfo::new(
-                error_code::UNAVAILABLE,
-                "局域网内未发现正在运行的 Minecraft Java Edition 服务器",
-            )
-        })?;
-        // 首页一次只展示一个本地游戏；取首个发现的服务器。
-        Ok(json!({
-            "id": "minecraft-java",
-            "process": server.motd,
-            "name": "Minecraft Java Edition",
-            "port": server.port,
-        }))
+        // 返回全部发现的服务器（可能为空数组）。联机页房主模式据此展示卡片，
+        // 空数组表示"没扫到游戏"，由前端呈现空状态，而非报错。
+        let list: Vec<Value> = servers
+            .into_iter()
+            .map(|s| {
+                json!({
+                    "id": "minecraft-java",
+                    "process": s.motd,
+                    "name": "Minecraft Java Edition",
+                    "port": s.port,
+                })
+            })
+            .collect();
+        Ok(json!(list))
     }
 }
 

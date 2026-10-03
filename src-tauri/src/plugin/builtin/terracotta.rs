@@ -291,8 +291,18 @@ impl BuiltinCapability for TerracottaProvider {
                     "ready": mgr.get_status().running,
                     "protocol": "terracotta",
                     "version": env!("CARGO_PKG_VERSION"),
-                    // 自声明「加入房间需要哪些字段」，前端据此动态渲染表单。
-                    // 房主/访客需要的玩家名由核心从设置里自动带入，不在此列出。
+                    // 房主侧字段：仅需房间码，且由适配器自动生成（`generated: true`），
+                    // 房主无需输入，适配器建房间后把码回传（见 host.start 的 room）。
+                    "host_fields": [
+                        {
+                            "key": "room_code",
+                            "label": "房间码",
+                            "type": "text",
+                            "generated": true,
+                            "note": "由适配器自动生成，建好后回传给你分享",
+                        }
+                    ],
+                    // 访客侧字段：输入房主分享的房间码（邀请码）。可由深链自动预填。
                     "join_fields": [
                         {
                             "key": "room_code",
