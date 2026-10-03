@@ -1,13 +1,14 @@
 import { computed, ref } from "vue";
 import {
   listConnectAdapters,
+  scanLocalGames as scanLocalGamesApi,
   startConnectHost,
   joinConnect,
   stopConnect,
   getConnectStatus,
   onConnectEvent,
 } from "../lib/api/connect";
-import type { ConnectAdapter, ConnectEvent, ConnectStatus, JoinField } from "../lib/api/types";
+import type { ConnectAdapter, ConnectEvent, ConnectStatus, JoinField, LocalGame } from "../lib/api/types";
 import { listGames } from "../lib/api/plugin";
 import type { GameInfo } from "../lib/api/types";
 import { local, KEYS } from "../lib/persist";
@@ -24,8 +25,8 @@ const roomCode = ref("");
 const status = ref<ConnectStatus | null>(null);
 const errorMsg = ref("");
 const busy = ref(false);
-const showJoin = ref(false);
 const games = ref<GameInfo[]>([]);
+const localGames = ref<LocalGame[]>([]);
 const logs = ref<string[]>([]);
 let unlisten: (() => void) | null = null;
 
@@ -85,6 +86,21 @@ async function loadGames() {
   }
 }
 
+/** 房主模式：扫描本机游戏实例（检测器插件）。 */
+async function scanLocalGames() {
+  try {
+    localGames.value = await scanLocalGamesApi(gameId.value);
+  } catch (e) {
+    localGames.value = [];
+    console.warn("[connect] 扫描本地游戏失败", e);
+  }
+}
+
+/** 当前所选适配器在房主侧需要的字段。 */
+const hostFields = computed<JoinField[]>(
+  () => adapters.value.find((a) => a.pluginId === selectedId.value)?.hostFields || [],
+);
+
 async function refreshStatus() {
   if (!selectedId.value) return;
   try {
@@ -105,7 +121,6 @@ function onEvent(e: ConnectEvent) {
     mode.value = "connected";
     role.value = (e.role as "host" | "guest") || role.value;
     if (e.room_code) roomCode.value = e.room_code;
-    showJoin.value = false;
     void refreshStatus();
   } else if (e.stage === "error") {
     busy.value = false;
@@ -137,28 +152,26 @@ function selectAdapter(id: string) {
   const a = adapters.value.find((x) => x.pluginId === id);
   joinFields.value = a?.joinFields || [];
   resetForm();
-  showJoin.value = false;
 }
 
-async function startHost() {
-  if (!selectedId.value) return;
+async function startHost(adapterId: string, fields: Record<string, unknown>) {
+  if (!adapterId) return;
   busy.value = true;
   errorMsg.value = "";
   try {
-    // 房主不需要 join 字段；适配器若需要可经 join_fields 声明，这里仅传空。
-    await startConnectHost(selectedId.value, gameId.value, {}, playerName());
+    await startConnectHost(adapterId, gameId.value, fields, playerName());
   } catch (e) {
     busy.value = false;
     errorMsg.value = errMessage(e);
   }
 }
 
-async function join() {
-  if (!selectedId.value || !canJoin.value) return;
+async function join(adapterId: string, fields: Record<string, unknown>) {
+  if (!adapterId) return;
   busy.value = true;
   errorMsg.value = "";
   try {
-    await joinConnect(selectedId.value, gameId.value, { ...form.value }, playerName());
+    await joinConnect(adapterId, gameId.value, fields, playerName());
   } catch (e) {
     busy.value = false;
     errorMsg.value = errMessage(e);
@@ -184,8 +197,6 @@ function applyInvite(code: string) {
   const field =
     joinFields.value.find((f) => f.autofillFromInvite) || joinFields.value[0];
   if (field) form.value = { ...form.value, [field.key]: extracted };
-  showJoin.value = true;
-  mode.value = "idle";
 }
 
 function extractCode(text: string): string {
@@ -213,13 +224,15 @@ export function useConnect() {
     status,
     errorMsg,
     busy,
-    showJoin,
     logs,
+    localGames,
+    hostFields,
     gameId,
     currentGameName,
     canJoin,
     loadAdapters,
     loadGames,
+    scanLocalGames,
     mount,
     unmount,
     selectAdapter,

@@ -1,24 +1,29 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ConnectAdapter, ConnectEvent, ConnectStatus } from "./types";
+import type { ConnectAdapter, ConnectEvent, ConnectStatus, LocalGame } from "./types";
 
 /**
  * 联机页的 IPC 封装（后端 `src-tauri/src/plugin/connect.rs`）。
  *
- * 字段形态由适配器自己声明（`join_fields`），因此这里的 `fields` 是
- * `Record<string, string>`——键来自适配器，前端不预设房间码/密码之类的形态。
+ * 字段形态由适配器自己声明（`host_fields` / `join_fields`），因此这里的 `fields`
+ * 是普通对象——键来自适配器，前端不预设房间码/网络名/密码之类的形态。
  */
 
-/** 列出可用于联机的适配器（按当前游戏路由），含各自声明的 join 字段。 */
+/** 列出可用于联机的适配器（按当前游戏路由），含各自声明的 host/join 字段。 */
 export async function listConnectAdapters(gameId?: string) {
   return invoke<{ adapters: ConnectAdapter[] }>("connect_adapters", { gameId });
+}
+
+/** 扫描本机游戏实例（检测器插件），返回发现到的游戏数组（可能为空）。 */
+export async function scanLocalGames(gameId?: string) {
+  return invoke<LocalGame[]>("connect_scan", { gameId });
 }
 
 /** 以房主身份创建房间。 */
 export async function startConnectHost(
   adapterId: string,
   gameId: string | undefined,
-  fields: Record<string, string>,
+  fields: Record<string, unknown>,
   playerName: string,
 ) {
   return invoke<string>("connect_start_host", { adapterId, gameId, fields, playerName });
@@ -28,7 +33,7 @@ export async function startConnectHost(
 export async function joinConnect(
   adapterId: string,
   gameId: string | undefined,
-  fields: Record<string, string>,
+  fields: Record<string, unknown>,
   playerName: string,
 ) {
   return invoke<string>("connect_join", { adapterId, gameId, fields, playerName });
