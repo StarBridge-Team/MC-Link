@@ -33,6 +33,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_clipboard_manager;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 /// 初始化插件子系统。
@@ -75,6 +76,7 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -250,6 +252,7 @@ pub fn run() {
             plugin_reload,
             connect_adapters,
             connect_scan,
+            connect_local_games,
             connect_start_host,
             connect_join,
             connect_status,

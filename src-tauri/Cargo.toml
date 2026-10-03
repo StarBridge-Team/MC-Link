@@ -36,6 +36,7 @@ hex = "0.4"
 sha2 = "0.10"
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-clipboard-manager = "2"
 
 # 插件系统：WebSocket 网关（仅监听回环地址）与端到端加密
 tokio-tungstenite = "0.24"

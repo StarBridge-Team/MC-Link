@@ -132,6 +132,40 @@ impl TerracottaProvider {
             .map_err(|e| ErrorInfo::new(error_code::UNAVAILABLE, e))
     }
 
+    /// 触发型端点：只发请求、看状态码，**不解析响应体**。
+    ///
+    /// # 为什么不能按 JSON 解析
+    ///
+    /// 陶瓦的 HTTP 接口分两类：
+    ///
+    /// - **查询型** `/state`：返回 JSON（`{"index":5,"state":"host-scanning"}`）；
+    /// - **触发型** `/state/ide`、`/state/scanning`、`/state/guesting`、`/panic`：
+    ///   成功时返回 **200 + 空 body**，真正的结果一律靠轮询 `/state` 得到。
+    ///
+    /// 早期实现把触发型也丢给 `resp.json()`，于是 `解析陶瓦响应失败: error decoding response body`
+    /// ——`serde_json` 解析空 body 必然失败。这个错误还有个副作用：状态其实已经切换成功
+    /// （实测 `/state/ide` 确实把 `host-scanning` 重置成了 `waiting`），核心却当场报错返回，
+    /// 后续步骤再也不会执行，表现为"点了开始联机什么都没有，陶瓦却卡在半途"。
+    fn trigger(&self, path: &str, query: &[(String, String)]) -> Result<u16, ErrorInfo> {
+        let port = self.port()?;
+        let url = format!("http://127.0.0.1:{}{}", port, path);
+        let resp = self
+            .http
+            .get(&url)
+            .query(query)
+            .send()
+            .map_err(|e| ErrorInfo::new(error_code::UNAVAILABLE, format!("请求陶瓦失败: {}", e)))?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ErrorInfo::new(
+                error_code::UNAVAILABLE,
+                format!("陶瓦返回 HTTP {}", status),
+            ));
+        }
+        Ok(status.as_u16())
+    }
+
+    /// 查询型端点：解析 JSON 响应体（目前只有 `/state`）。
     fn get_json(&self, path: &str) -> Result<Value, ErrorInfo> {
         let port = self.port()?;
         let url = format!("http://127.0.0.1:{}{}", port, path);
@@ -206,13 +240,11 @@ impl TerracottaProvider {
 
     fn start_host(&self, params: Value) -> Result<Value, ErrorInfo> {
         // 进入任何操作前先重置状态，避免上一次联机的残留状态污染判定。
-        self.get_json("/state/ide")?;
+        //
+        // `peaceful=false`：这是用户主动"开始联机"，不是退出，允许打断上一次连接。
+        self.trigger("/state/ide", &[("peaceful".into(), "false".into())])?;
         let query = Self::terracotta_args(&params);
-        let port = self.port()?;
-        let url = format!("http://127.0.0.1:{}/state/scanning", port);
-        self.http.get(&url).query(&query).send().map_err(|e| {
-            ErrorInfo::new(error_code::UNAVAILABLE, format!("启动陶瓦主机失败: {}", e))
-        })?;
+        self.trigger("/state/scanning", &query)?;
         self.poll_state(120, 500)
     }
 
@@ -224,27 +256,19 @@ impl TerracottaProvider {
         if room.is_empty() {
             return Err(ErrorInfo::new(error_code::BAD_REQUEST, "房间码不能为空"));
         }
-        self.get_json("/state/ide")?;
+        // 同 start_host：触发型端点不解析 body，结果一律靠轮询 `/state` 拿。
+        self.trigger("/state/ide", &[("peaceful".into(), "false".into())])?;
         let query = Self::terracotta_args(&params);
-        let port = self.port()?;
-        let url = format!("http://127.0.0.1:{}/state/guesting", port);
-        let resp = self.http.get(&url).query(&query).send().map_err(|e| {
-            ErrorInfo::new(error_code::UNAVAILABLE, format!("加入陶瓦房间失败: {}", e))
-        })?;
-        if !resp.status().is_success() {
-            return Err(ErrorInfo::new(
-                error_code::UNAVAILABLE,
-                format!("加入房间被拒绝（HTTP {}）", resp.status()),
-            ));
-        }
+        self.trigger("/state/guesting", &query)?;
         self.poll_state(120, 500)
     }
 
     /// 和平退出当前房间/主机。
+    ///
+    /// 同样只走 `trigger`：`/panic` 也是触发型端点。这里刻意忽略失败——
+    /// 退出路径不应该因为陶瓦已经不在而报错。
     fn panic_peaceful(&self) -> Result<Value, ErrorInfo> {
-        let port = self.port()?;
-        let url = format!("http://127.0.0.1:{}/panic?peaceful=true", port);
-        let _ = self.http.get(&url).send();
+        let _ = self.trigger("/panic", &[("peaceful".into(), "true".into())]);
         Ok(json!({ "stopped": true }))
     }
 
@@ -260,12 +284,51 @@ impl TerracottaProvider {
             None => json!({ "state": "waiting", "index": 0 }),
         };
 
+        // 规范化出房间与成员：前端不该去猜陶瓦的原始字段名（`room` / `profiles`）。
+        //
+        // `profiles` 的语义是"陶瓦已知的参与者档案"。单机时长度为 1（只有本机）；
+        // 有对端加入后是否并入同一个数组尚无法在单机状态下验证，所以这里**原样透传、
+        // 只补一个 `self` 标记**，不假设数量、不造空位。
+        let players = state
+            .get("profiles")
+            .and_then(|v| v.as_array())
+            .map(|list| {
+                list.iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        json!({
+                            "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                            "kind": p.get("kind").and_then(|v| v.as_str()).unwrap_or(""),
+                            "machineId": p.get("machine_id").and_then(|v| v.as_str()).unwrap_or(""),
+                            "vendor": p.get("vendor").and_then(|v| v.as_str()).unwrap_or(""),
+                            // 本机 = `profile_index` 指向的那一项。
+                            "self": state
+                                .get("profile_index")
+                                .and_then(|v| v.as_u64())
+                                .map(|idx| idx as usize == i)
+                                .unwrap_or(i == 0),
+                        })
+                    })
+                    .filter(|p| {
+                        // 丢掉空档案：宁可不显示，也不要一张没有名字的卡。
+                        p.get("name").and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false)
+                            || p.get("machineId").and_then(|v| v.as_str()).map(|s| !s.is_empty()).unwrap_or(false)
+                    })
+                    .collect::<Vec<Value>>()
+            })
+            .unwrap_or_default();
+
         Ok(json!({
             "installed": status.installed,
             "running": status.running,
             "starting": status.starting,
             "port": status.port,
             "state": state,
+            // 房间码（陶瓦的原始字段名就是 `room`）。
+            "room": state.get("room").and_then(|v| v.as_str()).unwrap_or(""),
+            // 适配器自报的状态机取值，如 `host-ok` / `guest-ok` / `waiting`。
+            "phase": state.get("state").and_then(|v| v.as_str()).unwrap_or(""),
+            "players": players,
         }))
     }
 }

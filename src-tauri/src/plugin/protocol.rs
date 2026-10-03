@@ -320,6 +320,26 @@ pub struct PeerPluginInfo {
     pub endpoints: Vec<String>,
 }
 
+/// 房间成员（适配器自报的参与者）。
+///
+/// 与 [`PeerPluginInfo`] 区分开：那个描述的是"本机其它插件"，这个描述的是"房间里的
+/// 人"。复用前者会让房间视图把插件名当玩家名显示。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RoomMember {
+    /// 展示名（陶瓦的 `profiles[].name`）。
+    #[serde(default)]
+    pub name: String,
+    /// 适配器给的档案类型，如 `HOST` / `GUEST`。
+    #[serde(default)]
+    pub kind: String,
+    /// 设备标识（陶瓦的 `machine_id`），可用于区分同名玩家。
+    #[serde(default)]
+    pub machine_id: String,
+    /// 该成员是否是本机。
+    #[serde(default)]
+    pub is_self: bool,
+}
+
 /// 上下文快照：`core.context.update` 事件的负载。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PluginContext {
@@ -329,6 +349,9 @@ pub struct PluginContext {
     pub game: Option<GameInfo>,
     #[serde(default)]
     pub room: Option<RoomInfo>,
+    /// 房间成员（来自适配器；拿不到时为空数组，绝不臆造）。
+    #[serde(default)]
+    pub members: Vec<RoomMember>,
     #[serde(default)]
     pub peers: Vec<PeerPluginInfo>,
 }

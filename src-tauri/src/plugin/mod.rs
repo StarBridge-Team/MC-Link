@@ -51,6 +51,7 @@ pub mod fs_secure;
 pub mod game;
 pub mod gateway;
 pub mod launcher;
+pub mod localgames;
 pub mod manager;
 pub mod manifest;
 pub mod permission;

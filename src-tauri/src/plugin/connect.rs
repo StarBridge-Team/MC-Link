@@ -17,7 +17,7 @@ use crate::plugin::manager::PluginManager;
 use crate::plugin::manifest::PluginKind;
 use crate::plugin::permission::Permission;
 use crate::plugin::protocol::{
-    adapter_method, coupler_method, detector_method, GameInfo, PluginContext, RoomInfo,
+    adapter_method, coupler_method, detector_method, GameInfo, PluginContext, RoomInfo, RoomMember,
 };
 
 /// 前端订阅的联机事件（`connect-event`）。
@@ -52,6 +52,34 @@ fn connect_event(stage: &str, message: &str, role: Option<&str>) -> ConnectEvent
 
 fn emit_event(app: &AppHandle, evt: ConnectEvent) {
     let _ = app.emit("connect-event", &evt);
+}
+
+/// 从适配器返回值里提取房间成员。
+///
+/// 适配器实现各不相同，这里只认统一约定：`players` 数组（内置陶瓦适配器已把它的
+/// `profiles` 规范化成这个形状）。拿不到就返回空数组——**不臆造成员**。
+fn room_members(value: &Value) -> Vec<RoomMember> {
+    value
+        .get("players")
+        .and_then(|v| v.as_array())
+        .map(|list| {
+            list.iter()
+                .filter_map(|p| {
+                    let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    let machine_id = p.get("machineId").and_then(|v| v.as_str()).unwrap_or("");
+                    if name.is_empty() && machine_id.is_empty() {
+                        return None;
+                    }
+                    Some(RoomMember {
+                        name: name.to_string(),
+                        kind: p.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        machine_id: machine_id.to_string(),
+                        is_self: p.get("self").and_then(|v| v.as_bool()).unwrap_or(false),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// 列出可用于联机的适配器，并带上各适配器自声明的 `host_fields` / `join_fields`。
@@ -120,6 +148,23 @@ pub async fn connect_scan(
         other => vec![other],
     };
     Ok(json!(arr))
+}
+
+/// 取最近一次检测器扫描到的游戏，**不重新扫描**。
+///
+/// # 为什么需要它
+///
+/// 首页原本纯粹靠 `local-game-found` 事件驱动（扫描在应用打开时执行一次）。事件是
+/// 一次性广播，**没有补发**：只要监听器比事件晚一步（页面重载、启动竞态、扫描失败一次），
+/// 首页就会永远停在"正在寻找本地游戏…"，只能靠手动点重扫自救。
+///
+/// 这个命令让首页能在挂载时主动拉一次当前状态兜底。启用并缓存扫描结果的是
+/// [`PluginManager::scan_local_games`]，事件与这里读的是同一份数据，不会出现两套口径。
+#[tauri::command]
+pub async fn connect_local_games(
+    manager: tauri::State<'_, Arc<PluginManager>>,
+) -> Result<Value, String> {
+    Ok(json!(manager.local_games()))
 }
 
 /// 以房主身份创建房间：detector.scan → adapter.host.start → coupler.attach → 广播上下文。
@@ -205,6 +250,9 @@ pub async fn connect_start_host(
             .and_then(|v| v.as_str())
             .or_else(|| fields.get("room_code").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
+        // 适配器自报的成员列表（陶瓦为 `profiles`）。不同适配器字段形态不一，
+        // 用 `room_members` 统一提取，拿不到就是空数组。
+        let members = room_members(&value);
 
         // 3) 耦合器广播（best-effort）。
         if let Err(e) = mgr
@@ -230,6 +278,7 @@ pub async fn connect_start_host(
                 code: c.clone(),
                 ..Default::default()
             }),
+            members,
             peers: vec![],
         });
 
@@ -269,16 +318,21 @@ pub async fn connect_join(
             m.insert("player_name".to_string(), json!(player_name));
             m.insert("role".to_string(), json!("guest"));
         }
-        if let Err(e) = provider
+        // 接住返回值：适配器会把规范化后的成员列表放在里面（见 `room_members`）。
+        let value = match provider
             .invoke_checked(Permission::NetConnectAny, adapter_method::JOIN, params)
             .await
         {
-            emit_event(&app2, connect_event("error", &e.message, Some("guest")));
-            return;
-        }
-        let room_code = fields
-            .get("room_code")
+            Ok(v) => v,
+            Err(e) => {
+                emit_event(&app2, connect_event("error", &e.message, Some("guest")));
+                return;
+            }
+        };
+        let room_code = value
+            .get("room")
             .and_then(|v| v.as_str())
+            .or_else(|| fields.get("room_code").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
 
         // 耦合器广播（best-effort）。
@@ -294,6 +348,8 @@ pub async fn connect_join(
             eprintln!("[联机] 耦合器广播失败（不影响加入）: {}", e.message);
         }
 
+        // 与房主侧对齐：把适配器自报的成员一并广播。
+        let members = room_members(&value);
         mgr.broadcast_context(&PluginContext {
             role: "guest".to_string(),
             game: None,
@@ -301,6 +357,7 @@ pub async fn connect_join(
                 code: c.clone(),
                 ..Default::default()
             }),
+            members,
             peers: vec![],
         });
 

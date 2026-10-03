@@ -33,6 +33,7 @@ use crate::plugin::permission::{required_for, Permission};
 use crate::plugin::protocol::{detector_method, error_code, event_topic, ErrorInfo, LocalGameFound};
 use crate::plugin::registry::{PluginRecord, PluginRegistry, PluginSource};
 use crate::plugin::router::{self, RoutePlan};
+use crate::plugin::localgames::LocalGamesCache;
 use crate::plugin::session::{Inbound, InboundTx};
 
 /// 插件管理器。
@@ -58,6 +59,8 @@ struct Inner {
     launch_lock: tokio::sync::Mutex<()>,
     gateway: RwLock<Option<Arc<Gateway>>>,
     auth: AuthTable,
+    /// 最近一次扫描到的本地游戏，供前端主动拉取（事件补发不了，见 `plugin::localgames`）。
+    local_games: LocalGamesCache,
     inbound_tx: InboundTx,
     inbound_rx: SyncMutex<Option<mpsc::UnboundedReceiver<Inbound>>>,
     shutdown: Arc<AtomicBool>,
@@ -101,6 +104,7 @@ impl PluginManager {
             launch_lock: tokio::sync::Mutex::new(()),
             gateway: RwLock::new(None),
             auth: Arc::new(RwLock::new(HashMap::new())),
+            local_games: LocalGamesCache::new(),
             inbound_tx,
             inbound_rx: SyncMutex::new(Some(inbound_rx)),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -478,44 +482,67 @@ impl PluginManager {
                 .invoke(PluginKind::Detector, None, detector_method::SCAN, json!({}))
                 .await
             {
-                Ok((plugin_id, value)) => {
-                    let game_id = value
-                        .get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let process = value
-                        .get("process")
-                        .and_then(|v| v.as_str())
-                        .or_else(|| value.get("id").and_then(|v| v.as_str()))
-                        .unwrap_or("")
-                        .to_string();
-                    let game_name = value
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let adapter = self.recommended_adapter_name(&game_id);
-                    let item = LocalGameFound {
-                        process,
-                        game_name,
-                        scanner: name,
-                        adapter,
+                Ok((plugin_id, raw)) => {
+                    // `detector.scan` 的契约是返回**数组**（可能有多台服务器），
+                    // 这里逐个展开。早期版本按对象取字段，于是 `process` 实际拿到的是
+                    // `id`（`minecraft-java`）而不是 MOTD——首页与联机页显示的会是同一个
+                    // 游戏却写出两个不同的名字。
+                    let entries = match raw {
+                        Value::Array(a) => a,
+                        other => vec![other],
                     };
-                    found.push(item.clone());
-                    // 同时走既有 detector.found 契约通道，保持插件事件一致。
-                    self.emit(json!({
-                        "topic": event_topic::DETECTOR_FOUND,
-                        "plugin": plugin_id,
-                        "game": serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
-                    }));
+                    for value in entries {
+                        let game_id = value
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let process = value
+                            .get("process")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| value.get("id").and_then(|v| v.as_str()))
+                            .unwrap_or("")
+                            .to_string();
+                        let game_name = value
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let adapter = self.recommended_adapter_name(&game_id);
+                        let item = LocalGameFound {
+                            process,
+                            game_name,
+                            scanner: name.clone(),
+                            adapter,
+                        };
+                        found.push(item.clone());
+                        // 同时走既有 detector.found 契约通道，保持插件事件一致。
+                        self.emit(json!({
+                            "topic": event_topic::DETECTOR_FOUND,
+                            "plugin": plugin_id,
+                            "game": serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
+                        }));
+                    }
                 }
                 Err(e) => {
                     eprintln!("[动作] 检测器 {} 扫描失败: {}", id, e.message);
                 }
             }
         }
+
+        // 记下这次结果，供前端主动拉取（事件是一次性广播，补发不了）。
+        self.remember_local_games(&found);
         found
+    }
+
+    /// 记录最近一次扫描结果，供前端主动拉取。
+    pub(super) fn remember_local_games(&self, games: &[LocalGameFound]) {
+        self.inner.local_games.set(games);
+    }
+
+    /// 读取最近一次扫描结果（**不重新扫描**）。
+    pub fn local_games(&self) -> Vec<LocalGameFound> {
+        self.inner.local_games.get()
     }
 
     /// 给定游戏 ID，返回路由计划首选的适配器展示名（无则空串）。

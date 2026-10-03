@@ -59,7 +59,11 @@ pub fn register_builtin_open_actions(mgr: &ActionManager) {
         Box::pin(async move {
             let _ = app.emit("local-game-status", json!({ "status": "scanning" }));
             let found: Vec<LocalGameFound> = {
-                let mgr = app.state::<PluginManager>();
+                // 必须取 `Arc<PluginManager>`：`lib.rs` 注册的就是 `Arc<PluginManager>`，
+                // 向 Tauri 要裸 `PluginManager` 会 panic（`state() called before manage()`），
+                // 整个动作随之静默失效——表现为首页扫描永远不出结果。
+                // 取完立刻 clone 出 `Arc`，不把 `State` 守卫带过 `.await`。
+                let mgr: Arc<PluginManager> = app.state::<Arc<PluginManager>>().inner().clone();
                 mgr.scan_local_games().await
             };
             for item in &found {
