@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute, useRouter } from "vue-router";
+import { useRouter } from "vue-router";
 import { listen } from "@tauri-apps/api/event";
 import { useConnect } from "../composables/useConnect";
 import { showSuccess } from "../composables/useToast";
+import { writeClipboardText } from "../lib/api/app";
 import type { LocalGame } from "../lib/api/types";
 import HostPanel from "./connect/HostPanel.vue";
 import MemberPanel from "./connect/MemberPanel.vue";
@@ -16,7 +17,6 @@ import StartDialog from "./connect/StartDialog.vue";
  * 一旦进入 connecting/connected，内容区切到「连接状态卡」，与两个模式互斥。
  */
 const { t } = useI18n();
-const route = useRoute();
 const router = useRouter();
 const {
   mode,
@@ -30,7 +30,6 @@ const {
   activeStartProcess,
   clearStartRequest,
   mount,
-  unmount,
   stop,
   applyInvite,
   buildShareLink,
@@ -137,29 +136,16 @@ onMounted(async () => {
   });
 });
 
-/**
- * 联机成功 → 进入房间视图；房间结束 → 回到本页。
- *
- * 用 `watch` 而不是在事件回调里跳转：`connected` / `stopped` 都由 `useConnect` 的
- * `onEvent` 收敛成 `mode`，只有这里才区分得出"是本次会话刚连上"还是"切页面回来时
- * 本来就连着"——后者不该被重新推走。
- */
-watch(mode, (next, prev) => {
-  if (next === "connected" && prev !== "connected") {
-    void router.push({ name: "room" });
-  } else if (next === "idle" && prev === "connected" && route.name === "room") {
-    void router.push({ name: "connect" });
-  }
-});
+// 「联机成功 → 房间视图、房间结束 → 回到本页」的流转在 `App.vue`：
+// 本组件在房间视图期间已被卸载，写在这里的 watch 不会执行。
 
 onUnmounted(() => {
-  unmount();
   unlistenDeep?.();
 });
 
 async function copyCode() {
   try {
-    await navigator.clipboard.writeText(roomCode.value);
+    await writeClipboardText(roomCode.value);
     showSuccess(t("connect.copied"));
   } catch {
     /* 剪贴板不可用时忽略 */
@@ -168,7 +154,7 @@ async function copyCode() {
 
 async function share() {
   try {
-    await navigator.clipboard.writeText(buildShareLink());
+    await writeClipboardText(buildShareLink());
     showSuccess(t("connect.linkCopied"));
   } catch {
     /* 忽略 */
@@ -217,6 +203,11 @@ async function share() {
             <p>{{ errorMsg || t("connect.connecting") }}</p>
           </div>
 
+          <!--
+            已连接：这里**不再展示房间码**。有房间视图专门承载房间信息（码、成员、
+            适配器状态），页面停留时间也更长；这里重复一遍反而让两个界面口径不一。
+            只在极短的过渡窗口里出现，给一句确认与去房间的入口即可。
+          -->
           <template v-else>
             <div class="connect__role">
               <m3e-badge
@@ -227,11 +218,6 @@ async function share() {
               </m3e-badge>
             </div>
 
-            <div class="connect__code">
-              <span class="connect__code-label">{{ t("connect.field.roomCode") }}</span>
-              <span class="connect__code-value">{{ roomCode }}</span>
-            </div>
-
             <div class="connect__connected-actions">
               <m3e-button variant="tonal" @click="copyCode">
                 <m3e-icon slot="icon" name="content_copy" />
@@ -240,6 +226,10 @@ async function share() {
               <m3e-button variant="tonal" @click="share">
                 <m3e-icon slot="icon" name="share" />
                 {{ t("connect.invite") }}
+              </m3e-button>
+              <m3e-button variant="filled" @click="router.push({ name: 'room' })">
+                <m3e-icon slot="icon" name="meeting_room" />
+                {{ t("connect.openRoom") }}
               </m3e-button>
               <m3e-button variant="outlined" @click="stop">
                 <m3e-icon slot="icon" name="link_off" />
@@ -344,23 +334,7 @@ async function share() {
   --m3e-badge-color: var(--on-tertiary-container, #2a1a5e);
 }
 
-.connect__code {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-1);
-  margin-bottom: var(--sp-4);
-}
-.connect__code-label {
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-}
-.connect__code-value {
-  font-size: 28px;
-  font-weight: var(--fw-bold);
-  letter-spacing: 2px;
-  font-variant-numeric: tabular-nums;
-}
+/* 房间码的展示样式随展示位置一起搬到了 `RoomView.vue`。 */
 
 .connect__connected-actions {
   display: flex;

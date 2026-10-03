@@ -50,3 +50,14 @@ export async function getAssetUrl(path: string) {
 export async function runOpenActions() {
   return invoke<void>("run_open_actions");
 }
+
+/**
+ * 把文本写入系统剪贴板。
+ *
+ * 写剪贴板由后端完成（见 Rust 侧 `commands/clipboard.rs`），前端不申请任何剪贴板权限：
+ * 走 `navigator.clipboard` 需要 webview 授权，走 tauri 插件需要给前端开权限，
+ * 两者都会把「读写系统剪贴板」暴露给整个前端，而实际需求只有「复制房间码」这一处。
+ */
+export async function writeClipboardText(text: string) {
+  return invoke<void>("write_clipboard_text", { text });
+}

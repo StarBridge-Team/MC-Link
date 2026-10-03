@@ -1,5 +1,6 @@
 pub(crate) mod adapter;
 pub(crate) mod app;
+pub(crate) mod clipboard;
 pub(crate) mod community;
 pub(crate) mod legal;
 pub(crate) mod setup;
@@ -7,6 +8,7 @@ pub(crate) mod window;
 
 pub(crate) use adapter::*;
 pub(crate) use app::*;
+pub(crate) use clipboard::*;
 pub(crate) use community::*;
 pub(crate) use legal::*;
 pub(crate) use setup::*;

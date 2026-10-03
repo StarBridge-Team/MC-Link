@@ -36,7 +36,14 @@ hex = "0.4"
 sha2 = "0.10"
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
-tauri-plugin-clipboard-manager = "2"
+
+# 剪切板：由后端提供命令，前端不申请剪贴板权限（见 `commands/clipboard.rs`）。
+# 刻意不用 `tauri-plugin-clipboard-manager`：它在 Windows 上会把整个 gtk 依赖树
+# （gtk、gdk、glib、cairo、pango…）拉进 Cargo.lock，而这里只需要「写文本」一件事。
+# arboard 是跨平台的最小实现，两者在 Linux 上底层是同一套 x11rb 通路。
+# 移动端没有系统剪贴板可写，故不参与编译。
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+arboard = "3"
 
 # 插件系统：WebSocket 网关（仅监听回环地址）与端到端加密
 tokio-tungstenite = "0.24"
