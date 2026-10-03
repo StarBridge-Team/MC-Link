@@ -85,11 +85,15 @@ export default {
     host: "房主",
     guest: "访客",
     hostModeNote: "房主模式：选择游戏后，所需字段由适配器决定；邀请码由适配器自动生成并回传给你分享。",
-    memberModeNote: "成员模式：选择适配器并填入房主分享的网络名称或邀请码即可加入。",
+    memberModeNote: "成员模式：选择适配器，在上方搜索框输入邀请码（其余字段按适配器要求填写）即可加入。",
     rescan: "重新扫描",
     scanning: "正在扫描本机游戏…",
     noScannedGames: "没有扫到游戏",
     noScannedGamesDesc: "请确保游戏已运行并开启了局域网 / 联机，然后点「重新扫描」。",
+    noSearchMatch: "没有匹配的游戏",
+    // 顶部搜索框的提示：按 Tab 切换含义（房主筛游戏、成员录邀请码）
+    searchGames: "搜索游戏进程",
+    searchInvite: "输入邀请码",
     startConnect: "开始联机",
     selectAdapter: "选择适配器",
     dialog: {
@@ -120,6 +124,19 @@ export default {
       unsigned: "未签名",
       blocked: "已拉黑",
     },
+  },
+  // 房间视图（联机成功后）
+  room: {
+    noRoom: "未在房间中",
+    phaseUnknown: "状态未知",
+    game: "游戏",
+    adapter: "适配器",
+    localPort: "本地端口",
+    noMembers: "暂无成员",
+    noMembersHint: "等待其他人加入；对方加入后会自动出现在这里。",
+    unknownPlayer: "未知玩家",
+    you: "你",
+    leave: "退出房间",
   },
 
   setting: {

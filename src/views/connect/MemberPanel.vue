@@ -5,14 +5,17 @@ import { useConnect } from "../../composables/useConnect";
 import type { JoinField } from "../../lib/api/types";
 
 /**
- * 成员模式：直接选适配器 + 按 join_fields 填字段。
+ * 成员模式：选适配器 + 按 `join_fields` 填字段。
  * 若适配器声明了 password 相位的字段，首步提交后再问密码（"有密码还要问"）。
+ *
+ * 交互元素一律用 `@m3e/web` 组件（selection-list / list-option / card / badge /
+ * form-field / button / icon），不手写等价结构。
  */
 const { t } = useI18n();
 const {
   adapters,
   selectedId,
-  joinFields,
+  formFields,
   form,
   busy,
   canJoin,
@@ -23,18 +26,24 @@ const {
 
 const showPassword = ref(false);
 
-const TRUST: Record<string, { label: string; cls: string }> = {
-  official: { label: t("connect.trust.official"), cls: "trust--official" },
-  verified: { label: t("connect.trust.verified"), cls: "trust--verified" },
-  unsigned: { label: t("connect.trust.unsigned"), cls: "trust--unsigned" },
-  blocked: { label: t("connect.trust.blocked"), cls: "trust--blocked" },
+const TRUST_LABEL: Record<string, string> = {
+  official: t("connect.trust.official"),
+  verified: t("connect.trust.verified"),
+  unsigned: t("connect.trust.unsigned"),
+  blocked: t("connect.trust.blocked"),
 };
 
+/** 信任度 → 徽章配色类（配色写在 <style>，不改组件结构）。 */
+function trustClass(trust: string): string {
+  return `trust--${trust}`;
+}
+
+// `formFields` 已剔除邀请码字段——它由页面顶部的搜索框录入（见 useConnect）。
 const primaryFields = computed<JoinField[]>(() =>
-  joinFields.value.filter((f) => f.phase !== "password"),
+  formFields.value.filter((f) => f.phase !== "password"),
 );
 const passwordFields = computed<JoinField[]>(() =>
-  joinFields.value.filter((f) => f.phase === "password"),
+  formFields.value.filter((f) => f.phase === "password"),
 );
 const hasPasswordStep = computed(() => passwordFields.value.length > 0);
 
@@ -66,79 +75,81 @@ onMounted(() => void loadAdapters());
   <div class="member scroll-area">
     <p class="hint">{{ t("connect.memberModeNote") }}</p>
 
-    <div v-if="adapters.length === 0" class="card member__empty">
-      <i class="material-symbols-rounded">hub</i>
-      <p>{{ t("connect.noAdapters") }}</p>
-    </div>
+    <m3e-card v-if="adapters.length === 0" variant="elevated">
+      <div slot="content" class="member__empty">
+        <m3e-icon name="hub" />
+        <p>{{ t("connect.noAdapters") }}</p>
+      </div>
+    </m3e-card>
 
     <template v-else>
       <!-- 适配器选择 -->
-      <div class="member__adapters">
-        <m3e-card
+      <m3e-selection-list class="member__adapters">
+        <m3e-list-option
           v-for="a in adapters"
           :key="a.pluginId"
-          variant="outlined"
-          class="adapter"
-          :class="{ 'adapter--active': a.pluginId === selectedId }"
+          :selected="a.pluginId === selectedId"
           @click="selectAdapter(a.pluginId)"
         >
-          <div class="adapter__body">
-            <span class="adapter__name">{{ a.name }}</span>
-            <span class="adapter__trust" :class="TRUST[a.trust]?.cls">
-              {{ TRUST[a.trust]?.label ?? a.trust }}
-            </span>
-          </div>
-        </m3e-card>
-      </div>
+          {{ a.name }}
+          <m3e-badge slot="trailing" class="trust" :class="trustClass(a.trust)">
+            {{ TRUST_LABEL[a.trust] ?? a.trust }}
+          </m3e-badge>
+        </m3e-list-option>
+      </m3e-selection-list>
 
-      <!-- 动态字段 -->
-      <div v-if="selectedId" class="card member__form">
-        <m3e-form-field
-          v-for="f in primaryFields"
-          :key="f.key"
-          variant="outlined"
-          class="field"
-        >
-          <label slot="label">{{ fieldLabel(f) }}</label>
-          <input
-            slot="input"
-            v-model="form[f.key]"
-            :type="f.type === 'password' ? 'password' : 'text'"
-            :placeholder="f.placeholder"
-          />
-        </m3e-form-field>
-
-        <template v-if="showPassword">
-          <p class="member__pw-hint">
-            <i class="material-symbols-rounded">lock</i>
-            {{ t("connect.needPassword") }}
-          </p>
+      <!-- 动态字段：控件放 m3e-form-field 的**默认** slot -->
+      <m3e-card v-if="selectedId" variant="elevated">
+        <div slot="content" class="member__form">
           <m3e-form-field
-            v-for="f in passwordFields"
+            v-for="f in primaryFields"
             :key="f.key"
             variant="outlined"
             class="field"
           >
             <label slot="label">{{ fieldLabel(f) }}</label>
             <input
-              slot="input"
               v-model="form[f.key]"
               :type="f.type === 'password' ? 'password' : 'text'"
               :placeholder="f.placeholder"
             />
           </m3e-form-field>
-        </template>
 
-        <m3e-button
-          variant="filled"
-          class="member__submit"
-          :disabled="!canJoin || busy"
-          @click="onSubmit"
-        >
-          <m3e-icon slot="icon" name="login" />
-          {{ hasPasswordStep && !showPassword ? t("connect.dialog.continue") : t("connect.startConnect") }}
-        </m3e-button>
-      </div>
+          <template v-if="showPassword">
+            <p class="member__pw-hint">
+              <m3e-icon name="lock" />
+              {{ t("connect.needPassword") }}
+            </p>
+            <m3e-form-field
+              v-for="f in passwordFields"
+              :key="f.key"
+              variant="outlined"
+              class="field"
+            >
+              <label slot="label">{{ fieldLabel(f) }}</label>
+              <input
+                v-model="form[f.key]"
+                :type="f.type === 'password' ? 'password' : 'text'"
+                :placeholder="f.placeholder"
+              />
+            </m3e-form-field>
+          </template>
+
+          <m3e-button
+            variant="filled"
+            class="member__submit"
+            :disabled="!canJoin || busy"
+            @click="onSubmit"
+          >
+            <m3e-icon slot="icon" name="login" />
+            {{
+              hasPasswordStep && !showPassword
+                ? t("connect.dialog.continue")
+                : t("connect.startConnect")
+            }}
+          </m3e-button>
+        </div>
+      </m3e-card>
     </template>
   </div>
 </template>
@@ -153,62 +164,43 @@ onMounted(() => void loadAdapters());
   width: 100%;
 }
 
-.card {
-  background: var(--surface-container);
-  border-radius: var(--radius-lg);
-  padding: var(--sp-4);
-  box-shadow: var(--shadow-1);
-}
 .member__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-6) 0;
   text-align: center;
   color: var(--text-muted);
 }
-.member__empty i {
+.member__empty m3e-icon {
   font-size: 40px;
   opacity: 0.6;
 }
 
 .member__adapters {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
+  width: 100%;
 }
-.adapter {
-  cursor: pointer;
-}
-.adapter--active {
-  outline: 2px solid var(--primary);
-}
-.adapter__body {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--sp-3);
-}
-.adapter__name {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-semibold);
-}
-.adapter__trust {
-  font-size: var(--fs-xs);
-  padding: 2px 8px;
-  border-radius: 999px;
+
+/* 信任度徽章：只覆盖配色，形状/尺寸交给组件。 */
+.trust {
+  --m3e-badge-medium-font-size: var(--fs-xs);
 }
 .trust--official {
-  background: var(--primary-container);
-  color: var(--on-primary-container);
+  --m3e-badge-container-color: var(--primary-container);
+  --m3e-badge-color: var(--on-primary-container);
 }
 .trust--verified {
-  background: var(--tertiary-container, #eaddff);
-  color: var(--on-tertiary-container, #2a1a5e);
+  --m3e-badge-container-color: var(--tertiary-container, #eaddff);
+  --m3e-badge-color: var(--on-tertiary-container, #2a1a5e);
 }
 .trust--unsigned {
-  background: var(--surface-variant);
-  color: var(--text-muted);
+  --m3e-badge-container-color: var(--surface-variant);
+  --m3e-badge-color: var(--text-muted);
 }
 .trust--blocked {
-  background: var(--error-container, #f9dedc);
-  color: var(--on-error-container, #410e0b);
+  --m3e-badge-container-color: var(--error-container, #f9dedc);
+  --m3e-badge-color: var(--on-error-container, #410e0b);
 }
 
 .member__form {
@@ -226,7 +218,7 @@ onMounted(() => void loadAdapters());
   font-size: var(--fs-sm);
   color: var(--text-secondary);
 }
-.member__pw-hint i {
+.member__pw-hint m3e-icon {
   font-size: 16px;
 }
 .member__submit {

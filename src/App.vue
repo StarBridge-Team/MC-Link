@@ -7,6 +7,7 @@ import NavList, { type NavListItem } from "./components/layout/NavList.vue";
 import NavRail, { type NavItem } from "./components/layout/NavRail.vue";
 import OobeOverlay from "./components/oobe/OobeOverlay.vue";
 import { useColorScheme } from "./composables/useColorScheme";
+import { useConnect } from "./composables/useConnect";
 import { useSettings } from "./composables/useSettings";
 import { useSetup } from "./composables/useSetup";
 import { useWindowControls } from "./composables/useWindowControls";
@@ -29,6 +30,7 @@ const { t } = useI18n();
 const settings = useSettings();
 const setup = useSetup();
 const windowCtl = useWindowControls();
+const { roomCode } = useConnect();
 
 // m3e-theme 的明暗方案：system 映射到 auto（跟随系统），light/dark 直传。
 const scheme = computed<"light" | "dark" | "auto">(() => {
@@ -70,6 +72,9 @@ const pageTitle = computed(() => {
   switch (route.name) {
     case "connect":
       return t("nav.connect");
+    case "room":
+      // 房间视图不以导航命名：标题直接用房间码更贴合它"在做一件事"的定位。
+      return roomCode.value || t("nav.connect");
     case "game":
       return t("nav.game");
     case "setting": {
@@ -105,7 +110,15 @@ const secondaryItems = computed<NavListItem[]>(() =>
   })),
 );
 
-const showSecondary = computed(() => route.name === "setting");
+/**
+ * 是否收起左侧主导航栏。
+ *
+ * 由路由 `meta.hideNav` 决定（房间视图用它把整屏让给成员网格）。
+ * 收起时 `NavList` 也要一起让位——它挂在导航栏右侧，只藏一个会留下孤立的二级栏。
+ */
+const hideNav = computed(() => Boolean(route.meta.hideNav));
+
+const showSecondary = computed(() => route.name === "setting" && !hideNav.value);
 const activeSecondary = computed(() =>
   isSettingTab(route.params.tab) ? route.params.tab : DEFAULT_SETTING_TAB,
 );
@@ -192,7 +205,12 @@ onMounted(async () => {
     />
 
     <div class="shell__body">
-      <NavRail :items="navItems" :active="String(route.name ?? 'home')" @select="onNavSelect" />
+      <NavRail
+        v-if="!hideNav"
+        :items="navItems"
+        :active="String(route.name ?? 'home')"
+        @select="onNavSelect"
+      />
       <NavList
         v-if="showSecondary"
         :items="secondaryItems"

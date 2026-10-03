@@ -1,25 +1,42 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useConnect } from "../../composables/useConnect";
 import type { LocalGame } from "../../lib/api/types";
-import StartDialog from "./StartDialog.vue";
 
 /**
  * 房主模式：列出检测器扫到的本机游戏实例，每个卡片带「开始联机」按钮。
  * 点了按钮才弹窗（选适配器 + 按适配器 schema 出字段），符合"最少填写"。
+ *
+ * 弹窗状态由父级 `ConnectView` 持有——首页的跨页请求也要能打开它。
  */
+const emit = defineEmits<{ (e: "start", game: LocalGame): void }>();
+
 const { t } = useI18n();
-const { localGames, scanLocalGames } = useConnect();
+const { filteredLocalGames, noMatch, scanLocalGames } = useConnect();
 
-const dialogOpen = ref(false);
-const activeGame = ref<LocalGame | null>(null);
+/**
+ * 自动重扫描间隔。
+ *
+ * 游戏中途启动/退出很常见，只靠手动点「重新扫描」很容易漏；且扫描本身很轻
+ * （本机检测器一次查询）。扫描在途时会跳过本轮，见 `scanLocalGames`。
+ */
+const RESCAN_INTERVAL = 5000;
 
-onMounted(() => void scanLocalGames());
+let timer: number | null = null;
+
+onMounted(() => {
+  void scanLocalGames();
+  timer = window.setInterval(() => void scanLocalGames(), RESCAN_INTERVAL);
+});
+
+onUnmounted(() => {
+  if (timer !== null) window.clearInterval(timer);
+  timer = null;
+});
 
 function openStart(game: LocalGame) {
-  activeGame.value = game;
-  dialogOpen.value = true;
+  emit("start", game);
 }
 </script>
 
@@ -33,17 +50,19 @@ function openStart(game: LocalGame) {
       </m3e-button>
     </div>
 
-    <!-- 没扫到游戏 → 空状态 -->
-    <div v-if="localGames.length === 0" class="host__empty">
-      <span class="icon-badge"><i class="material-symbols-rounded">router</i></span>
-      <h2 class="host__empty-title">{{ t("connect.noScannedGames") }}</h2>
-      <p class="hint">{{ t("connect.noScannedGamesDesc") }}</p>
+    <!-- 没扫到游戏，或被搜索词筛空 → 空状态（两种原因文案不同） -->
+    <div v-if="filteredLocalGames.length === 0" class="host__empty">
+      <m3e-icon :name="noMatch ? 'search_off' : 'router'" class="host__empty-icon" />
+      <h2 class="host__empty-title">
+        {{ noMatch ? t("connect.noSearchMatch") : t("connect.noScannedGames") }}
+      </h2>
+      <p v-if="!noMatch" class="hint">{{ t("connect.noScannedGamesDesc") }}</p>
     </div>
 
     <!-- 扫到的所有游戏：卡片网格，每张带开始联机按钮 -->
     <div v-else class="host__grid stagger">
       <m3e-card
-        v-for="(g, index) in localGames"
+        v-for="(g, index) in filteredLocalGames"
         :key="g.id + g.port"
         variant="elevated"
         class="game-card"
@@ -53,8 +72,12 @@ function openStart(game: LocalGame) {
           <header class="game-card__head">
             <h3 class="game-card__name">{{ g.name }}</h3>
           </header>
-          <p class="hint mono">{{ t("game.port") }} {{ g.port }}</p>
+          <!--
+            第一行是局域网广播里的服务器名（检测器把它放在 `process` 字段里），
+            第二行才是端口。所以这里不能按"进程名"来标——首页展示的是同一个值。
+          -->
           <p class="hint ellipsis">{{ g.process }}</p>
+          <p class="hint mono">{{ t("game.port") }} {{ g.port }}</p>
           <div class="game-card__actions">
             <m3e-button variant="filled" @click="openStart(g)">
               <m3e-icon slot="icon" name="link" />
@@ -65,13 +88,6 @@ function openStart(game: LocalGame) {
       </m3e-card>
     </div>
 
-    <StartDialog
-      v-if="dialogOpen"
-      mode="host"
-      :game="activeGame"
-      :open="dialogOpen"
-      @close="dialogOpen = false"
-    />
   </div>
 </template>
 
@@ -99,6 +115,11 @@ function openStart(game: LocalGame) {
   gap: var(--sp-3);
   min-height: 260px;
   text-align: center;
+}
+.host__empty-icon {
+  font-size: 40px;
+  opacity: 0.6;
+  color: var(--text-muted);
 }
 .host__empty-title {
   font-size: var(--fs-title);

@@ -19,6 +19,16 @@ const routes = [
     component: () => import("@/views/ConnectView.vue"),
   },
   {
+    path: "/room",
+    name: "room",
+    component: () => import("@/views/RoomView.vue"),
+    /**
+     * 房间视图：联机成功后进入，独立于常规导航。
+     * `meta.hideNav` 让外壳收起左侧导航栏（见 `App.vue`），退出房间后自动恢复。
+     */
+    meta: { hideNav: true },
+  },
+  {
     path: "/game/:tab?",
     name: "game",
     component: () => import("@/views/GameView.vue"),

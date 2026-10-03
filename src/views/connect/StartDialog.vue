@@ -7,6 +7,8 @@ import type { JoinField, LocalGame } from "../../lib/api/types";
 /**
  * 房主弹窗：先选适配器（>1 个时），再按该适配器的 host_fields 出字段。
  * generated 字段（如房间码）由适配器生成、不收集输入，只显示说明；其余按类型出输入框。
+ *
+ * 弹窗用 `m3e-dialog`（自带遮罩、焦点陷阱、关闭按钮与 Esc 处理），不手写遮罩层。
  */
 const props = defineProps<{
   mode: "host";
@@ -22,9 +24,7 @@ const { adapters, selectedId, hostFields, loadAdapters, startHost } = useConnect
 const step = ref<"adapter" | "fields">("adapter");
 const form = ref<Record<string, string>>({});
 
-const inputFields = computed<JoinField[]>(() =>
-  hostFields.value.filter((f) => !f.generated),
-);
+const inputFields = computed<JoinField[]>(() => hostFields.value.filter((f) => !f.generated));
 
 function fieldLabel(f: JoinField): string {
   const known: Record<string, string> = {
@@ -71,129 +71,71 @@ function confirm() {
 </script>
 
 <template>
-  <div v-if="open" class="dialog-backdrop" @click.self="emit('close')">
-    <div class="dialog">
-      <header class="dialog__head">
-        <h3>{{ t("connect.startConnect") }}</h3>
-        <button class="dialog__x" @click="emit('close')">
-          <i class="material-symbols-rounded">close</i>
-        </button>
-      </header>
+  <m3e-dialog
+    v-if="open"
+    open
+    dismissible
+    class="start-dialog"
+    @closed="emit('close')"
+  >
+    <span slot="header">{{ t("connect.startConnect") }}</span>
 
-      <!-- 步骤一：选适配器 -->
-      <div v-if="step === 'adapter'" class="dialog__body">
-        <p class="hint">{{ t("connect.selectAdapter") }}</p>
-        <ul class="adapter-list">
-          <li
-            v-for="a in adapters"
-            :key="a.pluginId"
-            class="adapter"
-            :class="{ 'adapter--active': a.pluginId === selectedId }"
-            @click="pickAdapter(a.pluginId)"
-          >
-            <span class="adapter__name">{{ a.name }}</span>
-          </li>
-        </ul>
-      </div>
-
-      <!-- 步骤二：按 host_fields 出字段 -->
-      <div v-else class="dialog__body">
-        <p v-if="hostFields.length === 0" class="hint">{{ t("connect.hostModeNote") }}</p>
-
-        <template v-for="f in hostFields" :key="f.key">
-          <!-- 生成类字段：只显示说明，不收集输入 -->
-          <p v-if="f.generated" class="dialog__generated">
-            <i class="material-symbols-rounded">auto_awesome</i>
-            {{ fieldLabel(f) }} {{ t("connect.field.generated") }}
-            <span v-if="f.note" class="hint">· {{ f.note }}</span>
-          </p>
-          <!-- 其余：按类型出输入框 -->
-          <m3e-form-field v-else variant="outlined" class="field">
-            <label slot="label">{{ fieldLabel(f) }}</label>
-            <input
-              slot="input"
-              v-model="form[f.key]"
-              :type="f.type === 'password' ? 'password' : 'text'"
-              :placeholder="f.placeholder"
-            />
-          </m3e-form-field>
-        </template>
-
-        <div class="dialog__actions">
-          <m3e-button variant="text" @click="emit('close')">
-            {{ t("connect.dialog.cancel") }}
-          </m3e-button>
-          <m3e-button variant="filled" @click="confirm">
-            {{ t("connect.startConnect") }}
-          </m3e-button>
-        </div>
-      </div>
+    <!-- 步骤一：选适配器 -->
+    <div v-if="step === 'adapter'" class="dialog__body">
+      <p class="hint">{{ t("connect.selectAdapter") }}</p>
+      <m3e-selection-list>
+        <m3e-list-option
+          v-for="a in adapters"
+          :key="a.pluginId"
+          :selected="a.pluginId === selectedId"
+          @click="pickAdapter(a.pluginId)"
+        >
+          {{ a.name }}
+        </m3e-list-option>
+      </m3e-selection-list>
     </div>
-  </div>
+
+    <!-- 步骤二：按 host_fields 出字段 -->
+    <div v-else class="dialog__body">
+      <p v-if="hostFields.length === 0" class="hint">{{ t("connect.hostModeNote") }}</p>
+
+      <template v-for="f in hostFields" :key="f.key">
+        <!-- 生成类字段：只显示说明，不收集输入 -->
+        <p v-if="f.generated" class="dialog__generated">
+          <m3e-icon name="auto_awesome" />
+          {{ fieldLabel(f) }} {{ t("connect.field.generated") }}
+          <span v-if="f.note" class="hint">· {{ f.note }}</span>
+        </p>
+        <!-- 其余：按类型出输入框；控件放默认 slot -->
+        <m3e-form-field v-else variant="outlined" class="field">
+          <label slot="label">{{ fieldLabel(f) }}</label>
+          <input
+            v-model="form[f.key]"
+            :type="f.type === 'password' ? 'password' : 'text'"
+            :placeholder="f.placeholder"
+          />
+        </m3e-form-field>
+      </template>
+    </div>
+
+    <div slot="actions" end class="dialog__actions">
+      <m3e-button variant="text" @click="emit('close')">
+        {{ t("connect.dialog.cancel") }}
+      </m3e-button>
+      <m3e-button variant="filled" @click="confirm">
+        {{ t("connect.startConnect") }}
+      </m3e-button>
+    </div>
+  </m3e-dialog>
 </template>
 
 <style scoped>
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-}
-.dialog {
-  width: min(440px, 92vw);
-  max-height: 86vh;
-  overflow-y: auto;
-  background: var(--surface-container-high, var(--surface-container));
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-3);
-  padding: var(--sp-4);
-}
-.dialog__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--sp-3);
-}
-.dialog__head h3 {
-  font-size: var(--fs-title);
-  font-weight: var(--fw-semibold);
-}
-.dialog__x {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: inline-flex;
-}
 .dialog__body {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
 }
-.adapter-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-.adapter {
-  padding: var(--sp-3);
-  border-radius: var(--radius-sm);
-  background: var(--surface-container);
-  cursor: pointer;
-}
-.adapter--active {
-  outline: 2px solid var(--primary);
-}
-.adapter__name {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-semibold);
-}
+
 .dialog__generated {
   display: inline-flex;
   align-items: center;
@@ -201,16 +143,16 @@ function confirm() {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
 }
-.dialog__generated i {
+.dialog__generated m3e-icon {
   font-size: 16px;
 }
+
 .field {
   width: 100%;
 }
+
 .dialog__actions {
   display: flex;
-  justify-content: flex-end;
   gap: var(--sp-2);
-  margin-top: var(--sp-2);
 }
 </style>

@@ -40,3 +40,13 @@ export async function readAssetText(path: string) {
 export async function getAssetUrl(path: string) {
   return invoke<string>("get_asset_url", { path });
 }
+
+/**
+ * 重新执行「应用打开时的动作」（目前只有「扫描局域网内已开启的游戏」）。
+ *
+ * 结果不经返回值，而是通过 `local-game-status` / `local-game-found` 事件推送——
+ * 与启动时那次扫描走同一条路径，所以调用方不必自己拼扫描结果。
+ */
+export async function runOpenActions() {
+  return invoke<void>("run_open_actions");
+}

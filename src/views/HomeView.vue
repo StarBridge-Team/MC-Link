@@ -2,9 +2,12 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { useRouter } from "vue-router";
 import EmptyState from "../components/ui/EmptyState.vue";
 import { useSettings } from "../composables/useSettings";
+import { useConnect } from "../composables/useConnect";
+import { runOpenActions } from "../lib/api/app";
+import { listLocalGames } from "../lib/api/connect";
 
 /**
  * 首页。
@@ -18,13 +21,18 @@ import { useSettings } from "../composables/useSettings";
  */
 const { t } = useI18n();
 const settings = useSettings();
+const router = useRouter();
+const { requestEntry } = useConnect();
 
 const mode = computed(() => settings.state.homepage_mode || "default");
 const url = computed(() => (settings.state.homepage_value || "").trim());
 
 const greeting = computed(() => {
   const hour = new Date().getHours();
-  if (hour < 12) return t("home.morning");
+  if (hour < 6) return t("home.evening");
+  if (hour < 9) return t("home.morning");
+  if (hour < 12) return t("home.forenoon");
+  if (hour < 13) return t("home.noon");
   if (hour < 18) return t("home.afternoon");
   return t("home.evening");
 });
@@ -57,6 +65,28 @@ onMounted(async () => {
       hostMode.value = true; // 扫到局域网游戏自动切换房主
     }),
   );
+
+  // 先订阅、再拉取当前结果。
+  //
+  // 扫描在应用打开时就跑完了，事件是一次性广播、不会补发：如果这个页面比事件晚一步
+  // （启动竞态、页面重载），光靠监听会永远停在"正在寻找本地游戏…"。
+  // 拉取走的是同一个缓存，所以两者不会打架。
+  try {
+    const games = await listLocalGames();
+    const first = games[0];
+    if (first) {
+      localGame.value = {
+        process: first.process,
+        game_name: first.name,
+        scanner: "",
+        adapter: "",
+      };
+      hostMode.value = true;
+      scanning.value = false;
+    }
+  } catch {
+    /* 拉不到就继续等事件/手动重扫 */
+  }
 });
 
 onUnmounted(() => {
@@ -67,14 +97,36 @@ function toggleMode() {
   hostMode.value = !hostMode.value;
 }
 
+/**
+ * 重新扫描。
+ *
+ * 刻意**不清空 `localGame`**：扫描失败或没扫到任何东西时，用户手里的结果比一块空白有用；
+ * 清空还会让"扫到 → 点重扫 → 卡片消失"看起来像结果丢了。
+ */
 async function rescan() {
+  if (scanning.value) return;
   scanning.value = true;
-  localGame.value = null;
   try {
-    await invoke("run_open_actions");
+    await runOpenActions();
   } catch {
-    /* 忽略：扫描能力由插件提供，无插件时本就无结果 */
+    // 扫描能力由插件提供，无插件时本就无结果。
+    // 用 `finally` 复位状态：不依赖 `local-game-status` 事件一定送达，
+    // 否则一次失败会让按钮永久停在 disabled。
+    scanning.value = false;
   }
+}
+
+/**
+ * 「开始联机」。
+ *
+ * 这里不自己跑联机流程，而是跳转到联机页、并请求它落在对应角色上：
+ * 房主模式带上扫到的进程名，联机页会自动替用户按下那张卡片的「开始联机」，
+ * 等价于"在联机页点了那个进程的开始联机按钮"。
+ */
+function startCoop() {
+  if (hostMode.value) requestEntry("host", localGame.value?.process);
+  else requestEntry("member");
+  void router.push({ name: "connect" });
 }
 </script>
 
@@ -154,8 +206,17 @@ async function rescan() {
           <small>{{ t('home.modeHint') }}</small>
         </div>
       </div>
-      <m3e-button disabled class="home__mode-start">
-        <i slot="icon" class="material-symbols-rounded">link</i>
+      <!--
+        房主模式必须先扫到本机游戏才有意义（联机页那张卡片的动作就是"为这个进程开房"）；
+        成员模式不受此限，点进去直接填邀请码。
+      -->
+      <m3e-button
+        variant="filled"
+        class="home__mode-start"
+        :disabled="hostMode && !localGame"
+        @click="startCoop"
+      >
+        <m3e-icon slot="icon" name="link" />
         {{ t('home.startCoop') }}
       </m3e-button>
     </m3e-card>

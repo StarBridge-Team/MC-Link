@@ -19,6 +19,16 @@ export async function scanLocalGames(gameId?: string) {
   return invoke<LocalGame[]>("connect_scan", { gameId });
 }
 
+/**
+ * 取最近一次扫描结果，**不重新扫描**。
+ *
+ * 供首页在挂载时兜底：扫描结果是一次性广播（`local-game-found`），没有补发，
+ * 监听器晚一步就再也拿不到，界面会一直停在"正在寻找本地游戏…"。
+ */
+export async function listLocalGames() {
+  return invoke<LocalGame[]>("connect_local_games");
+}
+
 /** 以房主身份创建房间。 */
 export async function startConnectHost(
   adapterId: string,
