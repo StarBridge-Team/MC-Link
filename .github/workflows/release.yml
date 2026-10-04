@@ -101,6 +101,11 @@ jobs:
       # 用 NUL 分隔读进数组再以数组传参。清单与配置名固定；tauri.json 在未配置
       # 签名私钥时不会生成，缺失就跳过（插件路径会安静地回退资源服务器清单）。
       # 逐项判存在，空集合时明确失败而不是静默成功——真挂上零个文件是故障。
+      #
+      # 不能用 `--clobber` 一把梭：它内部是"逐个查同名 → 删 → 传"，
+      # 而 dist 里同时含 nsis/ 与 update/ 两处产物、且存在同名文件，
+      # 并发删除会让某个 asset 已被删却被再删一次，报 HTTP 404 并中断整批上传
+      # （实测 7 个只挂上 5 个）。这里改成显式先删后传，逐个来。
       - name: 挂载产物、清单与配置到发行版
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,7 +122,13 @@ jobs:
             exit 1
           fi
           printf '待挂载 %d 个文件\n' "${#UPLOAD[@]}"
-          gh release upload "$TAG" "${UPLOAD[@]}" --clobber
+          for f in "${UPLOAD[@]}"; do
+            name=$(basename "$f")
+            # 先删同名（不存在时 gh 返回非零，忽略）
+            gh release delete-asset "$TAG" "$name" -y >/dev/null 2>&1 || true
+            echo "上传 $name"
+            gh release upload "$TAG" "$f"
+          done
           mapfile -d '' ARTIFACTS < <(find dist -type f -print0)
           if [ ${#ARTIFACTS[@]} -eq 0 ]; then
             echo "没有找到可挂载的产物（artifact 为空？）"
