@@ -5,8 +5,8 @@
 //! | 文件 | 职责 |
 //! |---|---|
 //! | [`model`] | 清单模型、版本比较、按安装形态选资产（纯逻辑，有单测） |
-//! | [`fetch`] | 从资源服务器拉清单并判断"是否需要更新" |
-//! | [`download`] | 下载与缓存（复用 [`crate::downloader::verified`] 的校验链路） |
+//! | [`fetch`] | 拉清单与渠道择优（GitHub 发行版 → 优选代理 → 资源服务器兜底） |
+//! | [`download`] | 下载与缓存（复用 [`crate::downloader::verified`] 的校验链路，地址同样多候选） |
 //! | [`install`] | 落地：便携版替换 exe，安装版交给安装器，完成后重启 |
 //! | [`commands`] | 5 个 Tauri 命令 |
 //!
@@ -43,6 +43,10 @@
 //! `pnpm build:release` 在 `tauri build` 之后会执行 `scripts/make-update.mjs`：
 //! 把安装包与便携版 exe 复制进 `assets-server/Assets/update/`、生成 `latest.json`，
 //! 再由 `scripts/sync-assets.mjs` 上传。详见该脚本头部注释。
+//!
+//! CI 发布流程（`.github/workflows/release.yml`）除此还会把 `latest.json` /
+//! `tauri.json` 挂到 GitHub 发行版——那是客户端的第一优先更新源；只有发布路径
+//! 允许挂清单，自动构建挂的产物没有清单指向，不会推给任何用户。
 
 mod commands;
 mod download;

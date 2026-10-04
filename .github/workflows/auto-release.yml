@@ -80,10 +80,18 @@ jobs:
           name: mc-link-windows-${{ steps.version.outputs.version }}
           path: dist
 
+      # Tauri 配置单独下载到与 dist 平级的位置，
+      # 避免 upstream artifact 里 src-tauri/ 前缀让挂载后文件名带路径
+      - name: 下载 Tauri 配置
+        uses: actions/download-artifact@v4
+        with:
+          name: tauri-conf-${{ steps.version.outputs.version }}
+          path: tauri-conf
+
       # 产物文件名里有空格（"MC Link_0.4.7_x64-setup.exe"），
       # 所以不能用 $(find ...) 展开 —— shell 会按空格把路径切成两截。
       # 用 NUL 分隔读进数组，再以数组形式传参，空格才不会被当分隔符。
-      - name: 挂载安装包与便携整包
+      - name: 挂载安装包、便携整包与 Tauri 配置
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -92,6 +100,8 @@ jobs:
             echo "没有找到可挂载的产物（artifact 为空？）"
             exit 1
           fi
+          # Tauri 配置以固定名 tauri.conf.json 挂到发行版根（不含目录前缀）
+          FILES+=(tauri-conf/tauri.conf.json)
           printf '待挂载：%s\n' "${FILES[@]}"
           gh release upload "${{ steps.version.outputs.tag }}" "${FILES[@]}" --clobber
 

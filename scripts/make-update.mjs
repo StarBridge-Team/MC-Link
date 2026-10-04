@@ -36,7 +36,8 @@
  *   node scripts/make-update.mjs [--platform windows-x86_64] [--mandatory]
  * 环境变量：
  *   TAURI_SIGNING_PRIVATE_KEY  插件签名私钥（不设则跳过 tauri.json）
- *   ASSET_SERVER_URL           清单里下载地址的前缀（默认生产资源服务器）
+ *   GITHUB_RELEASE_BASE        插件清单下载地址前缀（默认 GitHub 发行版直链）
+ *   （latest.json 不带绝对地址：客户端按自身资源服务器地址推导 `update/<file>`）
  * 约定：
  *   - 版本号取自 package.json（tauri-build.mjs 已自增）
  *   - 更新说明取自仓库根目录的 release-notes.md（可选）
@@ -76,9 +77,20 @@ const valueOf = (name) => {
 /** 与客户端 `assets::adapter::current_platform()` 的取值保持一致。 */
 const PLATFORM = valueOf("--platform") || "windows-x86_64";
 const MANDATORY = flag("--mandatory");
-/** 清单里的下载地址必须是绝对的；默认取生产资源服务器（与客户端 release 构建一致）。 */
-const ASSET_BASE =
-  (process.env.ASSET_SERVER_URL || "https://mclinkassets.xigo.top:54789").replace(/\/+$/, "");
+/** GitHub 仓库（`owner/repo`），与客户端 `update/fetch.rs` 的常量一致。 */
+const GITHUB_REPO = "StarBridge-Team/MC-Link";
+
+/**
+ * 插件清单（tauri.json）的下载地址：指向 GitHub 发行版直链。
+ *
+ * 与客户端更新优先级一致（GitHub Release 第一）。连不上 GitHub 的用户会
+ * 让插件下载失败，`commands.rs` 随即回退自研路径——那里有代理择优与
+ * 资源服务器兜底（多镜像、断点续传、SHA256 校验），失败不降级。
+ * 可用环境变量覆盖（本地演练或换仓库时用）。
+ */
+const RELEASE_BASE = (
+  process.env.GITHUB_RELEASE_BASE || `https://github.com/${GITHUB_REPO}/releases/download`
+).replace(/\/+$/, "");
 
 const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const setupName = `MC-Link-${version}-${PLATFORM}-setup.exe`;
@@ -371,7 +383,7 @@ function writePluginManifest(items) {
       ...platforms,
       [pluginPlatformKey(PLATFORM)]: {
         signature,
-        url: `${ASSET_BASE}/update/${manageable.file}`,
+        url: `${RELEASE_BASE}/v${version}/${manageable.file}`,
       },
     },
   };

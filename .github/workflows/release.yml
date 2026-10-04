@@ -1,9 +1,13 @@
-# 发布：构建、签名，并把更新资产发布到资源服务器（用户据此自动更新）。
+# 发布：构建、签名，把更新资产发布到资源服务器，并把更新清单挂上 GitHub 发行版。
 #
 # 两条入口：
 # - 推 tag（v*）：常规路径
 # - workflow_dispatch（手动）：当"自动构建"已经替这个版本建过发行版、tag 也随之存在时，
 #   再推同一个 tag 不会触发本流程 —— 用这个入口做正式的"发布给用户"。
+#
+# **更新清单只在这条路径挂载**（GitHub 与资源服务器都是）：客户端检查更新的顺序是
+# GitHub 发行版 → 优选代理 → 资源服务器，三者都由本流程刷新。自动构建
+# （auto-release.yml）只挂二进制产物，不挂清单，所以打完包不等于推给用户。
 name: Release
 
 on:
@@ -25,3 +29,82 @@ jobs:
       # 这一步会刷新更新清单，让所有客户端开始自动更新 —— 发布路径的意义就在这里
       publish_assets: true
     secrets: inherit
+
+  # 把更新清单挂到 GitHub 发行版：客户端的第一优先更新源就是这里，
+  # 没有这一步，客户端会一路回退到资源服务器（等于 GitHub 加速形同虚设）。
+  publish-github:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读取版本号
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      # 手动触发时 tag 可能已存在（自动构建建的），也可能不存在（直接跑本流程）。
+      # gh release create 已带 --verify-tag 会因"tag 已存在"失败，所以先判断。
+      - name: 确保发行版存在
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              # tag 已存在（自动构建创建的）：用 --target 指向该 tag 的提交
+              gh release create "$TAG" --target "${{ github.sha }}" \
+                --title "MC Link ${{ steps.version.outputs.version }}" --generate-notes
+            else
+              # tag 不存在：创建并推（本流程作为唯一发布入口）
+              gh release create "$TAG" --title "MC Link ${{ steps.version.outputs.version }}" --generate-notes
+            fi
+          fi
+
+      - name: 下载更新清单
+        uses: actions/download-artifact@v4
+        with:
+          name: update-manifests-${{ steps.version.outputs.version }}
+          path: manifests
+
+      - name: 下载 Tauri 配置
+        uses: actions/download-artifact@v4
+        with:
+          name: tauri-conf-${{ steps.version.outputs.version }}
+          path: tauri-conf
+
+      # 产物也在这里挂：推 tag 的路径不经过 auto-release（它只响应 main 的推送），
+      # 而客户端下载更新包走的是 GitHub 发行版直链——清单挂上、产物缺席，
+      # 客户端就会在"清单说有新版本、包却 404"上回退资源服务器，GitHub 加速形同虚设。
+      # auto-release 已挂过同名产物时 --clobber 覆盖为本次构建的，内容一致。
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: mc-link-windows-${{ steps.version.outputs.version }}
+          path: dist
+
+      # 产物文件名里有空格（"MC Link_0.4.7_x64-setup.exe"），所以不能用通配展开，
+      # 用 NUL 分隔读进数组再以数组传参。清单与配置名固定，可直接列出；
+      # tauri.json 在未配置签名私钥时不会生成，缺失就跳过（插件路径会安静地
+      # 回退资源服务器清单）。
+      - name: 挂载产物、清单与配置到发行版
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          UPLOAD=(manifests/latest.json tauri-conf/tauri.conf.json)
+          if [ -f manifests/tauri.json ]; then
+            UPLOAD+=(manifests/tauri.json)
+          else
+            echo "没有 tauri.json（未配置签名私钥），跳过官方插件清单的 GitHub 挂载"
+          fi
+          mapfile -d '' ARTIFACTS < <(find dist -type f -print0)
+          if [ ${#ARTIFACTS[@]} -eq 0 ]; then
+            echo "没有找到可挂载的产物（artifact 为空？）"
+            exit 1
+          fi
+          gh release upload "$TAG" "${UPLOAD[@]}" "${ARTIFACTS[@]}" --clobber
