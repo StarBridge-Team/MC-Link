@@ -81,9 +81,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      # 以下两步只在"发布"路径执行：它们会刷新客户端读取的更新清单，从而让用户开始更新
+      # 资源服务器是**兜底**来源（客户端优先级：GitHub → 代理 → 资源服务器），
+      # 而且当前尚未备案、实际不可达。因此这里刻意 continue-on-error：
+      # 上传失败不该让整个过程失败——否则产物收集与 publish-github（挂 GitHub 发行版，
+      # 也就是客户端的第一更新源）会被连锁 skip，一次发布一个文件都挂不上去。
+      # 账号/备案就绪后删掉 continue-on-error，恢复"兜底源必须刷新"的强约束。
       - name: 发布更新资产到资源服务器
         if: ${{ inputs.publish_assets }}
+        continue-on-error: true
         run: node scripts/sync-assets.mjs --prod
         env:
           ASSET_UPLOAD_TOKEN: ${{ secrets.ASSET_UPLOAD_TOKEN }}
@@ -92,6 +97,7 @@ jobs:
       # 顺带刷新关于页的社区数据（同一台资源服务器，不额外增加流程）
       - name: 刷新社区数据（贡献者 / Issues）
         if: ${{ inputs.publish_assets }}
+        continue-on-error: true
         run: node scripts/sync-community.mjs --prod
         env:
           ASSET_UPLOAD_TOKEN: ${{ secrets.ASSET_UPLOAD_TOKEN }}

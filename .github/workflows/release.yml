@@ -32,8 +32,13 @@ jobs:
 
   # 把更新清单挂到 GitHub 发行版：客户端的第一优先更新源就是这里，
   # 没有这一步，客户端会一路回退到资源服务器（等于 GitHub 加速形同虚设）。
+  #
+  # `!cancelled()` 而不是默认的"needs 成功才跑"：资源服务器等兜底环节失败时，
+  # 构建产物与本地生成的清单其实已经就绪——只要流水线没被手动取消，
+  # 就应当把它们挂上去，别让一个兜底源的故障废掉整次发布。
   publish-github:
     needs: build
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,13 +70,17 @@ jobs:
             fi
           fi
 
+      # 三个下载都容错：build job 可能因兜底环节失败而没有产出对应 artifact，
+      # 此时能挂多少挂多少。每个文件在挂载前都会再判一次是否存在。
       - name: 下载更新清单
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: update-manifests-${{ steps.version.outputs.version }}
           path: manifests
 
       - name: 下载 Tauri 配置
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: tauri-conf-${{ steps.version.outputs.version }}
@@ -82,26 +91,33 @@ jobs:
       # 客户端就会在"清单说有新版本、包却 404"上回退资源服务器，GitHub 加速形同虚设。
       # auto-release 已挂过同名产物时 --clobber 覆盖为本次构建的，内容一致。
       - name: 下载构建产物
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: mc-link-windows-${{ steps.version.outputs.version }}
           path: dist
 
       # 产物文件名里有空格（"MC Link_0.4.7_x64-setup.exe"），所以不能用通配展开，
-      # 用 NUL 分隔读进数组再以数组传参。清单与配置名固定，可直接列出；
-      # tauri.json 在未配置签名私钥时不会生成，缺失就跳过（插件路径会安静地
-      # 回退资源服务器清单）。
+      # 用 NUL 分隔读进数组再以数组传参。清单与配置名固定；tauri.json 在未配置
+      # 签名私钥时不会生成，缺失就跳过（插件路径会安静地回退资源服务器清单）。
+      # 逐项判存在，空集合时明确失败而不是静默成功——真挂上零个文件是故障。
       - name: 挂载产物、清单与配置到发行版
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          UPLOAD=(manifests/latest.json tauri-conf/tauri.conf.json)
-          if [ -f manifests/tauri.json ]; then
-            UPLOAD+=(manifests/tauri.json)
-          else
-            echo "没有 tauri.json（未配置签名私钥），跳过官方插件清单的 GitHub 挂载"
+          UPLOAD=()
+          for f in manifests/latest.json manifests/tauri.json tauri-conf/tauri.conf.json; do
+            if [ -f "$f" ]; then UPLOAD+=("$f"); else echo "缺失（跳过）: $f"; fi
+          done
+          mapfile -d '' ARTIFACTS < <(find dist -type f -print0 2>/dev/null)
+          UPLOAD+=("${ARTIFACTS[@]}")
+          if [ ${#UPLOAD[@]} -eq 0 ]; then
+            echo "没有任何可挂载的文件：构建产物与清单都不存在"
+            exit 1
           fi
+          printf '待挂载 %d 个文件\n' "${#UPLOAD[@]}"
+          gh release upload "$TAG" "${UPLOAD[@]}" --clobber
           mapfile -d '' ARTIFACTS < <(find dist -type f -print0)
           if [ ${#ARTIFACTS[@]} -eq 0 ]; then
             echo "没有找到可挂载的产物（artifact 为空？）"
