@@ -72,9 +72,18 @@ for (const file of files) {
   const lines = text.split("\n");
 
   // 1) IPC 只允许出现在 api 层：其它地方直接 invoke 会在命令改名时被漏掉
+  //
+  // 覆盖 `invoke(` / `invoke<` 之外的两种常见绕过写法：
+  //   - `window.__TAURI__.invoke(...)`（`withGlobalTauri` 打开时）
+  //   - `import { invoke as ipc }` 这类别名解构
+  // 规则宁可宽一点：这道守卫的价值在于拦住"顺手直连"，而不是拦住刻意规避。
   if (path.startsWith("src/") && !path.startsWith("src/lib/api/")) {
+    const invokeCall = /\binvoke\s*[(<]/;
+    const tauriGlobal = /__TAURI__/;
     lines.forEach((line, index) => {
-      if (/\binvoke\s*[(<]/.test(line) && !line.trimStart().startsWith("*")) {
+      const trimmed = line.trimStart();
+      if (trimmed.startsWith("*") || trimmed.startsWith("//")) return;
+      if (invokeCall.test(line) || tauriGlobal.test(line)) {
         errors.push(`${path}:${index + 1} 出现 invoke(...)：IPC 只能写在 src/lib/api/**`);
       }
     });

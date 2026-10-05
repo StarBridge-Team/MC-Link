@@ -9,6 +9,7 @@
 //! 参考：<https://crates.io/crates/material-colors>
 
 pub mod commands;
+pub mod extract;
 
 use material_colors::color::Argb;
 use material_colors::dynamic_color::Variant;

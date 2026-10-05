@@ -69,10 +69,14 @@ pub(crate) fn show_main_window(app: tauri::AppHandle) {
 
 #[tauri::command]
 pub(crate) fn set_tray_size(window: tauri::Window, width: f64, height: f64) {
-    let _ = window.emit(
-        "tray-resize",
-        serde_json::json!({"width": width, "height": height}),
-    );
+    // 尺寸来自前端，与 `resize_window` 同样必须限幅：NaN / Infinity / 负数传到前端
+    // 后若被用于 `setSize` 或 CSS，会让托盘窗口变成不可用状态。
+    let valid = |v: f64| v.is_finite() && (1.0..=10_000.0).contains(&v);
+    if !valid(width) || !valid(height) {
+        eprintln!("[托盘] 忽略非法尺寸 {}x{}", width, height);
+        return;
+    }
+    let _ = window.emit("tray-resize", serde_json::json!({"width": width, "height": height}));
 }
 
 #[tauri::command]
@@ -114,14 +118,20 @@ pub(crate) fn resize_window(
 
 /// 切换窗口效果（mica / acrylic / hud_window / none）。
 ///
-/// 效果名到平台实现的映射集中在 `effect::apply_effect_by_name`，
+/// 效果名到平台实现的映射集中在 `effect::apply_effect`，
 /// 与启动时的预应用共用同一份逻辑，避免两处各写一份而漂移。
+///
+/// `tint` 是材质染色浓度（0–100，越高越实心），`dark` 决定染色往黑还是往白走。
+/// 两者都与"当前设置"一起传，而不是在这里回读配置：调用方（前端）手里就有最新值，
+/// 回读会多一次磁盘 IO，且拖动滑块时可能与落盘存在时序差。
 #[tauri::command]
 pub(crate) fn set_window_effect(
     window: tauri::WebviewWindow,
     effect: String,
+    tint: f64,
+    dark: bool,
 ) -> Result<(), String> {
-    crate::effect::apply_effect_by_name(&window, &effect);
+    crate::effect::apply_effect(&window, &effect, tint, dark);
     Ok(())
 }
 

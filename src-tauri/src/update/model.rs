@@ -42,6 +42,17 @@ pub const KIND_APPIMAGE: &str = "appimage";
 pub const KIND_MACOS_APP: &str = "macos-app";
 /// 仅用于手动下载的整包（便携 zip，含 `portable.txt`，供新用户首次下载）。
 pub const KIND_PORTABLE_ZIP: &str = "portable-zip";
+/// 仅用于手动下载：Flatpak 单文件包（`.flatpak`）。
+///
+/// **刻意不参与自动更新**：Flatpak 是系统级沙箱安装，由 `flatpak` 自己管理
+/// （运行时、OSTree 仓库、沙箱权限），Tauri 官方更新插件无法替换它；
+/// 由应用自己去覆盖 `/app` 下的文件既不可行（只读绑定）也不合法。
+/// Flatpak 用户必须经 `flatpak update`（见 `runtime::is_flatpak`）更新。
+pub const KIND_FLATPAK: &str = "flatpak";
+/// 仅用于手动下载：Debian 包（`.deb`）。由系统包管理器安装，应用无法自动替换。
+pub const KIND_DEB: &str = "deb";
+/// 仅用于手动下载：RPM 包（`.rpm`）。同上。
+pub const KIND_RPM: &str = "rpm";
 
 /// 本客户端支持的清单格式版本。
 ///
@@ -152,6 +163,12 @@ pub struct RuntimeInfo {
     pub update_allowed: bool,
     pub exe_path: String,
     pub data_dir: String,
+    /// 只读沙箱信息（目前仅 Flatpak）；`None` 表示常规安装形态。
+    ///
+    /// 界面据此显示"请用 flatpak update 更新"并禁用应用内更新入口——
+    /// 沙箱里自行更新在机制上就不可能成功。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<crate::runtime::SandboxInfo>,
 }
 
 /// 拒绝语义已变化的清单。
@@ -279,14 +296,32 @@ pub(crate) fn select_asset<'a>(
 
 /// 选出手动下载用的资产：优先给"便携 zip"（新用户拿到的是可解压的整包），
 /// 否则退回当前形态对应的包，最后退回当前平台的任意资产。
+///
+/// `flatpak` 时为 true（当前进程运行在 Flatpak 沙箱里）：此时**必须**优先给 `.flatpak`，
+/// 因为那是唯一能被 `flatpak update` 接续管理的形态；给 AppImage 或 deb 只会让用户
+/// 装出第二份互相冲突的副本。
 pub(crate) fn select_manual_asset<'a>(
     manifest: &'a UpdateManifest,
     platform: &str,
     mode: InstallMode,
+    flatpak: bool,
 ) -> Option<&'a UpdateAsset> {
-    let mut order: Vec<&str> = vec![KIND_PORTABLE_ZIP];
+    let mut order: Vec<&str> = Vec::new();
+    if flatpak {
+        order.push(KIND_FLATPAK);
+    }
+    order.push(KIND_PORTABLE_ZIP);
     order.extend_from_slice(auto_kinds(mode));
     order.push(KIND_PORTABLE);
+    // 系统包管理器的形态垫在最后：装了它们就得靠 apt/dnf 更新，
+    // 不该作为"手动下载"的首选把用户引到那条路上。
+    order.push(KIND_DEB);
+    order.push(KIND_RPM);
+    if !flatpak {
+        // 非 Flatpak 环境也接受 `.flatpak` 作为最后的手动选项：
+        // 用户可能正想从 deb/AppImage 迁移到 Flatpak。
+        order.push(KIND_FLATPAK);
+    }
 
     for kind in order {
         if let Some(a) = manifest
@@ -320,8 +355,9 @@ pub(crate) fn build_info(
     mode: InstallMode,
     auto_supported: bool,
     assets_base: &str,
+    flatpak: bool,
 ) -> UpdateInfo {
-    let manual_url = select_manual_asset(manifest, platform, mode)
+    let manual_url = select_manual_asset(manifest, platform, mode, flatpak)
         .and_then(|a| asset_urls(a, assets_base).into_iter().next());
 
     UpdateInfo {
@@ -416,7 +452,7 @@ mod tests {
         let m = manifest(vec![asset("linux-x86_64", KIND_PORTABLE, "app.exe")]);
         assert!(select_asset(&m, "windows-x86_64", InstallMode::Portable, true).is_none());
         // 但仍应给出手动下载地址，避免用户卡在"没有可用更新"上
-        assert!(select_manual_asset(&m, "windows-x86_64", InstallMode::Portable).is_none());
+        assert!(select_manual_asset(&m, "windows-x86_64", InstallMode::Portable, false).is_none());
     }
 
     #[test]
@@ -437,7 +473,7 @@ mod tests {
             asset("windows-x86_64", KIND_PORTABLE, "portable.exe"),
             asset("windows-x86_64", KIND_PORTABLE_ZIP, "portable.zip"),
         ]);
-        let picked = select_manual_asset(&m, "windows-x86_64", InstallMode::Portable).unwrap();
+        let picked = select_manual_asset(&m, "windows-x86_64", InstallMode::Portable, false).unwrap();
         assert_eq!(picked.kind, KIND_PORTABLE_ZIP);
     }
 
@@ -445,7 +481,46 @@ mod tests {
     fn unsupported_install_mode_disables_auto_install() {
         let m = manifest(vec![asset("windows-x86_64", KIND_INSTALLER, "setup.exe")]);
         assert!(select_asset(&m, "windows-x86_64", InstallMode::Installed, false).is_none());
-        assert!(select_manual_asset(&m, "windows-x86_64", InstallMode::Installed).is_some());
+        assert!(select_manual_asset(&m, "windows-x86_64", InstallMode::Installed, false).is_some());
+    }
+
+    /// Flatpak 环境下手动下载必须优先给 `.flatpak`。
+    ///
+    /// 给 AppImage 或 deb 会让用户在系统里装出第二份互相冲突的副本，
+    /// 而且那份不受 `flatpak update` 管理。
+    #[test]
+    fn flatpak_env_prefers_flatpak_asset_for_manual_download() {
+        let m = manifest(vec![
+            asset("linux-x86_64", KIND_APPIMAGE, "app.AppImage"),
+            asset("linux-x86_64", KIND_FLATPAK, "app.flatpak"),
+        ]);
+        let picked =
+            select_manual_asset(&m, "linux-x86_64", InstallMode::Installed, true).unwrap();
+        assert_eq!(
+            picked.kind, KIND_FLATPAK,
+            "Flatpak 环境必须优先给 .flatpak"
+        );
+    }
+
+    /// Flatpak **绝不能**出现在 `auto_kinds` 里：它不是可自动落地的形态。
+    #[test]
+    fn flatpak_is_never_auto_installable() {
+        for mode in [InstallMode::Portable, InstallMode::Installed] {
+            let kinds = auto_kinds(mode);
+            assert!(
+                !kinds.contains(&KIND_FLATPAK),
+                "auto_kinds({mode:?}) 不得包含 flatpak"
+            );
+        }
+    }
+
+    /// 非 Flatpak 环境下 `.flatpak` 仍作为最后的手动选项（允许用户主动迁移到 Flatpak）。
+    #[test]
+    fn flatpak_asset_is_reachable_as_last_resort_manual_option() {
+        let m = manifest(vec![asset("linux-x86_64", KIND_FLATPAK, "app.flatpak")]);
+        let picked =
+            select_manual_asset(&m, "linux-x86_64", InstallMode::Installed, false).unwrap();
+        assert_eq!(picked.kind, KIND_FLATPAK);
     }
 
     #[test]

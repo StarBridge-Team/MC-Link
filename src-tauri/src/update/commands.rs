@@ -167,5 +167,6 @@ pub(crate) fn get_runtime_info_command(
         update_allowed: crate::build_channel::update_allowed(),
         exe_path: exe.to_string_lossy().to_string(),
         data_dir: mgr.data_dir().to_string_lossy().to_string(),
+        sandbox: crate::runtime::sandbox_hint(),
     })
 }

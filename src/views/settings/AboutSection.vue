@@ -39,6 +39,22 @@ const installModeText = computed(() =>
       : t("common.unknown"),
 );
 
+/**
+ * 只读沙箱（目前仅 Flatpak）的更新引导。
+ *
+ * 沙箱里 `/app` 是只读的，应用内"一键更新"在机制上不可能成功——后端也已把
+ * `auto_install_supported` 收敛为 false。这里负责把原因和正确做法讲清楚，
+ * 而不是让用户点了按钮再看一次失败。
+ */
+const sandboxUpdateHint = computed(() => {
+  const sandbox = runtime.value?.sandbox;
+  if (!sandbox) return null;
+  return {
+    kind: sandbox.kind,
+    command: sandbox.update_command,
+  };
+});
+
 const contributors = computed(() => community.value?.contributors ?? []);
 const issues = computed(() => community.value?.issues ?? []);
 
@@ -50,7 +66,19 @@ const stats = computed(() => [
   { key: "install", label: t("about.installForm"), value: installModeText.value },
 ]);
 
+/**
+ * 用系统默认程序打开外链。
+ *
+ * 只放行 `http(s)`：这里的 URL 有**三个来源是服务器数据**（贡献者主页、议题链接），
+ * 资源服务器被篡改或中间人注入时，`file://` / `javascript:` / 任意自定义协议
+ * 都会被 `openUrl` 直接交给系统处理（可执行文件甚至会被运行）。
+ */
 async function open(url: string) {
+  if (!/^https?:\/\//i.test(url)) {
+    console.warn("[about] 忽略非 http(s) 链接:", url);
+    showError(t("common.unknown"));
+    return;
+  }
   try {
     await openUrl(url);
   } catch (e) {
@@ -113,6 +141,14 @@ onMounted(async () => {
           </div>
         </div>
       </m3e-card>
+
+      <!-- 只读沙箱（Flatpak）：应用内更新不可能成功，改为引导外部更新命令 -->
+      <InfoBar
+        v-if="sandboxUpdateHint"
+        kind="info"
+        icon="lock"
+        :text="t('update.sandboxHint', { command: sandboxUpdateHint.command })"
+      />
 
       <!-- 版本信息：网格磁贴 -->
       <SettingCard :icon="'badge'" :title="t('about.buildInfo')" wide>

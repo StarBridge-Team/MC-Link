@@ -52,6 +52,12 @@ body {
   -webkit-user-select: none;
 }
 
+/* `light-dark()` 的初值。JS 起来后由 `applyChrome()` 按**应用主题**覆盖成具体值
+ * （应用主题可能与系统主题相反），这里只保证首帧不拿错分支。 */
+:root {
+  color-scheme: light dark;
+}
+
 #app {
   height: 100%;
 }

@@ -54,18 +54,33 @@ impl PluginRecord {
         self.manifest.kind
     }
 
-    /// 预共享密钥路径（内置插件不落盘）。
-    pub fn secret_path(&self) -> PathBuf {
-        self.dir.join("secret.key")
+    /// 预共享密钥路径。内置插件不落盘。
+    ///
+    /// # 为什么不放在插件目录里
+    ///
+    /// PSK 是握手双方信任根（`auth.rs` 的 HMAC 只依赖它）。放在
+    /// `Plugins/<id>/secret.key` 时，任何能写插件目录的进程（插件自身、
+    /// 安装器、其它本地进程）都能替换它，从而**冒充该插件**取得其已授权权限集。
+    /// Windows 上 `restrict_to_current_user` 的 `icacls` 又是尽力而为，
+    /// 因此改为落在核心独占的 `Setting/plugin_keys/` 下。
+    ///
+    /// 文件名用插件 ID 的哈希而非直出 ID：ID 里可能含 `.`/`-` 之外被
+    /// sanitize 掉的字符，同名插件不能互相覆盖。
+    pub fn secret_path(&self, data_dir: &Path) -> PathBuf {
+        use sha2::Digest as _;
+        let key = hex::encode(sha2::Sha256::digest(self.id().as_bytes()));
+        data_dir
+            .join("Setting")
+            .join("plugin_keys")
+            .join(format!("{}.key", &key[..32]))
     }
 
     /// 读取或生成预共享密钥。
     ///
-    /// 密钥只在首次登记时生成一次并写入插件目录；后续握手双方都用它做
-    /// 挑战-应答，核心不会把密钥发送给插件（外部插件在安装时由安装器
-    /// 写入同一份密钥）。
-    pub fn ensure_secret(&self) -> Result<[u8; 32], String> {
-        let path = self.secret_path();
+    /// 密钥只在首次登记时生成一次；后续握手双方都用它做挑战-应答，
+    /// 核心不会把密钥发送给插件（外部插件在安装时由安装器写入同一份密钥）。
+    pub fn ensure_secret(&self, data_dir: &Path) -> Result<[u8; 32], String> {
+        let path = self.secret_path(data_dir);
         if let Ok(text) = std::fs::read_to_string(&path) {
             if let Ok(bytes) = hex::decode(text.trim()) {
                 if bytes.len() == 32 {
@@ -78,7 +93,9 @@ impl PluginRecord {
         let raw = crypto::random_bytes(32);
         // 原子写入：插件密钥被截断会导致会话密钥派生失效
         crate::persist::atomic_write(&path, hex::encode(&raw).as_bytes())?;
-        crate::plugin::fs_secure::restrict_to_current_user(&path);
+        // 收紧失败必须上抛：密钥文件是信任根，"只剩隐藏属性"等于没有保护
+        crate::plugin::fs_secure::restrict_to_current_user(&path)
+            .map_err(|e| format!("收紧插件密钥文件权限失败: {}", e))?;
         let mut key = [0u8; 32];
         key.copy_from_slice(&raw);
         Ok(key)
@@ -373,16 +390,55 @@ impl PluginRegistry {
     }
 
     /// 拉黑/解除拉黑插件。
+    ///
+    /// 解除拉黑时必须**重算**信任度与权限：`set_blocked(true)` 把 `trust` 改成了
+    /// `Blocked`（并据 ceiling 裁过权限），只清 `blocked` 标志的话该插件会停在一个
+    /// 降级状态——插件出现在路由候选里（`is_runnable()` 为 true）却拿不到基线权限，
+    /// 表现为"解封了但功能诡异失效"，必须重启或 reload 才能恢复。
     pub fn set_blocked(&mut self, id: &str, blocked: bool) -> Result<(), String> {
-        if !self.records.contains_key(id) {
+        let Some(existing) = self.records.get(id) else {
             return Err(format!("插件不存在: {}", id));
-        }
+        };
+        // 解除拉黑要恢复的信任度：外部插件由验签结果（持久化的 `verified`）决定，
+        // 内置插件保持其官方身份。
+        let restored_trust = match existing.source {
+            PluginSource::Builtin => TrustLevel::Official,
+            PluginSource::External => {
+                let verified = self
+                    .read_state()
+                    .entries
+                    .get(id)
+                    .map(|e| e.verified)
+                    .unwrap_or(false);
+                if verified {
+                    TrustLevel::Verified
+                } else {
+                    TrustLevel::Unsigned
+                }
+            }
+        };
+        let manifest_permissions = existing.manifest.permissions.clone();
+
         let mut state = self.read_state();
-        state.entries.entry(id.to_string()).or_default().blocked = blocked;
+        let entry = state.entries.entry(id.to_string()).or_default();
+        entry.blocked = blocked;
+        let granted = entry.granted.clone();
+        let enabled = entry.enabled;
+        // 未验签的外部插件仍需"用户显式启用"才运行（与 reload 的生效条件一致）
+        let enabled_by_user = entry.enabled_by_user;
         self.write_state(&state)?;
+
         if let Some(r) = self.records.get_mut(id) {
             if blocked {
                 r.trust = TrustLevel::Blocked;
+                r.permissions = PermissionSet::resolve(&manifest_permissions, r.trust, granted.as_deref());
+            } else {
+                r.trust = restored_trust;
+                r.permissions =
+                    PermissionSet::resolve(&manifest_permissions, r.trust, granted.as_deref());
+                if r.source == PluginSource::External {
+                    r.enabled = enabled && (restored_trust == TrustLevel::Verified || enabled_by_user);
+                }
             }
         }
         Ok(())

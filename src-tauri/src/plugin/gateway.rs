@@ -44,6 +44,13 @@ pub type AuthTable = Arc<RwLock<HashMap<String, AuthEntry>>>;
 /// 握手冷却时长。
 const AUTH_COOLDOWN: Duration = Duration::from_secs(60);
 
+/// 同时处理的入站连接上限。
+///
+/// 插件只有本机那几个（每个一条长连接），给 32 已远超正常用量。没有上限时，
+/// 同机任意进程都能循环连网关，每连一次就起一个 tokio 任务并分配握手缓冲，
+/// 直到把任务/内存耗尽（DoS）。上限之外的连接直接拒绝，不排队。
+const MAX_INFLIGHT_CONNECTIONS: usize = 32;
+
 /// 网关实例。
 pub struct Gateway {
     listener: TcpListener,
@@ -107,6 +114,8 @@ pub async fn serve(
 ) {
     let tracker = Arc::new(SyncMutex::new(FailureTracker::new()));
     let token = gateway.token.clone();
+    // 在途连接计数：许可在连接处理结束时归还。
+    let inflight = Arc::new(tokio::sync::Semaphore::new(MAX_INFLIGHT_CONNECTIONS));
 
     while !shutdown.load(Ordering::SeqCst) {
         let accepted = tokio::select! {
@@ -130,12 +139,20 @@ pub async fn serve(
             continue;
         }
 
+        // 超过并发上限直接拒绝：不排队，避免"任务/内存被无界连接耗尽"。
+        let Ok(permit) = inflight.clone().try_acquire_owned() else {
+            eprintln!("[插件网关] 并发连接已达上限（{}），拒绝 {}", MAX_INFLIGHT_CONNECTIONS, peer);
+            continue;
+        };
+
         let auth = auth.clone();
         let inbound = inbound.clone();
         let token = token.clone();
         let tracker = tracker.clone();
 
         tokio::spawn(async move {
+            // permit 随任务结束释放
+            let _permit = permit;
             handle_connection(stream, token, auth, inbound, tracker).await;
         });
     }
@@ -163,9 +180,16 @@ async fn handle_connection(
         .ok()
         .and_then(|m| m.get(&accepted.plugin_id).cloned());
     let Some(entry) = entry else {
+        // 未知 ID 也要计数：否则"猜一个未登记的 plugin_id + 乱填令牌"的连接
+        // 永远不进入冷却，可以无限重试（`FailureTracker` 只按 plugin_id 记）。
+        // 这里按插件 ID 记一次失败，冷却逻辑与已登记插件一致。
+        let count = tracker
+            .lock()
+            .map(|mut t| t.record_failure(&accepted.plugin_id))
+            .unwrap_or(0);
         eprintln!(
-            "[插件网关] 未知或未启用的插件尝试连接: {}",
-            accepted.plugin_id
+            "[插件网关] 未知或未启用的插件尝试连接: {}（累计 {} 次）",
+            accepted.plugin_id, count
         );
         return;
     };

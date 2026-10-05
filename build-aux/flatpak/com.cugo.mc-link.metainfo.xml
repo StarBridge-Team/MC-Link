@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream 元数据：Flatpak 安装后"软件"详情页展示的内容。
+
+  `id` 必须与 Flatpak app-id（build-aux/flatpak/com.cugo.mc-link.yml 的 app-id）
+  以及 tauri.conf.json 的 identifier 三者一致，否则会被判为"元数据不属于本应用"。
+
+  版本段（<releases>）随发布更新；缺失不会导致构建失败，只是详情页没有版本记录。
+-->
+<component type="desktop-application">
+  <id>com.cugo.mc-link</id>
+  <launchable type="desktop-id">mc-link.desktop</launchable>
+
+  <name>MC Link</name>
+  <summary>Minecraft 联机工具</summary>
+
+  <developer id="com.cugo">
+    <name>棱镜Prism工作室</name>
+  </developer>
+
+  <description>
+    <p>
+      MC Link 是一个 Minecraft 联机工具：把局域网联机所需的检测、网络打通与
+      局域网广播整合到一个界面里，房主创建房间、访客凭借邀请码加入。
+    </p>
+    <p>
+      各游戏的联机能力由插件提供（检测器扫描本机游戏实例、适配器负责网络打通、
+      耦合器负责局域网广播）。插件在核心进程之外独立运行，权限由用户在界面中
+      逐项授予。
+    </p>
+  </description>
+
+  <categories>
+    <category>Game</category>
+    <category>Network</category>
+  </categories>
+
+  <keywords>
+    <keyword>Minecraft</keyword>
+    <keyword>联机</keyword>
+    <keyword>局域网</keyword>
+  </keywords>
+
+  <url type="homepage">https://www.xigo.top/</url>
+  <url type="bugtracker">https://github.com/StarBridge-Team/MC-Link/issues</url>
+  <url type="vcs-browser">https://github.com/StarBridge-Team/MC-Link</url>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.5.4" date="2026-10-05"/>
+  </releases>
+</component>

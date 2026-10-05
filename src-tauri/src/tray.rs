@@ -1,24 +1,18 @@
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 
-fn get_cursor_pos() -> (i32, i32) {
-    #[cfg(windows)]
-    {
-        #[link(name = "user32")]
-        extern "system" {
-            fn GetCursorPos(lpPoint: *mut i32) -> i32;
-        }
-        let mut pt = [0i32; 2];
-        unsafe {
-            GetCursorPos(pt.as_mut_ptr());
-        }
-        (pt[0], pt[1])
-    }
-    #[cfg(not(windows))]
-    {
-        (0, 0)
-    }
-}
+// 这里曾经有一个 `get_cursor_pos()`：Windows 上走 user32 的 `GetCursorPos` FFI，
+// 其它平台返回 `(0, 0)`。**已整体删除**。
+//
+// 为什么要删：`TrayIconEvent::Click` 事件本身就带 `position: PhysicalPosition<f64>`
+// （触发事件的光标位置）与 `rect: Rect`（托盘图标的位置与尺寸），两者都由 Tauri
+// 在所有平台上提供 —— 我们的 FFI 是在重复实现一个已经存在的值。
+//
+// 顺带解决了两件事：
+// 1. **跨平台无分支**：不必为每个平台各维护一份实现（Linux 还要面对
+//    原生 Wayland 下 X11 API 拿不到坐标的问题）；
+// 2. **Flatpak 可用**：沙箱里拿不到 `user32`/X11 的全局指针位置，而事件里的
+//    `position` 由 Tauri 随事件一起交付，不受沙箱限制。
 
 pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = TrayIconBuilder::new().tooltip("MC Link");
@@ -51,28 +45,30 @@ pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Erro
                 TrayIconEvent::Click {
                     button: MouseButton::Right,
                     button_state: MouseButtonState::Up,
+                    position,
                     ..
                 } => {
                     if let Some(existing) = app_handle.get_webview_window("tray-menu") {
                         let _ = existing.close();
                     }
 
-                    let (x, y) = get_cursor_pos();
+                    // 位置直接取事件自带的 `position`（本次点击的光标物理坐标，
+                    // 跨平台由 Tauri 提供）——不再自己查全局光标位置。
+                    let (x, y) = (position.x, position.y);
 
-                    if let Some(window) = tauri::WebviewWindowBuilder::new(
+                    if let Ok(window) = tauri::WebviewWindowBuilder::new(
                         app_handle,
                         "tray-menu",
                         tauri::WebviewUrl::App("tray-menu.html".into()),
                     )
-                    .position(x as f64, y as f64)
+                    .position(x, y)
                     .inner_size(180.0, 125.0)
-                    .resizable(false)
-                    .decorations(false)
-                    .always_on_top(true)
-                    .skip_taskbar(true)
-                    .transparent(true)
-                    .build()
-                    .ok()
+                        .resizable(false)
+                        .decorations(false)
+                        .always_on_top(true)
+                        .skip_taskbar(true)
+                        .transparent(true)
+                        .build()
                     {
                         // 材质交给官方 API（见 effect::apply_tray_menu_effect），
                         // 这里不再自己写 DwmSetWindowAttribute

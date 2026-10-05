@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MC Link",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "identifier": "com.cugo.mc-link",
   "build": {
     "beforeDevCommand": "pnpm dev:fe",
@@ -24,11 +24,11 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' asset: http://asset.localhost http://localhost:54789; media-src *; img-src 'self' data: blob: asset: http://asset.localhost http://localhost:54789; font-src 'self' data: asset: http://asset.localhost http://localhost:54789; frame-src *; connect-src 'self' http://localhost:54789",
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' asset: http://asset.localhost http://localhost:54789; media-src 'self' asset: http://asset.localhost http://localhost:54789 https:; img-src 'self' data: blob: asset: http://asset.localhost http://localhost:54789 https:; font-src 'self' data: asset: http://asset.localhost http://localhost:54789; frame-src 'self' https:; connect-src 'self' http://localhost:54789 https://mclinkassets.xigo.top:54789",
       "assetProtocol": {
         "enable": true,
         "scope": [
-          "**"
+          "$APPDATA/**"
         ]
       }
     }

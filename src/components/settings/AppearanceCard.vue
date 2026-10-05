@@ -39,6 +39,18 @@ function setEffect(value: string) {
   settings.patch({ transparent_effect: value });
 }
 
+/**
+ * 当前材质是否支持"染色浓度"。
+ *
+ * **只有 Acrylic**：Windows 上 `window_vibrancy::apply_acrylic` 会接收一个 color
+ * （`tint_color` 给的 alpha 就是它），而 `apply_mica` 只设
+ * `DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_MAINWINDOW` —— 材质浓淡完全由系统合成器决定，
+ * 传什么进去都会被丢掉。
+ *
+ * macOS 的 hud_window 同理不受这个参数控制（材质状态由 `EffectState` 决定）。
+ */
+const tintSupported = computed(() => settings.effect.value === "acrylic");
+
 // m3e 控件的值经原生事件回传，这里统一收敛成配置需要的标量。
 function onAnimationToggle(e: Event) {
   settings.patch({ animation_enabled: (e.target as HTMLInputElement).checked });
@@ -47,6 +59,27 @@ function onAnimationToggle(e: Event) {
 function onAnimationSpeed(e: Event) {
   const value = (e.target as HTMLElement & { value?: number }).value;
   settings.patch({ animation_speed: typeof value === "number" ? value : 1 });
+}
+
+/** 材质浓度：拖动时 `silent`（只改观感 + 材质），松手才落盘。 */
+function onEffectTint(e: Event) {
+  const value = valueOf(e);
+  settings.patch({ effect_tint: clampPercent(value) }, { silent: true });
+}
+
+function onEffectTintCommit() {
+  void settings.saveNow();
+}
+
+/** 从原生事件里取数值；取不到时返回 0（而不是让 NaN 流进配置）。 */
+function valueOf(e: Event): number {
+  const value = (e.target as HTMLElement & { value?: number }).value;
+  return typeof value === "number" ? value : 0;
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Math.round(value)));
 }
 </script>
 
@@ -62,6 +95,31 @@ function onAnimationSpeed(e: Event) {
       :options="effectOptions"
       @update:model-value="setEffect"
     />
+    <!--
+      材质染色浓度：只对**真的支持染色**的材质显示。
+      Windows 的 Mica 实现只设 `DWMWA_SYSTEMBACKDROP_TYPE`，不接受任何浓度参数，
+      摆一个拖了没反应的滑块比不显示更让人困惑；Acrylic 才接受 color。
+      「看得见多少材质」由背景卡片的「背景不透明度」负责，不是这里。
+    -->
+    <template v-if="tintSupported">
+      <FieldRow :label="t('appearance.effectTint')">
+        <div class="slider-row">
+          <m3e-slider class="slider-row__slider" :min="0" :max="100" :step="5">
+            <m3e-slider-thumb
+              :value="state.effect_tint"
+              @input="onEffectTint"
+              @change="onEffectTintCommit"
+            />
+          </m3e-slider>
+          <span class="slider-row__value mono">{{ Math.round(state.effect_tint) }}%</span>
+        </div>
+      </FieldRow>
+      <p class="hint">{{ t("appearance.effectTintHint") }}</p>
+    </template>
+    <!-- Mica 不支持染色：明确告知，并把用户引到真正能调的那个旋钮上。 -->
+    <p v-else-if="state.transparent_effect === 'mica'" class="hint">
+      {{ t("appearance.effectTintMicaHint") }}
+    </p>
   </SettingCard>
 
   <SettingCard
@@ -108,5 +166,11 @@ function onAnimationSpeed(e: Event) {
   width: 48px;
   text-align: right;
   color: var(--text-secondary);
+}
+
+.hint {
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+  line-height: var(--lh-normal);
 }
 </style>

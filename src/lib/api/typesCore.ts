@@ -35,15 +35,46 @@ export interface PersonalizationSettings {
   animation_enabled: boolean;
   animation_speed: number;
   transparent_effect: string;
+  /**
+   * 窗口材质的染色浓度（0–100）：**越高越不透明**。
+   *
+   * 只对 **Acrylic** 生效；**Mica 调不动**（它的实现没有任何浓度参数）。
+   */
+  effect_tint: number;
   background_type: string;
   background_value: string;
   background_fit: string;
   background_overlay: boolean;
   background_overlay_opacity: number;
+  /**
+   * 页面背景不透明度（0–100）：**越高越遮住底下的材质**。
+   *
+   *   100 → 完全遮住材质；0 → 材质完全显现；50 → 半显现。
+   */
+  background_opacity: number;
+  /** 背景不透明度的深色档（`background_opacity` 是浅色档）。 */
+  background_opacity_dark: number;
+  /** 图片背景模糊强度（px），分深浅两档。 */
+  background_image_blur_light: number;
+  background_image_blur_dark: number;
+  /** 视频背景模糊强度（px），分深浅两档。 */
+  background_video_blur_light: number;
+  background_video_blur_dark: number;
+  /** 种子色（材质）背景模糊强度（px），分深浅两档。 */
+  seed_blur_light: number;
+  seed_blur_dark: number;
+  /** 遮罩强度深色档（`background_overlay_opacity` 是浅色档）。 */
+  background_overlay_opacity_dark: number;
   music_mode: string;
   music_value: string;
   homepage_mode: string;
   homepage_value: string;
+  /**
+   * 配色种子是否取自背景图（"配色跟随背景图"）。
+   *
+   * 开启后 `theme_color` 退居为**回退值**：取色失败时仍用它，避免界面失去主题色。
+   */
+  theme_from_background: boolean;
 }
 
 export interface BackgroundFile {
@@ -154,17 +185,37 @@ export interface InstallUpdateResult {
   message: string;
 }
 
+/**
+ * 只读沙箱信息（目前仅 Flatpak）。
+ *
+ * 出现它意味着应用装在只读位置、由外部包管理器管理：**应用内更新在机制上
+ * 不可能成功**，界面必须改为引导用户执行 `update_command`。
+ */
+export interface SandboxInfo {
+  /** 沙箱类型标识，目前恒为 `flatpak`。 */
+  kind: string;
+  /** 建议用户执行的更新命令，如 `flatpak update`。 */
+  update_command: string;
+}
+
 /** 当前运行环境（"关于"页用它显示版本形态，无需联网）。 */
 export interface RuntimeInfo {
   /** `portable` | `installed` */
   install_mode: string;
   build_channel: BuildChannel | string;
-  /** 当前平台是否支持自动安装 */
+  /**
+   * 当前环境是否支持自动安装。
+   *
+   * 后端已把 Flatpak 收敛为 false（`is_auto_install_supported`），
+   * 因此界面只需看这一个字段，不必自己判断沙箱。
+   */
   auto_install_supported: boolean;
   /** 当前渠道是否允许自动更新 */
   update_allowed: boolean;
   exe_path: string;
   data_dir: string;
+  /** 只读沙箱信息；缺省表示常规安装形态。 */
+  sandbox?: SandboxInfo | null;
 }
 
 /** `update-progress` 事件负载。 */

@@ -31,7 +31,6 @@ const localGames = ref<LocalGame[]>([]);
 /** 房主模式的搜索词（筛本机游戏进程）。 */
 const gameQuery = ref("");
 const logs = ref<string[]>([]);
-let unlisten: (() => void) | null = null;
 
 const setup = useSetup();
 const gameId = computed(() => setup.state.value?.game || "minecraft-java");
@@ -245,16 +244,50 @@ function onEvent(e: ConnectEvent) {
   }
 }
 
+/**
+ * 订阅 `connect-event`。
+ *
+ * # 为什么订阅不归页面管
+ *
+ * 会话状态跨越多个页面：联机页发起、房间视图承接、退出后回到联机页。如果订阅跟着
+ * `ConnectView` 的挂载/卸载走，那么**在房间视图停留期间根本没有人监听** —— 退出时
+ * 后端发的 `stopped` 就丢了，`mode` 永远停在 `connected`，表现为"点了退出没反应，
+ * 必须重启软件"。所以订阅由外壳（`App.vue`）持有，生命周期与窗口一致。
+ */
+let listening = false;
+let listenRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * 订阅 `connect-event`。
+ *
+ * 失败必须复位 `listening` 并重试：此前先置位再 `await`，一旦订阅抛错（WebView 未就绪、
+ * 事件系统异常），标志会永远停在 `true`，之后**再也订阅不上** —— 表现正是上面注释里
+ * 描述的"点了退出没反应，必须重启软件"。`App.vue` 是 `void startListening()`，
+ * rejection 也不会有人接住。
+ */
+async function startListening(): Promise<void> {
+  if (listening) return;
+  try {
+    await onConnectEvent(onEvent);
+    listening = true;
+  } catch (e) {
+    listening = false;
+    console.warn("[connect] 订阅联机事件失败，稍后重试", e);
+    // 退避重试：事件系统通常在启动后很快可用。不重试的话这一整次运行的
+    // 联机事件就全丢了（订阅只能建立一次），且用户看不到任何提示。
+    if (listenRetryTimer === null) {
+      listenRetryTimer = setTimeout(() => {
+        listenRetryTimer = null;
+        void startListening();
+      }, 2000);
+    }
+  }
+}
+
 async function mount() {
   await loadGames();
   await loadAdapters();
   await refreshStatus();
-  if (!unlisten) unlisten = await onConnectEvent(onEvent);
-}
-
-function unmount() {
-  unlisten?.();
-  unlisten = null;
 }
 
 function selectAdapter(id: string) {
@@ -310,15 +343,32 @@ function applyInvite(code: string) {
 
 function extractCode(text: string): string {
   const t = text.trim();
-  const m1 = t.match(/mclink:\/\/join\/([^/?#\s]+)/i);
+
+  // 深链形态：`mclink://join/<code>`。
+  //
+  // **不能**用 `[^/?#\s]+`：房间码本身可能带 `/`（陶瓦就会给出
+  // `U/A90T-7XHQ-9T98-ECQV` 这种），那样会在第一个 `/` 处截断成 `U`。
+  // 改为"`join/` 之后一直取到结尾或空白"，因为房间码是路径的最后一段，
+  // 没有更多层级需要保护；`#` 之后一律不算（浏览器不会把它发给应用）。
+  const m1 = t.match(/mclink:\/\/join\/([^\s#]+)/i);
   if (m1) return decodeURIComponent(m1[1]);
-  const m2 = t.match(/[?&]code=([^&?\s]+)/i);
+
+  // 查询串形态：`...?code=<code>`，这里才需要在意 `&`。
+  const m2 = t.match(/[?&]code=([^&\s#]+)/i);
   if (m2) return decodeURIComponent(m2[1]);
+
   return t;
 }
 
+/**
+ * 构造分享链接。
+ *
+ * 房间码要**编码**：码里可能有 `/`、`?`、`#` 等对 URL 有意义的字符，直接拼进去会让
+ * 链接的路径结构被破坏（`mclink://join/U/AB` 看起来是两级路径）。与 `extractCode`
+ * 的 `decodeURIComponent` 严格对称。
+ */
 function buildShareLink(): string {
-  return `mclink://join/${roomCode.value}`;
+  return `mclink://join/${encodeURIComponent(roomCode.value)}`;
 }
 
 export function useConnect() {
@@ -354,7 +404,7 @@ export function useConnect() {
     loadGames,
     scanLocalGames,
     mount,
-    unmount,
+    startListening,
     selectAdapter,
     startHost,
     join,

@@ -66,6 +66,19 @@ const installModeText = computed(() =>
 );
 
 /**
+ * 只读沙箱（目前仅 Flatpak）的更新引导。
+ *
+ * 沙箱里 `/app` 只读，应用内更新在机制上不可能成功（后端 `is_auto_install_supported`
+ * 也已返回 false）。这里把它**提升到最显眼的位置**并给出确切的命令，
+ * 而不是让用户点"一键更新"再收获一次失败。
+ */
+const sandboxHint = computed(() => {
+  const sandbox = runtime.value?.sandbox;
+  if (!sandbox) return null;
+  return sandbox.update_command;
+});
+
+/**
  * 进度百分比文案。
  *
  * 只在真的在下载/安装时才显示：`progress` 的初值就是 0，不设这个门会一直
@@ -161,6 +174,14 @@ async function openManual(url: string) {
             <span>{{ channelText }}</span>
           </FieldRow>
         </div>
+
+        <!-- Flatpak 沙箱：应用内更新必然失败，直接给出正确的更新方式 -->
+        <InfoBar
+          v-if="sandboxHint"
+          kind="info"
+          icon="lock"
+          :text="t('update.sandboxHint', { command: sandboxHint })"
+        />
 
         <div class="actions">
           <m3e-button

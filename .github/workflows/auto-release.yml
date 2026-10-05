@@ -32,16 +32,25 @@ jobs:
       publish_assets: false
     secrets: inherit
 
+  # Linux 产物与 Windows 并行构建；产物一并挂到该版本的草稿发行版。
+  # `publish_assets: false`：草稿阶段不推送更新清单给用户（那必须人工发 Release）。
+  build-linux:
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      publish_assets: false
+    secrets: inherit
+
   release:
-    needs: build
+    needs: [build, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: 读取版本号
+      - name: 读取并校验版本号
         id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node scripts/check-version.mjs --print)
+          if [ -z "$VERSION" ]; then echo "读取版本号失败"; exit 1; fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "版本号 = $VERSION"
@@ -75,15 +84,31 @@ jobs:
             --draft
 
       - name: 下载构建产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: mc-link-windows-${{ steps.version.outputs.version }}
           path: dist
 
+      # Linux / Flatpak 产物同样挂到这个草稿发行版。
+      # `continue-on-error`：Linux 构建失败不该让 Windows 产物也挂不上去。
+      - name: 下载 Linux 产物
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mc-link-linux-${{ steps.version.outputs.version }}
+          path: dist/linux
+
+      - name: 下载 Flatpak 产物
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mc-link-flatpak-${{ steps.version.outputs.version }}
+          path: dist/flatpak
+
       # Tauri 配置单独下载到与 dist 平级的位置，
       # 避免 upstream artifact 里 src-tauri/ 前缀让挂载后文件名带路径
       - name: 下载 Tauri 配置
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tauri-conf-${{ steps.version.outputs.version }}
           path: tauri-conf

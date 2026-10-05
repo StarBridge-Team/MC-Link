@@ -3,17 +3,20 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import ChipSelect, { type ChipOption } from "../ui/ChipSelect.vue";
 import ColorField from "../ui/ColorField.vue";
-import FieldRow from "../ui/FieldRow.vue";
 import SettingCard from "../ui/SettingCard.vue";
-import { useSettings } from "../../composables/useSettings";
+import { forceReloadRemote, remoteBgLoading, useSettings } from "../../composables/useSettings";
 import { getBackgroundFiles } from "../../lib/api/datadir";
 import type { BackgroundFile } from "../../lib/api/types";
 import { isRemoteUrl } from "../../lib/appearance/background";
 
 /**
- * 个性化 · 背景（背景 + 遮罩 + 背景音乐）。
+ * 个性化 · 背景来源：纯色 / 图片 / 视频的选择与适配。
  *
- * 文件列表来自数据目录的 `Background/` 文件夹：用户把图片/视频/音频放进去，
+ * 只负责"用什么当背景"。"看得见多少材质""糊到什么程度"分别在同级的
+ * 透明度卡片与模糊卡片里 —— 拆开是因为它们与来源类型无关，
+ * 挤在一起会让四个互不相干的设置看起来像一组。
+ *
+ * 文件列表来自数据目录的 `Background/` 文件夹：用户把图片/视频放进去，
  * 这里只做"挑选"，不做上传与删除（那是文件管理器的事）。
  */
 const { t } = useI18n();
@@ -23,17 +26,11 @@ const state = settings.state;
 const files = ref<BackgroundFile[]>([]);
 const filesLoading = ref(false);
 const bgUrlInput = ref("");
-const musicUrlInput = ref("");
 
-const AUDIO_EXT = ["mp3", "wav", "ogg", "flac", "aac", "m4a"];
-
-const musicFiles = computed(() =>
-  files.value.filter((f) => AUDIO_EXT.includes(extensionOf(f.name))),
+/** 只有图片/视频才需要"挑文件"；纯色与默认不显示这一段。 */
+const isMedia = computed(
+  () => state.background_type === "image" || state.background_type === "video",
 );
-
-function extensionOf(name: string): string {
-  return name.split(".").pop()?.toLowerCase() ?? "";
-}
 
 const typeOptions = computed<ChipOption<string>[]>(() => [
   { value: "default", label: t("background.typeDefault"), icon: "apps" },
@@ -50,26 +47,9 @@ const fitOptions = computed<ChipOption<string>[]>(() => [
   { value: "height-fix", label: t("background.fitHeightFix") },
 ]);
 
-const musicModeOptions = computed<ChipOption<string>[]>(() => {
-  const options: ChipOption<string>[] = [
-    { value: "none", label: t("background.musicNone") },
-    { value: "file", label: t("background.musicFile") },
-    { value: "url", label: t("background.musicUrl") },
-  ];
-  // "使用视频音轨"只在真的选了视频背景时才有意义。
-  if (state.background_type === "video" && state.background_value) {
-    options.push({ value: "video", label: t("background.musicVideo") });
-  }
-  return options;
-});
-
 /** 已选背景是否为本地文件（用于列表高亮；URL 与文件名可能重名）。 */
 function isSelectedLocal(name: string): boolean {
   return !isRemoteUrl(state.background_value) && state.background_value === name;
-}
-
-function isSelectedMusic(name: string): boolean {
-  return state.music_mode === "file" && state.music_value === name;
 }
 
 onMounted(async () => {
@@ -84,7 +64,6 @@ onMounted(async () => {
   }
   // 回填已保存的 URL，否则界面会显示为空，用户以为设置丢了。
   if (isRemoteUrl(state.background_value)) bgUrlInput.value = state.background_value;
-  if (state.music_mode === "url") musicUrlInput.value = state.music_value;
 });
 
 function setType(value: string) {
@@ -95,6 +74,12 @@ function setFit(value: string) {
   settings.patch({ background_fit: value });
 }
 
+/**
+ * 选纯色。
+ *
+ * 存的是**不带 alpha 的十六进制**：透明度由「背景不透明度」单独管，
+ * 让颜色字段只表达颜色，避免同一个效果有两个来源（见 `background_opacity` 的说明）。
+ */
 function setSolidColor(value: string) {
   settings.patch({ background_value: value });
 }
@@ -107,52 +92,52 @@ function selectFile(file: BackgroundFile) {
   });
 }
 
+/**
+ * 应用 URL 背景。
+ *
+ * 只写入设置就返回，**不等下载**：网络图/视频的下载在 `useSettings.refreshBackground`
+ * 里异步进行，界面用 `remoteBgLoading` 在按钮上转圈表示"正在生效"。
+ * 阻塞在这里会让"填了个大视频"变成界面卡死好几分钟。
+ *
+ * 这里是**唯一**会触发重新下载的操作：设置落盘后由 watch 触发，
+ * 且因为 URL 变化（随机图片 API 常带不同参数）或强制刷新标记而重新拉取。
+ */
 function applyBackgroundUrl() {
   const url = bgUrlInput.value.trim();
   if (!url) return;
+  const isVideo = /\.(mp4|webm|ogg|avi|mov|mkv|flv)(\?|#|$)/i.test(url);
+
+  // 同一个 URL 也允许重新拉取（随机图片 API 的典型用法：点一次换一张）。
+  // 通过 `forceReloadRemote()` 让 `useSettings` 丢弃已解析结果，而不是往设置里
+  // 塞一个后端不认识的字段——那样会被序列化时丢掉，且污染配置契约。
+  forceReloadRemote();
+
   settings.patch({
     background_value: url,
-    background_type: /\.(mp4|webm|ogg|avi|mov|mkv|flv)(\?|#|$)/i.test(url)
-      ? "video"
-      : "image",
+    background_type: isVideo ? "video" : "image",
   });
-}
-
-function onOverlayToggle(e: Event) {
-  settings.patch({ background_overlay: (e.target as HTMLInputElement).checked });
-}
-
-function onOverlayOpacity(e: Event) {
-  const value = (e.target as HTMLElement & { value?: number }).value;
-  settings.patch({ background_overlay_opacity: typeof value === "number" ? value : 0 });
-}
-
-function setMusicMode(value: string) {
-  settings.patch({ music_mode: value });
-}
-
-function selectMusic(file: BackgroundFile) {
-  musicUrlInput.value = "";
-  settings.patch({ music_mode: "file", music_value: file.name });
-}
-
-function applyMusicUrl() {
-  const url = musicUrlInput.value.trim();
-  if (!url) return;
-  settings.patch({ music_mode: "url", music_value: url });
 }
 </script>
 
 <template>
   <SettingCard :icon="'image'" :title="t('background.title')" :desc="t('background.desc')" wide>
     <div class="field-label">{{ t("background.type") }}</div>
-    <ChipSelect :model-value="state.background_type" :options="typeOptions" @update:model-value="setType" />
+    <ChipSelect
+      :model-value="state.background_type"
+      :options="typeOptions"
+      @update:model-value="setType"
+    />
 
     <div v-if="state.background_type === 'solid'" class="solid">
-      <ColorField :model-value="state.background_value || '#000000'" size="large" @update:model-value="setSolidColor" />
+      <span class="field-label">{{ t("background.solidColor") }}</span>
+      <ColorField
+        :model-value="state.background_value || '#000000'"
+        size="large"
+        @update:model-value="setSolidColor"
+      />
     </div>
 
-    <template v-if="state.background_type === 'image' || state.background_type === 'video'">
+    <template v-if="isMedia">
       <div class="field-label">{{ t("background.fit") }}</div>
       <ChipSelect
         small
@@ -174,7 +159,7 @@ function applyMusicUrl() {
           type="button"
           @click="selectFile(file)"
         >
-          <i class="material-symbols-rounded">{{ file.is_video ? 'movie' : 'photo' }}</i>
+          <m3e-icon :name="file.is_video ? 'movie' : 'photo'" />
           <span class="ellipsis">{{ file.name }}</span>
         </button>
       </div>
@@ -185,7 +170,18 @@ function applyMusicUrl() {
         <m3e-form-field variant="outlined" class="url-row__input">
           <input v-model="bgUrlInput" :placeholder="t('background.urlPlaceholder')" />
         </m3e-form-field>
-        <m3e-button variant="filled" @click="applyBackgroundUrl">{{ t("common.apply") }}</m3e-button>
+        <!--
+          下载在后台进行（不等它做完才返回），所以按钮用转圈表达"正在生效"。
+          `disabled` 同时防连点：连点会让同一张图被下多次。
+        -->
+        <m3e-button
+          variant="filled"
+          :disabled="remoteBgLoading"
+          @click="applyBackgroundUrl"
+        >
+          <m3e-icon v-if="remoteBgLoading" slot="icon" name="progress_activity" class="spin" />
+          {{ remoteBgLoading ? t("background.fetching") : t("common.apply") }}
+        </m3e-button>
       </div>
 
       <p v-if="state.background_value" class="hint">
@@ -193,59 +189,6 @@ function applyMusicUrl() {
         <span class="mono">{{ state.background_value }}</span>
       </p>
     </template>
-  </SettingCard>
-
-  <SettingCard :icon="'layers'" :title="t('background.overlay')" :desc="t('background.overlayDesc')">
-    <FieldRow :label="t('background.overlay')">
-      <m3e-switch :checked="state.background_overlay" @change="onOverlayToggle" />
-    </FieldRow>
-    <FieldRow v-if="state.background_overlay" :label="t('background.overlayOpacity')">
-      <div class="slider-row">
-        <m3e-slider
-          class="slider-row__slider"
-          :min="0"
-          :max="100"
-          :step="5"
-          @change="onOverlayOpacity"
-        >
-          <m3e-slider-thumb :value="state.background_overlay_opacity" />
-        </m3e-slider>
-        <span class="slider-row__value mono">{{ Math.round(state.background_overlay_opacity) }}%</span>
-      </div>
-    </FieldRow>
-  </SettingCard>
-
-  <SettingCard :icon="'music_note'" :title="t('background.music')" :desc="t('background.musicDesc')">
-    <ChipSelect
-      small
-      :model-value="state.music_mode"
-      :options="musicModeOptions"
-      @update:model-value="setMusicMode"
-    />
-
-    <template v-if="state.music_mode === 'file'">
-      <p v-if="musicFiles.length === 0" class="hint">{{ t("background.musicEmpty") }}</p>
-      <div v-else class="file-list">
-        <button
-          v-for="file in musicFiles"
-          :key="file.name"
-          class="file-chip"
-          :class="{ 'is-active': isSelectedMusic(file.name) }"
-          type="button"
-          @click="selectMusic(file)"
-        >
-          <i class="material-symbols-rounded">audio_file</i>
-          <span class="ellipsis">{{ file.name }}</span>
-        </button>
-      </div>
-    </template>
-
-    <div v-if="state.music_mode === 'url'" class="url-row" @keyup.enter="applyMusicUrl">
-      <m3e-form-field variant="outlined" class="url-row__input">
-        <input v-model="musicUrlInput" :placeholder="t('background.musicUrlPlaceholder')" />
-      </m3e-form-field>
-      <m3e-button variant="filled" @click="applyMusicUrl">{{ t("common.apply") }}</m3e-button>
-    </div>
   </SettingCard>
 </template>
 
@@ -302,22 +245,22 @@ function applyMusicUrl() {
   min-width: 0;
 }
 
-.slider-row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  width: 220px;
-  max-width: 40vw;
+/* 图标槽里的转圈：只动 transform，不写 @keyframes 之外的属性。
+   字形本身是 `progress_activity`（一圈缺口），转起来就是加载指示器。 */
+.spin {
+  animation: spin 1s linear infinite;
 }
 
-.slider-row__slider {
-  flex: 1;
-  min-width: 0;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.slider-row__value {
-  width: 48px;
-  text-align: right;
-  color: var(--text-secondary);
+/* 尊重系统的"减少动画"偏好：转圈是纯装饰，静态显示也够表达"进行中"。 */
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
 }
 </style>

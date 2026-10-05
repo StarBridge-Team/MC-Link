@@ -8,6 +8,7 @@ import { useSettings } from "../composables/useSettings";
 import { useConnect } from "../composables/useConnect";
 import { runOpenActions } from "../lib/api/app";
 import { listLocalGames } from "../lib/api/connect";
+import type { LocalGameFound } from "../lib/api/types";
 
 /**
  * 首页。
@@ -41,14 +42,10 @@ const greeting = computed(() => {
 const iframeUrl = computed(() => (/^https?:\/\//i.test(url.value) ? url.value : ""));
 
 // --- 本地游戏扫描（后端动作管理器在应用打开时自动扫描，这里只收事件） ---
-interface LocalGame {
-  process: string;
-  game_name: string;
-  scanner: string;
-  adapter: string;
-}
-
-const localGame = ref<LocalGame | null>(null);
+//
+// 结构用统一的 `LocalGameFound`（`lib/api/types`），不再本地声明一份：
+// 此前这里与 `typesConnect.ts` 各有一份同名字段不同的接口，类型系统拦不住任何漂移。
+const localGame = ref<LocalGameFound | null>(null);
 const scanning = ref(true);
 const hostMode = ref(false);
 let unlisteners: UnlistenFn[] = [];
@@ -60,7 +57,7 @@ onMounted(async () => {
     }),
   );
   unlisteners.push(
-    await listen<LocalGame>("local-game-found", (e) => {
+    await listen<LocalGameFound>("local-game-found", (e) => {
       localGame.value = e.payload;
       hostMode.value = true; // 扫到局域网游戏自动切换房主
     }),
@@ -75,12 +72,9 @@ onMounted(async () => {
     const games = await listLocalGames();
     const first = games[0];
     if (first) {
-      localGame.value = {
-        process: first.process,
-        game_name: first.name,
-        scanner: "",
-        adapter: "",
-      };
+      // `connect_local_games` 回传的就是完整的展示结构，直接用，不要再"翻译"一遍
+      // （此前按 `LocalGame` 的形状重拼，把 `scanner`/`adapter` 丢成空串）。
+      localGame.value = first;
       hostMode.value = true;
       scanning.value = false;
     }

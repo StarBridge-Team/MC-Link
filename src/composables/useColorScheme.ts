@@ -1,6 +1,7 @@
 import { ref, watch } from "vue";
-import { generateM3Scheme, type M3Roles } from "../lib/api/m3";
-import { useSettings } from "./useSettings";
+import { extractBackgroundSeed, generateM3Scheme, type M3Roles } from "../lib/api/m3";
+import { isRemoteUrl } from "../lib/appearance/background";
+import { remoteBackground, useSettings } from "./useSettings";
 
 /**
  * 把动态配色接到后端（`generate_m3_scheme`）。
@@ -35,6 +36,62 @@ export function useColorScheme() {
   let lastKey = "";
   let token = 0;
 
+  /**
+   * 背景图提取出的种子色缓存，键是文件名。
+   *
+   * 取色要读文件、解码、量化，比 `generate_m3_scheme` 贵得多；而配色变体、对比度、
+   * 明暗切换都会触发重算，这些都不该让图片被重新解一遍。
+   */
+  const seedCache = new Map<string, string>();
+
+  /** 最近一次取色失败的图片名，避免同一张坏图被反复重试（每次都要走一遍解码）。 */
+  let failedFor = "";
+
+  /**
+   * 决定本次配色的种子色。
+   *
+   * 两条来源，取色成本完全不同：
+   *
+   * - **网络背景**：种子色是后端在下载时顺手提取的（`remoteBackground().seed`），
+   *   这里直接取用，**不要再发一次 IPC**（那等于把同一张图再解码一遍）。
+   * - **本地背景**：需要调 `extract_background_seed` 现取，代价高，所以按文件名缓存。
+   *
+   * 其余情况与取色失败一律回退到手选 `theme_color`——**不返回空**：
+   * 没有种子色就没有主题色，那比"用了手选色"更糟。
+   */
+  async function resolveSeed(): Promise<string> {
+    const fallback = state.theme_color;
+    if (!state.theme_from_background) return fallback;
+    if (state.background_type !== "image" || !state.background_value) return fallback;
+
+    const source = state.background_value;
+
+    // 网络背景：种子色随下载结果一起来，直接复用。
+    if (isRemoteUrl(source)) {
+      const remote = remoteBackground();
+      // URL 不匹配说明下载还没完成（或失败），此刻先用手选色；
+      // 下载完成后 `useSettings` 会更新它，进而触发下面的 watch 重算。
+      if (remote.value?.url !== source) return fallback;
+      return remote.value.seed ?? fallback;
+    }
+
+    const cached = seedCache.get(source);
+    if (cached) return cached;
+    if (failedFor === source) return fallback;
+
+    try {
+      const seed = await extractBackgroundSeed(source);
+      seedCache.set(source, seed);
+      failedFor = "";
+      return seed;
+    } catch (e) {
+      // 记下这张图已经失败过：动画/居中/遮罩等无关设置变动时不再重复尝试解码。
+      failedFor = source;
+      console.warn("[color] 背景图取色失败，回退到手选主题色:", e);
+      return fallback;
+    }
+  }
+
   function writeRoles(el: HTMLElement, roles: M3Roles) {
     for (const [field, value] of Object.entries(roles)) {
       if (typeof value === "string" && value) {
@@ -48,17 +105,22 @@ export function useColorScheme() {
     if (!el) return;
 
     const dark = isDark.value;
-    const key = `${state.theme_color}|${state.theme_variant}|${state.theme_contrast}|${dark ? "dark" : "light"}`;
+    // 跟随背景图时，种子实际来自图片，key 必须带上图片来源——否则"换一张背景图"
+    // 会因为 `theme_color` 没变而被这行判断挡住，配色纹丝不动。
+    const sourceKey = state.theme_from_background
+      ? `bg:${state.background_value}`
+      : `seed:${state.theme_color}`;
+    const key = `${sourceKey}|${state.theme_variant}|${state.theme_contrast}|${dark ? "dark" : "light"}`;
     // 同一个输入不重复要一次（配色之外的其他设置改动也会触发本组合函数）
     if (key === lastKey) return;
 
     const mine = ++token;
     try {
-      const scheme = await generateM3Scheme(
-        state.theme_color,
-        state.theme_variant,
-        state.theme_contrast,
-      );
+      const seed = await resolveSeed();
+      // 取色期间用户又改了设置：丢弃这次结果，别让旧种子盖住新值。
+      if (mine !== token || !target) return;
+
+      const scheme = await generateM3Scheme(seed, state.theme_variant, state.theme_contrast);
       // 期间用户又改了配色：丢弃这次结果，避免旧值盖住新值
       if (mine !== token || !target) return;
       writeRoles(el, dark ? scheme.dark : scheme.light);
@@ -92,7 +154,15 @@ export function useColorScheme() {
       state.theme_color,
       state.theme_variant,
       state.theme_contrast,
+      state.theme_from_background,
+      // 换背景图 / 换背景类型都要重算：前者换种子，后者可能让"跟随"失效。
+      state.background_type,
+      state.background_value,
       isDark.value,
+      // 网络背景的下载结果。**这一项不能少**：URL 下载完成前 `resolveSeed` 只能拿到
+      // 手选色（此时 `remoteBackground().url` 还没对上），下载完成后若不重算，
+      // 配色就会一直停在手选色上，看起来像"跟随背景图没生效"。
+      remoteBackground().value?.url,
     ],
     () => schedule(),
   );

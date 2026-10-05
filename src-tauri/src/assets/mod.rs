@@ -8,9 +8,32 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// 资源缓存根目录下的相对路径转换为完整路径。
+///
+/// # 为什么校验必须在这里
+///
+/// 这个函数是所有"按相对路径定位 Assets 文件"入口的**唯一收口**。此前校验只写在
+/// `read_asset_text` 里，而 `get_asset_url` 直接走这条链且不校验 —— 前端只要传
+/// `../../Windows/win.ini`（或绝对路径），`Path::join` 就会逃出 Assets 目录，
+/// 再经 `convertFileSrc` 变成可加载 URL，等于一条任意文件读取通道。
+/// 把校验下沉到这里，新增调用方不会再漏同一步。
 pub(crate) fn asset_cache_path(data_dir: &Path, relative: &str) -> Result<PathBuf, String> {
+    if !pull::is_safe_relative(relative) {
+        return Err(format!("非法资源路径: {}", relative));
+    }
+
     let dir = assets_dir(data_dir)?;
-    Ok(cache_path(&dir, relative))
+    let full = cache_path(&dir, relative);
+
+    // 纵深防御：路径校验之外再过一次 canonicalize 包含性，连"目录内放了指向
+    // 别处的软链接"一起挡掉。文件不存在时 canonicalize 失败，按原路径返回即可
+    // （后续调用方会因不存在而报错，不会读到目录外）。
+    if let (Ok(real), Ok(base)) = (full.canonicalize(), dir.canonicalize()) {
+        if !real.starts_with(&base) {
+            return Err("拒绝访问资源目录之外的文件".to_string());
+        }
+    }
+
+    Ok(full)
 }
 
 /// 获取已存在资源的完整路径。
@@ -59,6 +82,7 @@ pub(crate) fn read_asset_text(
 
     // 只接受不越界的相对路径。这个命令会把文件内容交给前端，
     // 若放任 `..`，等于给前端开了一条任意文件读取通道。
+    // （`asset_cache_path` 里也有一份同样的校验，这里是显式说明意图的第二道。）
     if !pull::is_safe_relative(&path) {
         return Err(format!("非法资源路径: {}", path));
     }

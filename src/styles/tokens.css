@@ -119,6 +119,12 @@
   --app-bg-image: none;
   --app-bg-size: 100% 100%;
   --app-scrim: transparent;
+  /* 「背景不透明度」的 alpha 通道（0–1），由 `applyBackground` 按设置写入。
+   * 只存 alpha、颜色交给 CSS 混：surface 是种子色动态算出来的，写死 RGB 只对默认种子色成立。 */
+  --app-opacity: 1;
+  /* 背景模糊强度：0 时 CSS 会跳过模糊（blur(0) 仍有合成开销）。 */
+  --app-media-blur: 0px;
+  --app-material-blur: 0px;
   --titlebar-height: 40px;
   --rail-width: 76px;
   --nav-width: 208px;

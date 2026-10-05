@@ -44,7 +44,7 @@ impl PluginManager {
             {
                 continue;
             }
-            let psk = record.ensure_secret()?;
+            let psk = record.ensure_secret(&self.inner.data_dir)?;
             // 夹取到核心允许的范围：清单是插件自述的，不夹取等于把限流开关交给它
             let limits = record.manifest.limits.clamped();
             table.insert(

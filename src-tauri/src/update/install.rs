@@ -32,6 +32,9 @@ const WAIT_EXIT_SECS: u64 = 120;
 
 /// 自动落地是否受支持。
 ///
+/// - **Flatpak**：**恒不支持**。应用装在只读的 `/app` 里，由 `flatpak` 统一管理；
+///   自行覆盖会绕开 OSTree 的版本记录。必须由用户执行 `flatpak update`。
+///   这一条排在其它判断之前，因为它是"机制上不可能"，而不是"条件不满足"。
 /// - **Windows**：始终支持——安装版交给 NSIS 安装器，便携版直接替换 exe；
 /// - **Linux / macOS**：只有当官方更新插件可用时（已配置签名公钥）才支持，
 ///   且落地由插件完成。自行替换 deb/AppImage/`.app` 会破坏包管理器与 Gatekeeper
@@ -39,6 +42,9 @@ const WAIT_EXIT_SECS: u64 = 120;
 ///
 /// 顺带决定"能否给用户一个可安装的资产"：返回 false 时选资产会得到 `None`。
 pub(crate) fn is_auto_install_supported() -> bool {
+    if crate::runtime::is_flatpak() {
+        return false;
+    }
     cfg!(windows) || super::plugin_updater::available()
 }
 

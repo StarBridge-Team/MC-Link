@@ -96,8 +96,24 @@ fn local_manifest_path(data_dir: &Path) -> Result<PathBuf, String> {
 
 fn read_local_manifest(data_dir: &Path) -> Option<AssetsManifest> {
     let path = local_manifest_path(data_dir).ok()?;
-    let text = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&text).ok()
+    // 文件不存在是正常情况（首次运行），不打印。
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            eprintln!("[assets] 读取本地清单失败: {}", e);
+            return None;
+        }
+    };
+    match serde_json::from_str(&text) {
+        Ok(m) => Some(m),
+        Err(e) => {
+            // 静默返回 None 会让离线用户只看到"无法获取资源清单，且本地无缓存"，
+            // 无从判断是网络问题还是缓存损坏。
+            eprintln!("[assets] 本地清单损坏（{}），离线时将无缓存可用", e);
+            None
+        }
+    }
 }
 
 fn write_local_manifest(data_dir: &Path, manifest: &AssetsManifest) -> Result<(), String> {
@@ -159,8 +175,13 @@ async fn local_state(data_dir: &Path, entry: &AssetEntry) -> LocalState {
             )),
             Err(e) => LocalState::Mismatch(format!("无法计算哈希: {}", e)),
         },
-        // 旧清单没有哈希：只能按存在 + 大小放行。
-        _ => LocalState::Ready,
+        // 清单没有哈希 → **不放行**。
+        //
+        // 原先是"存在 + 大小对就判 Ready"，于是被劫持的资源服务器只要下发一份
+        // 不带 sha256 的清单，就能让已被替换过的本地文件继续被判"就绪"并注入前端。
+        // 现在按 Mismatch 处理：`fetch_one` 会因缺哈希而拒绝下载（fail-closed），
+        // 最终以"未就绪 + 明确原因"呈现，而不是静默使用不可信的缓存。
+        _ => LocalState::Mismatch("清单未提供 sha256，无法确认缓存完整性".to_string()),
     }
 }
 

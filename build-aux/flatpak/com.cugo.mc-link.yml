@@ -1,0 +1,107 @@
+# Flatpak 打包清单（app-id 与 tauri.conf.json 的 identifier 一致）。
+#
+# # 为什么是"从 deb 构建"而不是"从源码构建"
+#
+# 从源码构建需要在沙箱内跑完整的 node + cargo 构建，还要生成两份离线依赖源
+# （node-sources.json / cargo-sources.json，每次 lockfile 变更都要重生成），
+# 对 CI 而言成本高、失败面大。而我们的发布流程**本来就会先产出 .deb**
+# （`bundle.targets` 含 `deb`），直接解包安装即可 —— 内容完全一致，
+# 因为 deb 里装的就是同一个 `tauri build` 产出的二进制与资源。
+#
+# 这条路线的代价：manifest 引用本地 deb 时必须保证"先构建 deb、再跑 flatpak-builder"，
+# CI 的步骤顺序因此不能颠倒（见 .github/workflows/build-linux.yml）。
+#
+# # 为什么不上 Flathub
+#
+# 上架 Flathub 要求"从源码构建 + 离线依赖源"，且审核周期长。
+# 当前做法是产出 `.flatpak` bundle 挂到 GitHub Release，用户手动
+# `flatpak install --user <file>.flatpak`；配合自建 OSTree remote 可支持
+# `flatpak update`（见 scripts/flatpak-repo.mjs）。
+
+app-id: com.cugo.mc-link
+runtime: org.gnome.Platform
+runtime-version: "46"
+sdk: org.gnome.Sdk
+command: mc-link
+finish-args:
+  # 窗口系统：优先 Wayland，回退 X11
+  - --socket=wayland
+  - --socket=fallback-x11
+  # 共享内存（WebKitGTK 需要）
+  - --share=ipc
+  # GPU 加速（WebKit 合成）
+  - --device=dri
+  # 网络：联机核心、资源同步、以及局域网 UDP 组播广播（Terracotta/适配器）都要用
+  - --share=network
+  # 托盘图标：需要访问桌面环境的 StatusNotifier
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # 深链接（mclink://）：经 xdg-open 的 portal 处理
+  - --talk-name=org.freedesktop.portal.Desktop
+  # 剪贴板 / 打开外链：XDG portal
+  - --talk-name=org.freedesktop.portal.OpenURI
+  # 数据目录：Flatpak 下应用数据自然落在 ~/.var/app/<app-id>/ 内
+  # （`app_data_dir()` 会解析到这里），无需额外授权。
+  # 用户导入背景素材走 portal 的文件选择器；这里额外只读放行下载目录方便取素材。
+  - --filesystem=xdg-download:ro
+
+# 单一模块：解包并安装我们的 deb。
+# deb 由 `tauri build --bundles deb` 产出，放在 build-aux/flatpak/ 下（CI 会拷进来）。
+modules:
+  - name: mc-link
+    buildsystem: simple
+    sources:
+      - type: file
+        # 由 CI 在构建前把 target/release/bundle/deb/*.deb 拷到该路径；
+        # 本地手动构建时也放在同一位置（见 docs 或 scripts 的说明）。
+        path: mc-link.deb
+    build-commands:
+      # deb 是 ar 归档，内含 data.tar.{gz,xz,zst}。用 Flatpak SDK 自带的 ar/tar 解包，
+      # 不引入额外工具。
+      - ar x mc-link.deb
+      - mkdir -p deb-root
+      - tar -xf data.tar.* -C deb-root
+      # 把 deb 的文件树铺到 /app。
+      # deb 的布局是 /usr/bin、/usr/share/...，而 Flatpak 里应用前缀是 /app，
+      # 所以按前缀搬运（而不是整套拷贝 /usr）——这样不会污染 /app/usr。
+      #
+      # 可执行文件名不写死：优先 `mc-link`（Cargo package name），
+      # 找不到就取 /usr/bin 下唯一的可执行文件并报出名字，便于下次接手时定位。
+      - install -d /app/bin
+      - |
+        set -e
+        src=""
+        if [ -x deb-root/usr/bin/mc-link ]; then
+          src=deb-root/usr/bin/mc-link
+        else
+          for f in deb-root/usr/bin/*; do
+            [ -x "$f" ] || continue
+            src="$f"
+            break
+          done
+        fi
+        if [ -z "$src" ]; then
+          echo "deb 的 /usr/bin 下没有可执行文件" >&2
+          ls -la deb-root/usr/bin >&2 || true
+          exit 1
+        fi
+        echo "使用可执行文件: $src"
+        install -Dm755 "$src" "/app/bin/$(basename "$src")"
+      # 图标与桌面文件（缺失不致命：Tauri 的 deb 一定会带）
+      - |
+        if [ -d deb-root/usr/share/icons ]; then
+          cp -r deb-root/usr/share/icons /app/share/ || true
+        fi
+      - install -d /app/share/applications
+      - |
+        if [ -f deb-root/usr/share/applications/mc-link.desktop ]; then
+          cp deb-root/usr/share/applications/mc-link.desktop /app/share/applications/
+        else
+          echo "警告：deb 中未找到 .desktop，将使用清单内的 fallback" >&2
+        fi
+      # AppStream 元数据：Flatpak 用它展示应用信息（没有也不是错误，只是详情页信息少）
+      - install -d /app/share/metainfo
+      - |
+        if [ -f deb-root/usr/share/metainfo/com.cugo.mc-link.metainfo.xml ]; then
+          cp deb-root/usr/share/metainfo/com.cugo.mc-link.metainfo.xml /app/share/metainfo/
+        fi
