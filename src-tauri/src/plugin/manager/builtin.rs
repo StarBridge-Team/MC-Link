@@ -13,16 +13,23 @@ use crate::plugin::session::SessionHandle;
 /// 内置插件的清单直接来自核心代码，因此信任度是 `Official`；但它们仍然以标准
 /// 能力方法被调度，不走特例。
 pub(super) fn builtin_records() -> Result<Vec<PluginRecord>, String> {
-    let manifest: PluginManifest = crate::plugin::builtin::terracotta::manifest();
-    let permissions = PermissionSet::from_declared(&manifest.permissions);
-    Ok(vec![PluginRecord {
-        manifest,
-        source: PluginSource::Builtin,
-        dir: PathBuf::new(),
-        trust: TrustLevel::Official,
-        enabled: true,
-        permissions,
-    }])
+    let mut records = Vec::new();
+    for manifest in [
+        crate::plugin::builtin::terracotta::manifest(),
+        crate::plugin::builtin::minecraft_scanner::manifest(),
+        crate::plugin::builtin::minecraft_coupler::manifest(),
+    ] {
+        let permissions = PermissionSet::from_declared(&manifest.permissions);
+        records.push(PluginRecord {
+            manifest,
+            source: PluginSource::Builtin,
+            dir: PathBuf::new(),
+            trust: TrustLevel::Official,
+            enabled: true,
+            permissions,
+        });
+    }
+    Ok(records)
 }
 
 /// 供诊断与命令层使用：把会话句柄转成可读状态。

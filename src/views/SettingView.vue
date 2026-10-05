@@ -2,11 +2,9 @@
 import { computed, onMounted, watch, type Component } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AboutSection from "./settings/AboutSection.vue";
-import BackgroundSection from "./settings/BackgroundSection.vue";
 import GeneralSection from "./settings/GeneralSection.vue";
 import HomepageSection from "./settings/HomepageSection.vue";
 import PersonalizationSection from "./settings/PersonalizationSection.vue";
-import PluginSection from "./settings/PluginSection.vue";
 import UpdateSection from "./settings/UpdateSection.vue";
 import { DEFAULT_SETTING_TAB, isSettingTab, type SettingTab } from "../router";
 import { KEYS, local } from "../lib/persist";
@@ -14,18 +12,19 @@ import { KEYS, local } from "../lib/persist";
 /**
  * 设置页容器：按 `tab` 参数渲染对应分区。
  *
- * 分区的取舍：**同一件事只在一个分区里改**。外观与背景分成两个 tab，
- * 是因为背景那张卡片展开后很长，混在一起会让"只想换个主题色"的人翻很久。
+ * 分区的取舍：**同一件事只在一个分区里改**。所有个性化选项（外观 / 背景 /
+ * 语言与地区）已合并进「个性化」，避免同一类设置散落在多个 tab。
+ *
+ * 「插件」原本在这里，现已移到「游戏」页（`views/GameView.vue`）：它和"选游戏 / 联机"
+ * 是同一件事的不同侧面，放在设置里既难找、又要和一堆偏好项抢位置。
  */
 const route = useRoute();
 const router = useRouter();
 
 const SECTIONS: Record<SettingTab, Component> = {
   personalization: PersonalizationSection,
-  background: BackgroundSection,
   homepage: HomepageSection,
   general: GeneralSection,
-  plugins: PluginSection,
   update: UpdateSection,
   about: AboutSection,
 };
@@ -52,10 +51,8 @@ watch(tab, (value) => local.setString(KEYS.settingTab, value));
 
 <template>
   <div class="setting">
-    <!-- 与 App.vue 同样刻意不用 `mode="out-in"`：它会让切换后的内容永久不挂载 -->
-    <Transition name="page">
-      <component :is="section" :key="tab" />
-    </Transition>
+    <!-- 同 App.vue：不用 <Transition>，只给进入项一条动画（base.css 的 `page-in`） -->
+    <component :is="section" :key="tab" />
   </div>
 </template>
 

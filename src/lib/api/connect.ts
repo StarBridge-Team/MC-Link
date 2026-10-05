@@ -1,80 +1,65 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { ConnectAdapter, ConnectEvent, ConnectStatus, LocalGame } from "./types";
 
-/** P2P 连接阶段（与后端 ConnectionStage 对应） */
-export type P2PStage = "idle" | "connecting" | "connected" | "disconnected";
+/**
+ * 联机页的 IPC 封装（后端 `src-tauri/src/plugin/connect.rs`）。
+ *
+ * 字段形态由适配器自己声明（`host_fields` / `join_fields`），因此这里的 `fields`
+ * 是普通对象——键来自适配器，前端不预设房间码/网络名/密码之类的形态。
+ */
 
-/** 后端事件 stage 字段 */
-export type P2PEventStage = "progress" | "connected" | "error" | "stopped";
-
-/** 后端推送的 p2p-event payload */
-export interface P2PEvent {
-  stage: P2PEventStage;
-  message: string;
-  natType?: string | null;
-  peerAddr?: string | null;
-  successLayer?: string | null;
-  elapsedMs?: number | null;
-  error?: string | null;
-  status: P2PStatus;
+/** 列出可用于联机的适配器（按当前游戏路由），含各自声明的 host/join 字段。 */
+export async function listConnectAdapters(gameId?: string) {
+  return invoke<{ adapters: ConnectAdapter[] }>("connect_adapters", { gameId });
 }
 
-/** 后端 ConnectionStatus 快照 */
-export interface P2PStatus {
-  stage: P2PStage;
-  mode?: string | null;
-  code?: string | null;
-  startedAtMs?: number | null;
-  peerAddr?: string | null;
-  localNat?: string | null;
-  peerNat?: string | null;
-  successLayer?: string | null;
-  elapsedMs?: number | null;
-  lastError?: string | null;
-}
-
-/** 启动参数（camelCase 与后端 serde rename_all 对应） */
-export interface StartP2PArgs {
-  /** "create" | "join" */
-  mode: "create" | "join";
-  /** 邀请码 / 房间码 */
-  code: string;
-  /** 信令服务器地址（host[:port]），留空使用默认 */
-  signalingAddr?: string;
-  /** 打洞 STUN 地址（host[:port]），留空使用默认 */
-  stunAddr?: string;
-  /** NAT 检测 STUN 地址列表，留空使用默认 */
-  natStunServers?: string[];
-  /** 应用类型，默认 "GameTcp" */
-  appType?: string;
-  /** 本地监听端口（预留桥接，本期可不传） */
-  listenPort?: number;
-}
-
-
-/** 启动 P2P 连接（后台任务，立即返回任务 id） */
-export async function startP2PConnection(args: StartP2PArgs): Promise<string> {
-  return invoke<string>("start_p2p_connection", { args });
-}
-
-/** 停止当前 P2P 连接 */
-export async function stopP2PConnection(): Promise<void> {
-  return invoke<void>("stop_p2p_connection");
-}
-
-/** 查询当前连接状态 */
-export async function getP2PStatus(): Promise<P2PStatus> {
-  return invoke<P2PStatus>("get_p2p_status");
+/** 扫描本机游戏实例（检测器插件），返回发现到的游戏数组（可能为空）。 */
+export async function scanLocalGames(gameId?: string) {
+  return invoke<LocalGame[]>("connect_scan", { gameId });
 }
 
 /**
- * 订阅 p2p-event，返回取消订阅函数。
- * 回调在收到事件时同步触发。
+ * 取最近一次扫描结果，**不重新扫描**。
+ *
+ * 供首页在挂载时兜底：扫描结果是一次性广播（`local-game-found`），没有补发，
+ * 监听器晚一步就再也拿不到，界面会一直停在"正在寻找本地游戏…"。
  */
-export async function onP2PEvent(
-  cb: (evt: P2PEvent) => void
-): Promise<UnlistenFn> {
-  return await listen<P2PEvent>("p2p-event", (e) => {
-    cb(e.payload);
-  });
+export async function listLocalGames() {
+  return invoke<LocalGame[]>("connect_local_games");
+}
+
+/** 以房主身份创建房间。 */
+export async function startConnectHost(
+  adapterId: string,
+  gameId: string | undefined,
+  fields: Record<string, unknown>,
+  playerName: string,
+) {
+  return invoke<string>("connect_start_host", { adapterId, gameId, fields, playerName });
+}
+
+/** 以访客身份加入房间。 */
+export async function joinConnect(
+  adapterId: string,
+  gameId: string | undefined,
+  fields: Record<string, unknown>,
+  playerName: string,
+) {
+  return invoke<string>("connect_join", { adapterId, gameId, fields, playerName });
+}
+
+/** 查询当前连接状态（适配器自报）。 */
+export async function getConnectStatus(adapterId: string, gameId: string | undefined) {
+  return invoke<ConnectStatus>("connect_status", { adapterId, gameId });
+}
+
+/** 断开当前房间 / 主机。 */
+export async function stopConnect(adapterId: string, gameId: string | undefined) {
+  return invoke<void>("connect_stop", { adapterId, gameId });
+}
+
+/** 订阅 `connect-event`（进度 / 连接 / 错误 / 断开）。 */
+export async function onConnectEvent(cb: (e: ConnectEvent) => void): Promise<UnlistenFn> {
+  return listen<ConnectEvent>("connect-event", (e) => cb(e.payload));
 }

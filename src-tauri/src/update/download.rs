@@ -3,12 +3,17 @@
 //! 下载本身走 [`crate::downloader::verified`]——**与适配器共用同一套校验链路**
 //! （多镜像、体积上限、分片超时、SHA256 强制校验）。更新包会被直接执行，
 //! 校验强度不能低于第三方二进制。
+//!
+//! 候选地址与清单同一套择优策略（见 [`super::fetch`]）：GitHub 直连与代理
+//! （并发探测、延迟最小者优先）排在前面，清单给出的资源服务器地址垫底。
+//! 校验锚定的是清单里的 SHA256（清单本身经公钥链路可信），换源下载不降低强度。
 
 use std::path::{Path, PathBuf};
 
 use crate::asset_server::assets_server_url;
 use crate::cache::ensure_cache_dir;
 
+use super::fetch::release_asset_urls;
 use super::model::{asset_urls, DownloadUpdateResult, UpdateAsset};
 
 /// 更新包缓存目录。
@@ -28,7 +33,16 @@ pub(crate) async fn download_asset(
     let dir = update_cache_dir(data_dir);
     ensure_cache_dir(&dir)?;
 
-    let urls = asset_urls(asset, &assets_server_url(data_dir));
+    // 候选地址：GitHub 直连 + 代理择优（并发探测、延迟最小优先）排前，
+    // 清单给出的资源服务器地址垫底。verified 下载器按顺序回退，
+    // 且网络类失败会保留续传进度——换到下一个镜像时已下载的分片不白下。
+    let mut urls = release_asset_urls(client, &asset.file).await;
+    for url in asset_urls(asset, &assets_server_url(data_dir)) {
+        if !urls.contains(&url) {
+            urls.push(url);
+        }
+    }
+
     let remote = crate::downloader::verified::RemoteFile {
         file: &asset.file,
         urls: &urls,
@@ -100,7 +114,8 @@ pub(crate) fn prune_cache(data_dir: &Path) {
 /// 从包文件名解析版本号：`MC-Link-0.4.1-windows-x86_64-portable.exe` → `0.4.1`。
 ///
 /// 只接受严格的 `x.y.z`，其余一律返回 `None`（表示"认不出，别动它"）。
-fn package_version(file_name: &str) -> Option<String> {
+/// 除缓存回收外，[`super::fetch`] 也用它判断能否拼出 GitHub 发行版直链。
+pub(super) fn package_version(file_name: &str) -> Option<String> {
     let rest = file_name.strip_prefix("MC-Link-")?;
     let version = rest.split('-').next()?;
     let parts: Vec<&str> = version.split('.').collect();

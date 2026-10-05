@@ -13,3 +13,4 @@
 export * from "./typesCore";
 export * from "./typesSetup";
 export * from "./typesPlugin";
+export * from "./typesConnect";

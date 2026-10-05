@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 /// 安装形态。
@@ -42,7 +42,9 @@ fn exe_dir() -> Option<PathBuf> {
 /// 即可转成便携形态，反之亦然。
 #[cfg(windows)]
 fn is_portable_mode(exe_dir: &Path) -> bool {
-    exe_dir.join("data").is_dir() || exe_dir.join("portable.txt").is_file() || exe_dir.join("portable").is_file()
+    exe_dir.join("data").is_dir()
+        || exe_dir.join("portable.txt").is_file()
+        || exe_dir.join("portable").is_file()
 }
 
 /// 当前运行形态。非 Windows 一律视为安装版。

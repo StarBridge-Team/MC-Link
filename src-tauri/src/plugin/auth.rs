@@ -76,8 +76,13 @@ impl Challenge {
     pub fn derive_keys(&self, psk: &[u8]) -> Result<crypto::SessionKeys, String> {
         // 盐值绑定双方随机数：同一 PSK 在不同会话派生不同密钥。
         let salt = format!("{}{}", self.nonce_s, self.nonce_p);
-        let transcript =
-            Handshake::transcript(&self.session_id, &self.plugin_id, &self.nonce_s, &self.nonce_p, "session");
+        let transcript = Handshake::transcript(
+            &self.session_id,
+            &self.plugin_id,
+            &self.nonce_s,
+            &self.nonce_p,
+            "session",
+        );
         crypto::SessionKeys::derive(psk, salt.as_bytes(), transcript.as_bytes())
     }
 
@@ -157,7 +162,10 @@ mod tests {
         let mut b = new_challenge("dev.example.a");
         a.finalize(psk, "aa".into());
         b.finalize(psk, "bb".into());
-        assert_ne!(a.derive_keys(psk).unwrap().c2s, b.derive_keys(psk).unwrap().c2s);
+        assert_ne!(
+            a.derive_keys(psk).unwrap().c2s,
+            b.derive_keys(psk).unwrap().c2s
+        );
     }
 
     #[test]

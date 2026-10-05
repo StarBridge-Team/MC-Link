@@ -78,6 +78,13 @@ pub(super) fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Resp {
             serve_file(&cfg.assets_dir().join("fonts"), rel, &ctx)
         }
 
+        // Material Symbols 图标字体（@m3e/web 的 <m3e-icon> 依赖它；
+        // 缺这条路由时上传成功但 GET 404，图标全部回落成 ligature 文字）
+        p if p.starts_with("/material-symbols/") => {
+            let rel = p.trim_start_matches("/material-symbols/");
+            serve_file(&cfg.assets_dir().join("material-symbols"), rel, &ctx)
+        }
+
         // 图标（应用图标、托盘图标等）
         p if p.starts_with("/icons/") => {
             let rel = p.trim_start_matches("/icons/");

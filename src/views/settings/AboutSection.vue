@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { version as vueVersion } from "vue";
-import FieldRow from "../../components/ui/FieldRow.vue";
 import InfoBar from "../../components/ui/InfoBar.vue";
 import SettingCard from "../../components/ui/SettingCard.vue";
 import { confirmAction, showError, showSuccess } from "../../composables/useToast";
@@ -42,6 +41,14 @@ const installModeText = computed(() =>
 
 const contributors = computed(() => community.value?.contributors ?? []);
 const issues = computed(() => community.value?.issues ?? []);
+
+/** 版本信息磁贴：把散落的键值收敛成一张网格。 */
+const stats = computed(() => [
+  { key: "version", label: t("about.version"), value: appVersion.value || "—" },
+  { key: "tauri", label: t("about.tauriVersion"), value: tauriVer.value || "—" },
+  { key: "vue", label: t("about.vueVersion"), value: vueVersion },
+  { key: "install", label: t("about.installForm"), value: installModeText.value },
+]);
 
 async function open(url: string) {
   try {
@@ -84,55 +91,57 @@ onMounted(async () => {
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
-      <SettingCard :icon="'bi bi-info-circle'" :title="t('about.title')" wide>
-        <div class="hero">
-          <span class="hero__logo"><i class="bi bi-boxes" /></span>
-          <div>
-            <h3 class="hero__name">{{ t("app.name") }}</h3>
-            <p class="hint">{{ t("app.tagline") }}</p>
+    <div class="about">
+      <!-- Hero：品牌标识 + 名称 + 版本 + 外链动作 -->
+      <m3e-card variant="elevated" class="hero">
+        <div slot="content" class="hero__inner">
+          <span class="hero__logo"><i class="material-symbols-rounded">category</i></span>
+          <div class="hero__text">
+            <h2 class="hero__name">{{ t("app.name") }}</h2>
+            <p class="hero__tagline">{{ t("app.tagline") }}</p>
+            <span class="hero__chip mono">{{ appVersion || "—" }}</span>
           </div>
-          <span class="grow" />
-          <var-button size="small" text @click="open(REPO_URL)">
-            <i class="bi bi-github" />
-            <span>{{ t("about.repo") }}</span>
-          </var-button>
-          <var-button size="small" text @click="open(WEBSITE_URL)">
-            <i class="bi bi-globe2" />
-            <span>{{ t("about.website") }}</span>
-          </var-button>
+          <div class="hero__actions">
+            <m3e-button variant="tonal" @click="open(REPO_URL)">
+              <m3e-icon slot="icon" name="code" />
+              <span>{{ t("about.repo") }}</span>
+            </m3e-button>
+            <m3e-button variant="tonal" @click="open(WEBSITE_URL)">
+              <m3e-icon slot="icon" name="public" />
+              <span>{{ t("about.website") }}</span>
+            </m3e-button>
+          </div>
         </div>
+      </m3e-card>
 
-        <div class="rows">
-          <FieldRow :label="t('about.version')">
-            <span class="mono">{{ appVersion || "—" }}</span>
-          </FieldRow>
-          <FieldRow :label="t('about.tauriVersion')">
-            <span class="mono">{{ tauriVer || "—" }}</span>
-          </FieldRow>
-          <FieldRow :label="t('about.vueVersion')">
-            <span class="mono">{{ vueVersion }}</span>
-          </FieldRow>
-          <FieldRow :label="t('about.installForm')">
-            <span>{{ installModeText }}</span>
-          </FieldRow>
-          <FieldRow v-if="runtime?.exe_path" :label="t('about.exePath')">
-            <span class="mono path selectable">{{ runtime.exe_path }}</span>
-          </FieldRow>
-          <FieldRow v-if="runtime?.data_dir" :label="t('about.dataDir')">
-            <span class="mono path selectable">{{ runtime.data_dir }}</span>
-          </FieldRow>
+      <!-- 版本信息：网格磁贴 -->
+      <SettingCard :icon="'badge'" :title="t('about.buildInfo')" wide>
+        <div class="stats">
+          <div v-for="s in stats" :key="s.key" class="stat">
+            <span class="stat__label">{{ s.label }}</span>
+            <span class="stat__value mono">{{ s.value }}</span>
+          </div>
         </div>
-
+        <div class="paths">
+          <div v-if="runtime?.exe_path" class="path-row">
+            <span class="stat__label">{{ t("about.exePath") }}</span>
+            <span class="path selectable mono">{{ runtime.exe_path }}</span>
+          </div>
+          <div v-if="runtime?.data_dir" class="path-row">
+            <span class="stat__label">{{ t("about.dataDir") }}</span>
+            <span class="path selectable mono">{{ runtime.data_dir }}</span>
+          </div>
+        </div>
         <div class="actions">
-          <var-button size="small" text @click="resetOobe">
-            <i class="bi bi-arrow-counterclockwise" />
+          <m3e-button @click="resetOobe">
+            <m3e-icon slot="icon" name="restart_alt" />
             <span>{{ t("oobe.resetHint") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-people'" :title="t('about.contributors')">
+      <!-- 贡献者：头像墙 -->
+      <SettingCard :icon="'group'" :title="t('about.contributors')" wide>
         <InfoBar v-if="community?.stale" kind="warning" :text="t('about.stale')" />
         <InfoBar v-if="community?.error" kind="danger" :text="`${t('about.communityError')}: ${community.error}`" />
         <!-- 拉取失败时不要一直显示"加载中"：那是在撒谎说请求还在进行 -->
@@ -152,15 +161,16 @@ onMounted(async () => {
             :title="`${person.login} · ${person.contributions}`"
             @click="open(person.html_url)"
           >
-            <var-avatar :size="32">
+            <m3e-avatar class="person__avatar">
               <img :src="person.avatar_url" :alt="person.login" />
-            </var-avatar>
+            </m3e-avatar>
             <span class="person__name ellipsis">{{ person.login }}</span>
           </button>
         </div>
       </SettingCard>
 
-      <SettingCard :icon="'bi bi-chat-square-text'" :title="t('about.issues')">
+      <!-- 议题 -->
+      <SettingCard :icon="'forum'" :title="t('about.issues')" wide>
         <p v-if="issues.length === 0" class="hint">{{ t("about.noIssues") }}</p>
         <div v-else class="issues">
           <button
@@ -170,15 +180,16 @@ onMounted(async () => {
             type="button"
             @click="open(issue.html_url)"
           >
+            <m3e-icon name="bug_report" class="issue__icon" />
             <span class="issue__number mono">#{{ issue.number }}</span>
             <span class="issue__title ellipsis">{{ issue.title }}</span>
           </button>
         </div>
         <div class="actions">
-          <var-button size="small" text @click="open(`${REPO_URL}/issues/new`)">
-            <i class="bi bi-pencil-square" />
+          <m3e-button variant="tonal" @click="open(`${REPO_URL}/issues/new`)">
+            <m3e-icon slot="icon" name="edit_square" />
             <span>{{ t("about.openIssue") }}</span>
-          </var-button>
+          </m3e-button>
         </div>
       </SettingCard>
     </div>
@@ -186,23 +197,18 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.about {
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-4);
   align-content: start;
 }
 
-@media (max-width: 980px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.hero {
+/* ---------- Hero ---------- */
+.hero__inner {
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
+  gap: var(--sp-5);
   flex-wrap: wrap;
 }
 
@@ -210,32 +216,96 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--r-md);
-  background: var(--primary-container);
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: var(--r-xl);
+  background: linear-gradient(
+    135deg,
+    var(--primary-container),
+    color-mix(in srgb, var(--tertiary-container) 70%, var(--primary-container))
+  );
   color: var(--on-primary-container);
-  font-size: 24px;
+  font-size: 40px;
+}
+
+.hero__text {
+  flex: 1;
+  min-width: 180px;
 }
 
 .hero__name {
-  font-size: var(--fs-headline);
+  font-size: var(--fs-display);
   font-weight: var(--fw-semibold);
   color: var(--text-primary);
+  line-height: var(--lh-tight);
 }
 
-.rows {
+.hero__tagline {
+  margin-top: 4px;
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+.hero__chip {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--sp-3);
+  height: 24px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: var(--fs-xs);
+}
+
+.hero__actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+/* ---------- 版本信息 ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+
+.stat {
   display: flex;
   flex-direction: column;
-  max-width: 720px;
+  gap: 4px;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--surface-container);
 }
 
-.rows :deep(.field-row + .field-row) {
-  border-top: 1px solid var(--outline-variant);
+.stat__label {
+  font-size: var(--fs-label);
+  color: var(--text-muted);
+}
+
+.stat__value {
+  font-size: var(--fs-body);
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+
+.paths {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.path-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .path {
-  max-width: 460px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -248,6 +318,7 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
+/* ---------- 贡献者 ---------- */
 .people {
   display: flex;
   flex-wrap: wrap;
@@ -258,18 +329,33 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
-  max-width: 180px;
-  padding: var(--sp-1) var(--sp-2);
+  max-width: 200px;
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-1);
   border-radius: var(--r-full);
+  background: var(--surface-container);
   color: var(--text-secondary);
   font-size: var(--fs-label);
+  transition: background-color var(--motion-short) var(--ease-standard),
+    color var(--motion-short) var(--ease-standard);
 }
 
 .person:hover {
-  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-  color: var(--text-primary);
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
 }
 
+.person__avatar {
+  --m3e-avatar-size: 28px;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.person__name {
+  min-width: 0;
+}
+
+/* ---------- 议题 ---------- */
 .issues {
   display: flex;
   flex-direction: column;
@@ -279,13 +365,15 @@ onMounted(async () => {
 .issue {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  height: 32px;
-  padding: 0 var(--sp-2);
+  gap: var(--sp-3);
+  height: 40px;
+  padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
   color: var(--text-secondary);
   font-size: var(--fs-base);
   text-align: left;
+  transition: background-color var(--motion-short) var(--ease-standard),
+    color var(--motion-short) var(--ease-standard);
 }
 
 .issue:hover {
@@ -293,9 +381,15 @@ onMounted(async () => {
   color: var(--text-primary);
 }
 
-.issue__number {
-  color: var(--text-muted);
+.issue__icon {
   flex-shrink: 0;
+  font-size: var(--fs-title);
+  color: var(--text-muted);
+}
+
+.issue__number {
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 
 .issue__title {

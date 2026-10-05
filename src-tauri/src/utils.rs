@@ -7,10 +7,7 @@ use std::sync::{Mutex, MutexGuard};
 ///
 /// `context` 参数用于在日志中标识锁的用途，便于问题定位。
 /// `window` 参数可选，提供时将同时向前端发送日志。
-pub fn lock_or_recover<'a, T>(
-    lock: &'a Mutex<T>,
-    context: &str,
-) -> MutexGuard<'a, T> {
+pub fn lock_or_recover<'a, T>(lock: &'a Mutex<T>, context: &str) -> MutexGuard<'a, T> {
     match lock.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {

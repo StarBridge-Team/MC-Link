@@ -21,6 +21,22 @@
       "ecosystem": "node"
     },
     {
+      "name": "@antfu/utils",
+      "version": "8.1.1",
+      "license": "MIT",
+      "homepage": "https://github.com/antfu/utils#readme",
+      "copyright": "Copyright (c) 2021 Anthony Fu <https://github.com/antfu>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@babel/code-frame",
+      "version": "7.29.7",
+      "license": "MIT",
+      "homepage": "https://babel.dev/docs/en/next/babel-code-frame",
+      "copyright": "Copyright (c) 2014-present Sebastian McKenzie and other contributors",
+      "ecosystem": "node"
+    },
+    {
       "name": "@babel/helper-string-parser",
       "version": "7.27.1",
       "license": "MIT",
@@ -31,6 +47,14 @@
     {
       "name": "@babel/helper-validator-identifier",
       "version": "7.28.5",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2014-present Sebastian McKenzie and other contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@babel/helper-validator-identifier",
+      "version": "7.29.7",
       "license": "MIT",
       "homepage": "",
       "copyright": "Copyright (c) 2014-present Sebastian McKenzie and other contributors",
@@ -50,6 +74,38 @@
       "license": "MIT",
       "homepage": "https://babel.dev/docs/en/next/babel-types",
       "copyright": "Copyright (c) 2014-present Sebastian McKenzie and other contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@clack/core",
+      "version": "1.5.1",
+      "license": "MIT",
+      "homepage": "https://github.com/bombshell-dev/clack/tree/main/packages/core#readme",
+      "copyright": "MIT License Copyright (c) 2025-Present [Bombshell contributors](https://bomb.sh/team)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@clack/prompts",
+      "version": "1.8.1",
+      "license": "MIT",
+      "homepage": "https://github.com/bombshell-dev/clack/tree/main/packages/prompts#readme",
+      "copyright": "MIT License Copyright (c) 2025-Present [Bombshell contributors](https://bomb.sh/team)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@configurajs/vite-plus",
+      "version": "0.2.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@conventional-changelog/git-client",
+      "version": "2.7.0",
+      "license": "MIT",
+      "homepage": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/git-client#readme",
+      "copyright": "Copyright © [conventional-changelog team](https://github.com/conventional-changelog)",
       "ecosystem": "node"
     },
     {
@@ -77,8 +133,32 @@
       "ecosystem": "node"
     },
     {
+      "name": "@esbuild/win32-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@exodus/schemasafe",
+      "version": "1.3.0",
+      "license": "MIT",
+      "homepage": "https://github.com/ExodusMovement/schemasafe",
+      "copyright": "Copyright (c) 2014 Mathias Buus",
+      "ecosystem": "node"
+    },
+    {
       "name": "@floating-ui/core",
       "version": "1.7.5",
+      "license": "MIT",
+      "homepage": "https://floating-ui.com",
+      "copyright": "Copyright (c) 2021-present Floating UI contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@floating-ui/core",
+      "version": "1.8.0",
       "license": "MIT",
       "homepage": "https://floating-ui.com",
       "copyright": "Copyright (c) 2021-present Floating UI contributors",
@@ -93,8 +173,24 @@
       "ecosystem": "node"
     },
     {
+      "name": "@floating-ui/dom",
+      "version": "1.8.0",
+      "license": "MIT",
+      "homepage": "https://floating-ui.com",
+      "copyright": "Copyright (c) 2021-present Floating UI contributors",
+      "ecosystem": "node"
+    },
+    {
       "name": "@floating-ui/utils",
       "version": "0.2.11",
+      "license": "MIT",
+      "homepage": "https://floating-ui.com",
+      "copyright": "Copyright (c) 2021-present Floating UI contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@floating-ui/utils",
+      "version": "0.2.12",
       "license": "MIT",
       "homepage": "https://floating-ui.com",
       "copyright": "Copyright (c) 2021-present Floating UI contributors",
@@ -106,6 +202,14 @@
       "license": "OFL-1.1",
       "homepage": "https://fontsource.org/fonts/poppins",
       "copyright": "Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins) Poppins-ThinItalic.ttf: Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins) Poppins-Extr",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@fontsource/roboto",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "homepage": "https://fontsource.org/fonts/roboto",
+      "copyright": "Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) Roboto-Italic[wdth,wght].ttf: Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto",
       "ecosystem": "node"
     },
     {
@@ -181,6 +285,78 @@
       "ecosystem": "node"
     },
     {
+      "name": "@lit-labs/ssr-dom-shim",
+      "version": "1.6.0",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/lit/lit/tree/main/packages/labs/ssr-dom-shim",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@lit/reactive-element",
+      "version": "2.1.2",
+      "license": "BSD-3-Clause",
+      "homepage": "https://lit.dev/",
+      "copyright": "Copyright (c) 2017 Google LLC. All rights reserved.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@m3e/web",
+      "version": "2.8.3",
+      "license": "MIT",
+      "homepage": "https://matraic.github.io/m3e",
+      "copyright": "Copyright (c) 2025–2026 matraic",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@material/material-color-utilities",
+      "version": "0.4.0",
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/material-foundation/material-color-utilities/tree/main/typescript",
+      "copyright": "\"Licensor\" shall mean the copyright owner or entity authorized by",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@popperjs/core",
+      "version": "2.11.8",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2019 Federico Zivolo",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@quansync/fs",
+      "version": "1.1.0",
+      "license": "MIT",
+      "homepage": "https://github.com/quansync-dev/fs#readme",
+      "copyright": "Copyright © 2025-PRESENT Kevin Deng (https://github.com/sxzz)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@redocly/ajv",
+      "version": "8.11.2",
+      "license": "MIT",
+      "homepage": "https://ajv.js.org",
+      "copyright": "Copyright (c) 2015-2021 Evgeny Poberezkin",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@redocly/config",
+      "version": "0.22.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright 2024 Redocly Inc.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@redocly/openapi-core",
+      "version": "1.34.20",
+      "license": "MIT",
+      "homepage": "https://github.com/Redocly/redocly-cli",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
       "name": "@rollup/rollup-win32-x64-gnu",
       "version": "4.60.2",
       "license": "MIT",
@@ -194,6 +370,30 @@
       "license": "MIT",
       "homepage": "https://rollupjs.org/",
       "copyright": "",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@simple-libs/child-process-utils",
+      "version": "1.0.2",
+      "license": "MIT",
+      "homepage": "https://github.com/TrigenSoftware/simple-libs/tree/main/packages/child-process-utils#readme",
+      "copyright": "Copyright (c) 2016 - present, TrigenSoftware",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@simple-libs/hosted-git-info",
+      "version": "1.0.2",
+      "license": "MIT",
+      "homepage": "https://github.com/TrigenSoftware/simple-libs/tree/main/packages/hosted-git-info#readme",
+      "copyright": "Copyright (c) 2016 - present, TrigenSoftware",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@simple-libs/stream-utils",
+      "version": "1.2.0",
+      "license": "MIT",
+      "homepage": "https://github.com/TrigenSoftware/simple-libs/tree/main/packages/stream-utils#readme",
+      "copyright": "Copyright (c) 2016 - present, TrigenSoftware",
       "ecosystem": "node"
     },
     {
@@ -325,11 +525,83 @@
       "ecosystem": "node"
     },
     {
+      "name": "@types/normalize-package-data",
+      "version": "2.4.4",
+      "license": "MIT",
+      "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/normalize-package-data",
+      "copyright": "Copyright (c) Microsoft Corporation.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@types/pluralize",
+      "version": "0.0.33",
+      "license": "MIT",
+      "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/pluralize",
+      "copyright": "Copyright (c) Microsoft Corporation.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@types/trusted-types",
+      "version": "2.0.7",
+      "license": "MIT",
+      "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/trusted-types",
+      "copyright": "Copyright (c) Microsoft Corporation.",
+      "ecosystem": "node"
+    },
+    {
       "name": "@types/web-bluetooth",
       "version": "0.0.20",
       "license": "MIT",
       "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/web-bluetooth",
       "copyright": "Copyright (c) Microsoft Corporation.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@varlet/axle",
+      "version": "1.0.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2022 varlet",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@varlet/icons",
+      "version": "3.20.6",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2024 varletjs",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@varlet/release",
+      "version": "2.2.3",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2022 varlet",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@varlet/shared",
+      "version": "3.20.6",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2024 varletjs",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@varlet/ui",
+      "version": "3.20.6",
+      "license": "MIT",
+      "homepage": "https://varletjs.org",
+      "copyright": "Copyright (c) 2024 varletjs",
+      "ecosystem": "node"
+    },
+    {
+      "name": "@varlet/use",
+      "version": "3.20.6",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2024 varletjs",
       "ecosystem": "node"
     },
     {
@@ -545,6 +817,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "agent-base",
+      "version": "7.1.4",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>",
+      "ecosystem": "node"
+    },
+    {
       "name": "ahash",
       "version": "0.8.12",
       "license": "MIT OR Apache-2.0",
@@ -602,6 +882,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "ansi-colors",
+      "version": "4.1.3",
+      "license": "MIT",
+      "homepage": "https://github.com/doowb/ansi-colors",
+      "copyright": "Copyright (c) 2015-present, Brian Woodward.",
+      "ecosystem": "node"
+    },
+    {
       "name": "ansi-regex",
       "version": "5.0.1",
       "license": "MIT",
@@ -615,6 +903,14 @@
       "license": "MIT",
       "homepage": "",
       "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "ansis",
+      "version": "4.2.0",
+      "license": "ISC",
+      "homepage": "",
+      "copyright": "Copyright (c) 2025, webdiscus",
       "ecosystem": "node"
     },
     {
@@ -660,6 +956,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "api-farmer",
+      "version": "0.1.5",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2024 varletjs",
+      "ecosystem": "node"
+    },
+    {
       "name": "arbitrary",
       "version": "1.4.2",
       "license": "MIT OR Apache-2.0",
@@ -667,11 +971,35 @@
       "ecosystem": "rust"
     },
     {
+      "name": "argparse",
+      "version": "2.0.1",
+      "license": "Python-2.0",
+      "homepage": "",
+      "copyright": "provided, however, that PSF's License Agreement and PSF's notice of copyright,",
+      "ecosystem": "node"
+    },
+    {
+      "name": "array-ify",
+      "version": "1.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/stevemao/array-ify",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
       "name": "ascii",
       "version": "1.1.0",
       "license": "Apache-2.0 OR MIT",
       "homepage": "https://github.com/tomprogrammer/rust-ascii",
       "ecosystem": "rust"
+    },
+    {
+      "name": "async",
+      "version": "3.2.6",
+      "license": "MIT",
+      "homepage": "https://caolan.github.io/async/",
+      "copyright": "Copyright (c) 2010-2018 Caolan McMahon",
+      "ecosystem": "node"
     },
     {
       "name": "async-broadcast",
@@ -759,6 +1087,14 @@
       "ecosystem": "node"
     },
     {
+      "name": "asynckit",
+      "version": "0.4.0",
+      "license": "MIT",
+      "homepage": "https://github.com/alexindigo/asynckit#readme",
+      "copyright": "Copyright (c) 2016 Alex Indigo",
+      "ecosystem": "node"
+    },
+    {
       "name": "atk",
       "version": "0.18.2",
       "license": "MIT",
@@ -795,11 +1131,27 @@
       "ecosystem": "node"
     },
     {
+      "name": "axios",
+      "version": "1.7.3",
+      "license": "MIT",
+      "homepage": "https://axios-http.com",
+      "copyright": "# Copyright (c) 2014-present Matt Zabriskie & Collaborators",
+      "ecosystem": "node"
+    },
+    {
       "name": "balanced-match",
       "version": "1.0.2",
       "license": "MIT",
       "homepage": "https://github.com/juliangruber/balanced-match",
       "copyright": "Copyright (c) 2013 Julian Gruber &lt;julian@juliangruber.com&gt;",
+      "ecosystem": "node"
+    },
+    {
+      "name": "balanced-match",
+      "version": "4.0.4",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Original code Copyright Julian Gruber <julian@juliangruber.com>",
       "ecosystem": "node"
     },
     {
@@ -898,6 +1250,14 @@
       "ecosystem": "node"
     },
     {
+      "name": "brace-expansion",
+      "version": "5.0.12",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright Julian Gruber <julian@juliangruber.com>",
+      "ecosystem": "node"
+    },
+    {
       "name": "brotli",
       "version": "8.0.2",
       "license": "BSD-3-Clause AND MIT",
@@ -941,6 +1301,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "bundle-require",
+      "version": "5.1.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright © 2021 EGOIST (https://github.com/sponsors/egoist)",
+      "ecosystem": "node"
+    },
+    {
       "name": "bytemuck",
       "version": "1.25.0",
       "license": "Zlib OR Apache-2.0 OR MIT",
@@ -974,6 +1342,30 @@
       "license": "MIT",
       "homepage": "https://gtk-rs.org/",
       "ecosystem": "rust"
+    },
+    {
+      "name": "call-bind-apply-helpers",
+      "version": "1.0.2",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/call-bind-apply-helpers#readme",
+      "copyright": "Copyright (c) 2024 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "call-bound",
+      "version": "1.0.4",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/call-bound#readme",
+      "copyright": "Copyright (c) 2024 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "call-me-maybe",
+      "version": "1.0.2",
+      "license": "MIT",
+      "homepage": "https://github.com/limulus/call-me-maybe#readme",
+      "copyright": "Copyright (c) 2015 Eric McCarthy",
+      "ecosystem": "node"
     },
     {
       "name": "camino",
@@ -1062,6 +1454,14 @@
       "ecosystem": "node"
     },
     {
+      "name": "change-case",
+      "version": "5.4.4",
+      "license": "MIT",
+      "homepage": "https://github.com/blakeembrey/change-case/tree/master/packages/change-case#readme",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
       "name": "chrono",
       "version": "0.4.44",
       "license": "MIT OR Apache-2.0",
@@ -1088,6 +1488,14 @@
       "license": "Apache-2.0",
       "homepage": "https://github.com/joe-bell/cva#readme",
       "copyright": "\"Licensor\" shall mean the copyright owner or entity authorized by",
+      "ecosystem": "node"
+    },
+    {
+      "name": "cleye",
+      "version": "2.7.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>",
       "ecosystem": "node"
     },
     {
@@ -1130,11 +1538,51 @@
       "ecosystem": "rust"
     },
     {
+      "name": "colorette",
+      "version": "1.4.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright © Jorge Bucaran <<https://jorgebucaran.com>>",
+      "ecosystem": "node"
+    },
+    {
       "name": "combine",
       "version": "4.6.7",
       "license": "MIT",
       "homepage": "https://github.com/Marwes/combine",
       "ecosystem": "rust"
+    },
+    {
+      "name": "combined-stream",
+      "version": "1.0.8",
+      "license": "MIT",
+      "homepage": "https://github.com/felixge/node-combined-stream",
+      "copyright": "Copyright (c) 2011 Debuggable Limited <felix@debuggable.com>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "commander",
+      "version": "13.1.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2011 TJ Holowaychuk <tj@vision-media.ca>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "compare-func",
+      "version": "2.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/stevemao/compare-func",
+      "copyright": "Copyright (c) 2015 Steve Mao",
+      "ecosystem": "node"
+    },
+    {
+      "name": "composed-offset-position",
+      "version": "0.0.6",
+      "license": "MIT",
+      "homepage": "https://github.com/jcfranco/composed-offset-position#readme",
+      "copyright": "Copyright (c) 2023 composed-offset-position contributors",
+      "ecosystem": "node"
     },
     {
       "name": "compression-codecs",
@@ -1178,6 +1626,54 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/tkaitchuck/constrandom",
       "ecosystem": "rust"
+    },
+    {
+      "name": "conventional-changelog",
+      "version": "7.2.1",
+      "license": "MIT",
+      "homepage": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-changelog#readme",
+      "copyright": "Copyright © [conventional-changelog team](https://github.com/conventional-changelog)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "conventional-changelog-angular",
+      "version": "8.3.1",
+      "license": "ISC",
+      "homepage": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-changelog-angular#readme",
+      "copyright": "Copyright © [conventional-changelog team](https://github.com/conventional-changelog)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "conventional-changelog-preset-loader",
+      "version": "5.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-changelog-preset-loader#readme",
+      "copyright": "Copyright © [conventional-changelog team](https://github.com/conventional-changelog)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "conventional-changelog-writer",
+      "version": "8.4.0",
+      "license": "MIT",
+      "homepage": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-changelog-writer#readme",
+      "copyright": "Copyright © [conventional-changelog team](https://github.com/conventional-changelog)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "conventional-commits-filter",
+      "version": "5.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-commits-filter#readme",
+      "copyright": "Copyright (c) 2015 Steve Mao <maochenyan@gmail.com> (https://github.com/stevemao)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "conventional-commits-parser",
+      "version": "6.4.0",
+      "license": "MIT",
+      "homepage": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-commits-parser#readme",
+      "copyright": "Copyright © [conventional-changelog team](https://github.com/conventional-changelog)",
+      "ecosystem": "node"
     },
     {
       "name": "cookie",
@@ -1264,6 +1760,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "crypto-js",
+      "version": "4.2.0",
+      "license": "MIT",
+      "homepage": "http://github.com/brix/crypto-js",
+      "copyright": "Copyright (c) 2009-2013 Jeff Mott",
+      "ecosystem": "node"
+    },
+    {
       "name": "css-line-break",
       "version": "2.1.0",
       "license": "MIT",
@@ -1344,6 +1848,14 @@
       "ecosystem": "node"
     },
     {
+      "name": "dayjs",
+      "version": "1.11.23",
+      "license": "MIT",
+      "homepage": "https://day.js.org",
+      "copyright": "Copyright (c) 2018-present, iamkun",
+      "ecosystem": "node"
+    },
+    {
       "name": "dbus",
       "version": "0.9.11",
       "license": "Apache-2.0/MIT",
@@ -1356,6 +1868,22 @@
       "license": "MIT",
       "homepage": "https://github.com/yyx990803/de-indent#readme",
       "copyright": "",
+      "ecosystem": "node"
+    },
+    {
+      "name": "debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2014-2017 TJ Holowaychuk <tj@vision-media.ca>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "decimal.js",
+      "version": "10.6.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2025 Michael Mclaughlin",
       "ecosystem": "node"
     },
     {
@@ -1378,6 +1906,22 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/knurling-rs/defmt",
       "ecosystem": "rust"
+    },
+    {
+      "name": "defu",
+      "version": "6.1.7",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Pooya Parsa <pooya@pi0.io>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "delayed-stream",
+      "version": "1.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/felixge/node-delayed-stream",
+      "copyright": "Copyright (c) 2011 Debuggable Limited <felix@debuggable.com>",
+      "ecosystem": "node"
     },
     {
       "name": "deranged",
@@ -1479,6 +2023,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "dot-prop",
+      "version": "5.3.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
       "name": "dpi",
       "version": "0.1.2",
       "license": "Apache-2.0 AND MIT",
@@ -1507,6 +2059,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "dunder-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/es-shims/dunder-proto#readme",
+      "copyright": "Copyright (c) 2024 ECMAScript Shims",
+      "ecosystem": "node"
+    },
+    {
       "name": "dyn-clone",
       "version": "1.0.20",
       "license": "MIT OR Apache-2.0",
@@ -1519,6 +2079,14 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/rayon-rs/either",
       "ecosystem": "rust"
+    },
+    {
+      "name": "ejs",
+      "version": "3.1.10",
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/mde/ejs",
+      "copyright": "\"Licensor\" shall mean the copyright owner or entity authorized by",
+      "ecosystem": "node"
     },
     {
       "name": "electron-to-chromium",
@@ -1638,8 +2206,56 @@
       "ecosystem": "rust"
     },
     {
+      "name": "es-define-property",
+      "version": "1.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/es-define-property#readme",
+      "copyright": "Copyright (c) 2024 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "es-errors",
+      "version": "1.3.0",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/es-errors#readme",
+      "copyright": "Copyright (c) 2024 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "es-object-atoms",
+      "version": "1.1.2",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/es-object-atoms#readme",
+      "copyright": "Copyright (c) 2024 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "es-set-tostringtag",
+      "version": "2.1.0",
+      "license": "MIT",
+      "homepage": "https://github.com/es-shims/es-set-tostringtag#readme",
+      "copyright": "Copyright (c) 2022 ECMAScript Shims",
+      "ecosystem": "node"
+    },
+    {
+      "name": "es6-promise",
+      "version": "3.3.1",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2014 Yehuda Katz, Tom Dale, Stefan Penner and contributors",
+      "ecosystem": "node"
+    },
+    {
       "name": "esbuild",
       "version": "0.25.12",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2020 Evan Wallace",
+      "ecosystem": "node"
+    },
+    {
+      "name": "esbuild",
+      "version": "0.28.2",
       "license": "MIT",
       "homepage": "",
       "copyright": "Copyright (c) 2020 Evan Wallace",
@@ -1676,11 +2292,59 @@
       "ecosystem": "rust"
     },
     {
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "license": "MIT",
+      "homepage": "https://github.com/epoberezkin/fast-deep-equal#readme",
+      "copyright": "Copyright (c) 2017 Evgeny Poberezkin",
+      "ecosystem": "node"
+    },
+    {
+      "name": "fast-safe-stringify",
+      "version": "2.1.1",
+      "license": "MIT",
+      "homepage": "https://github.com/davidmarkclements/fast-safe-stringify#readme",
+      "copyright": "Copyright (c) 2016 David Mark Clements",
+      "ecosystem": "node"
+    },
+    {
+      "name": "fast-string-truncated-width",
+      "version": "3.0.3",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2024-present Fabio Spampinato",
+      "ecosystem": "node"
+    },
+    {
+      "name": "fast-string-width",
+      "version": "3.0.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2024-present Fabio Spampinato",
+      "ecosystem": "node"
+    },
+    {
+      "name": "fast-wrap-ansi",
+      "version": "0.2.2",
+      "license": "MIT",
+      "homepage": "https://github.com/43081j/fast-wrap-ansi#readme",
+      "copyright": "Copyright (c) 2025 James Garbutt",
+      "ecosystem": "node"
+    },
+    {
       "name": "fastrand",
       "version": "2.4.1",
       "license": "Apache-2.0 OR MIT",
       "homepage": "https://github.com/smol-rs/fastrand",
       "ecosystem": "rust"
+    },
+    {
+      "name": "fd-package-json",
+      "version": "2.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/es-tooling/fd-package-json#readme",
+      "copyright": "Copyright (c) 2024 ES Community Tooling",
+      "ecosystem": "node"
     },
     {
       "name": "fdeflate",
@@ -1703,6 +2367,14 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/Diggsey/rust-field-offset",
       "ecosystem": "rust"
+    },
+    {
+      "name": "filelist",
+      "version": "1.0.6",
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/mde/filelist",
+      "copyright": "",
+      "ecosystem": "node"
     },
     {
       "name": "filetime",
@@ -1747,6 +2419,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "follow-redirects",
+      "version": "1.16.1",
+      "license": "MIT",
+      "homepage": "https://github.com/follow-redirects/follow-redirects",
+      "copyright": "Copyright 2014–present Olivier Lalonde <olalonde@gmail.com>, James Talmage <james@talmage.io>, Ruben Verborgh",
+      "ecosystem": "node"
+    },
+    {
       "name": "foreign-types",
       "version": "0.3.2",
       "license": "MIT/Apache-2.0",
@@ -1789,11 +2469,35 @@
       "ecosystem": "rust"
     },
     {
+      "name": "form-data",
+      "version": "4.0.6",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2012 Felix Geisendörfer (felix@debuggable.com) and contributors",
+      "ecosystem": "node"
+    },
+    {
       "name": "fraction.js",
       "version": "5.3.4",
       "license": "MIT",
       "homepage": "https://raw.org/article/rational-numbers-in-javascript/",
       "copyright": "Copyright (c) 2025 Robert Eisele",
+      "ecosystem": "node"
+    },
+    {
+      "name": "fs-extra",
+      "version": "11.4.1",
+      "license": "MIT",
+      "homepage": "https://github.com/jprichardson/node-fs-extra",
+      "copyright": "Copyright (c) 2011-2024 JP Richardson",
+      "ecosystem": "node"
+    },
+    {
+      "name": "function-bind",
+      "version": "1.1.2",
+      "license": "MIT",
+      "homepage": "https://github.com/Raynos/function-bind",
+      "copyright": "Copyright (c) 2013 Raynos.",
       "ecosystem": "node"
     },
     {
@@ -1924,6 +2628,22 @@
       "ecosystem": "node"
     },
     {
+      "name": "get-intrinsic",
+      "version": "1.3.0",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/get-intrinsic#readme",
+      "copyright": "Copyright (c) 2020 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "get-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/get-proto#readme",
+      "copyright": "Copyright (c) 2025 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
       "name": "gethostname",
       "version": "1.1.0",
       "license": "Apache-2.0",
@@ -2001,6 +2721,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "glob",
+      "version": "13.0.6",
+      "license": "BlueOak-1.0.0",
+      "homepage": "",
+      "copyright": "## Copyright",
+      "ecosystem": "node"
+    },
+    {
       "name": "global-hotkey",
       "version": "0.7.0",
       "license": "Apache-2.0 OR MIT",
@@ -2013,6 +2741,14 @@
       "license": "MIT",
       "homepage": "https://gtk-rs.org/",
       "ecosystem": "rust"
+    },
+    {
+      "name": "gopd",
+      "version": "1.2.0",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/gopd#readme",
+      "copyright": "Copyright (c) 2022 Jordan Harband",
+      "ecosystem": "node"
     },
     {
       "name": "graceful-fs",
@@ -2051,11 +2787,35 @@
       "ecosystem": "rust"
     },
     {
+      "name": "handlebars",
+      "version": "4.7.9",
+      "license": "MIT",
+      "homepage": "https://handlebarsjs.com/",
+      "copyright": "Copyright (C) 2011-2019 by Yehuda Katz",
+      "ecosystem": "node"
+    },
+    {
       "name": "has-flag",
       "version": "4.0.0",
       "license": "MIT",
       "homepage": "",
       "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "has-symbols",
+      "version": "1.1.0",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/has-symbols#readme",
+      "copyright": "Copyright (c) 2016 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "has-tostringtag",
+      "version": "1.0.2",
+      "license": "MIT",
+      "homepage": "https://github.com/inspect-js/has-tostringtag#readme",
+      "copyright": "Copyright (c) 2021 Inspect JS",
       "ecosystem": "node"
     },
     {
@@ -2092,6 +2852,14 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/rust-lang/hashbrown",
       "ecosystem": "rust"
+    },
+    {
+      "name": "hasown",
+      "version": "2.0.4",
+      "license": "MIT",
+      "homepage": "https://github.com/inspect-js/hasOwn#readme",
+      "copyright": "Copyright (c) Jordan Harband and contributors",
+      "ecosystem": "node"
     },
     {
       "name": "he",
@@ -2144,6 +2912,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "hosted-git-info",
+      "version": "8.1.0",
+      "license": "ISC",
+      "homepage": "https://github.com/npm/hosted-git-info",
+      "copyright": "Copyright (c) 2015, Rebecca Turner",
+      "ecosystem": "node"
+    },
+    {
       "name": "html2canvas",
       "version": "1.4.1",
       "license": "MIT",
@@ -2187,6 +2963,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "http2-client",
+      "version": "1.3.5",
+      "license": "MIT",
+      "homepage": "https://github.com/hisco",
+      "copyright": "Copyright (c) 2019 Eyal.D <hisco@googlegroups.com‬>",
+      "ecosystem": "node"
+    },
+    {
       "name": "httparse",
       "version": "1.10.1",
       "license": "MIT OR Apache-2.0",
@@ -2199,6 +2983,14 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/pyfisch/httpdate",
       "ecosystem": "rust"
+    },
+    {
+      "name": "https-proxy-agent",
+      "version": "7.0.6",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>",
+      "ecosystem": "node"
     },
     {
       "name": "hyper",
@@ -2327,6 +3119,22 @@
       "ecosystem": "rust"
     },
     {
+      "name": "importx",
+      "version": "0.5.2",
+      "license": "MIT",
+      "homepage": "https://github.com/antfu/importx#readme",
+      "copyright": "Copyright (c) 2024-PRESENT Anthony Fu <https://github.com/antfu>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "index-to-position",
+      "version": "1.2.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
       "name": "indexmap",
       "version": "1.9.3",
       "license": "Apache-2.0 OR MIT",
@@ -2391,6 +3199,14 @@
       "ecosystem": "node"
     },
     {
+      "name": "is-obj",
+      "version": "2.0.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
       "name": "is-wsl",
       "version": "0.4.0",
       "license": "MIT",
@@ -2403,6 +3219,14 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/dtolnay/itoa",
       "ecosystem": "rust"
+    },
+    {
+      "name": "jake",
+      "version": "10.9.4",
+      "license": "Apache-2.0",
+      "homepage": "",
+      "copyright": "",
+      "ecosystem": "node"
     },
     {
       "name": "javascriptcore-rs",
@@ -2490,6 +3314,22 @@
       "ecosystem": "rust"
     },
     {
+      "name": "js-cookie",
+      "version": "3.0.5",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2018 Copyright 2018 Klaus Hartl, Fagner Brack, GitHub Contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "js-levenshtein",
+      "version": "1.1.6",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2017 Gustaf Andersson",
+      "ecosystem": "node"
+    },
+    {
       "name": "js-sys",
       "version": "0.3.97",
       "license": "MIT OR Apache-2.0",
@@ -2497,11 +3337,43 @@
       "ecosystem": "rust"
     },
     {
+      "name": "js-tokens",
+      "version": "4.0.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2014, 2015, 2016, 2017, 2018 Simon Lydell",
+      "ecosystem": "node"
+    },
+    {
+      "name": "js-yaml",
+      "version": "4.3.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (C) 2011-2015 by Vitaly Puzrin",
+      "ecosystem": "node"
+    },
+    {
       "name": "json-patch",
       "version": "4.2.0",
       "license": "MIT/Apache-2.0",
       "homepage": "https://github.com/idubrov/json-patch",
       "ecosystem": "rust"
+    },
+    {
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/epoberezkin/json-schema-traverse#readme",
+      "copyright": "Copyright (c) 2017 Evgeny Poberezkin",
+      "ecosystem": "node"
+    },
+    {
+      "name": "jsonfile",
+      "version": "6.2.1",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2012-2015, JP Richardson <jprichardson@gmail.com>",
+      "ecosystem": "node"
     },
     {
       "name": "jsonptr",
@@ -2597,11 +3469,43 @@
       "ecosystem": "rust"
     },
     {
+      "name": "lit",
+      "version": "3.3.3",
+      "license": "BSD-3-Clause",
+      "homepage": "https://lit.dev/",
+      "copyright": "Copyright (c) 2017 Google LLC. All rights reserved.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "lit-element",
+      "version": "4.2.2",
+      "license": "BSD-3-Clause",
+      "homepage": "https://lit.dev/",
+      "copyright": "Copyright (c) 2017 Google LLC. All rights reserved.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "lit-html",
+      "version": "3.3.3",
+      "license": "BSD-3-Clause",
+      "homepage": "https://lit.dev/",
+      "copyright": "Copyright (c) 2017 Google LLC. All rights reserved.",
+      "ecosystem": "node"
+    },
+    {
       "name": "litemap",
       "version": "0.8.2",
       "license": "Unicode-3.0",
       "homepage": "https://github.com/unicode-org/icu4x",
       "ecosystem": "rust"
+    },
+    {
+      "name": "load-tsconfig",
+      "version": "0.2.5",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright © 2021 EGOIST (https://github.com/sponsors/egoist)",
+      "ecosystem": "node"
     },
     {
       "name": "local-ip-address",
@@ -2616,6 +3520,14 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/Amanieu/parking_lot",
       "ecosystem": "rust"
+    },
+    {
+      "name": "lodash",
+      "version": "4.17.21",
+      "license": "MIT",
+      "homepage": "https://lodash.com/",
+      "copyright": "Copyright OpenJS Foundation and other contributors <https://openjsf.org/>",
+      "ecosystem": "node"
     },
     {
       "name": "lodash",
@@ -2656,6 +3568,22 @@
       "ecosystem": "rust"
     },
     {
+      "name": "lru-cache",
+      "version": "10.4.3",
+      "license": "ISC",
+      "homepage": "",
+      "copyright": "Copyright (c) 2010-2023 Isaac Z. Schlueter and Contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "lru-cache",
+      "version": "11.5.3",
+      "license": "BlueOak-1.0.0",
+      "homepage": "",
+      "copyright": "## Copyright",
+      "ecosystem": "node"
+    },
+    {
       "name": "lru-slab",
       "version": "0.1.2",
       "license": "MIT OR Apache-2.0 OR Zlib",
@@ -2693,6 +3621,22 @@
       "ecosystem": "rust"
     },
     {
+      "name": "material-symbols",
+      "version": "0.47.6",
+      "license": "Apache-2.0",
+      "homepage": "https://marella.github.io/material-symbols/demo/",
+      "copyright": "\"Licensor\" shall mean the copyright owner or entity authorized by",
+      "ecosystem": "node"
+    },
+    {
+      "name": "math-intrinsics",
+      "version": "1.1.0",
+      "license": "MIT",
+      "homepage": "https://github.com/es-shims/math-intrinsics#readme",
+      "copyright": "Copyright (c) 2024 ECMAScript Shims",
+      "ecosystem": "node"
+    },
+    {
       "name": "memchr",
       "version": "2.8.0",
       "license": "Unlicense OR MIT",
@@ -2722,6 +3666,14 @@
       "ecosystem": "node"
     },
     {
+      "name": "meow",
+      "version": "13.2.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
       "name": "mime",
       "version": "0.3.17",
       "license": "MIT OR Apache-2.0",
@@ -2736,11 +3688,59 @@
       "ecosystem": "rust"
     },
     {
+      "name": "mime-db",
+      "version": "1.52.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "mime-types",
+      "version": "2.1.35",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "minimatch",
+      "version": "10.2.6",
+      "license": "BlueOak-1.0.0",
+      "homepage": "",
+      "copyright": "## Copyright",
+      "ecosystem": "node"
+    },
+    {
+      "name": "minimatch",
+      "version": "5.1.9",
+      "license": "ISC",
+      "homepage": "",
+      "copyright": "Copyright (c) 2011-2023 Isaac Z. Schlueter and Contributors",
+      "ecosystem": "node"
+    },
+    {
       "name": "minimatch",
       "version": "9.0.9",
       "license": "ISC",
       "homepage": "",
       "copyright": "Copyright (c) 2011-2023 Isaac Z. Schlueter and Contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "minimist",
+      "version": "1.2.8",
+      "license": "MIT",
+      "homepage": "https://github.com/minimistjs/minimist",
+      "copyright": "The above copyright notice and this permission notice shall be included in all",
+      "ecosystem": "node"
+    },
+    {
+      "name": "minipass",
+      "version": "7.1.3",
+      "license": "BlueOak-1.0.0",
+      "homepage": "",
+      "copyright": "## Copyright",
       "ecosystem": "node"
     },
     {
@@ -2770,6 +3770,22 @@
       "license": "MIT",
       "homepage": "https://github.com/tokio-rs/mio",
       "ecosystem": "rust"
+    },
+    {
+      "name": "mitt",
+      "version": "3.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/developit/mitt",
+      "copyright": "Copyright (c) 2021 Jason Miller",
+      "ecosystem": "node"
+    },
+    {
+      "name": "ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2020 Vercel, Inc.",
+      "ecosystem": "node"
     },
     {
       "name": "muda",
@@ -2837,6 +3853,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "neo-async",
+      "version": "2.6.2",
+      "license": "MIT",
+      "homepage": "https://github.com/suguru03/neo-async",
+      "copyright": "Copyright (c) 2014-2018 Suguru Motegi",
+      "ecosystem": "node"
+    },
+    {
       "name": "new_debug_unreachable",
       "version": "1.0.6",
       "license": "MIT",
@@ -2844,11 +3868,43 @@
       "ecosystem": "rust"
     },
     {
+      "name": "node-fetch",
+      "version": "2.7.0",
+      "license": "MIT",
+      "homepage": "https://github.com/bitinn/node-fetch",
+      "copyright": "Copyright (c) 2016 David Frank",
+      "ecosystem": "node"
+    },
+    {
+      "name": "node-fetch-h2",
+      "version": "2.3.0",
+      "license": "MIT",
+      "homepage": "https://github.com/mikeralphson/node-fetch-h2",
+      "copyright": "Copyright (c) 2016 David Frank",
+      "ecosystem": "node"
+    },
+    {
+      "name": "node-readfiles",
+      "version": "0.2.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2016 Alejandro Gonzalez <guatedude2@hotmial.com>",
+      "ecosystem": "node"
+    },
+    {
       "name": "node-releases",
       "version": "2.0.38",
       "license": "MIT",
       "homepage": "",
       "copyright": "Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "normalize-package-data",
+      "version": "7.0.1",
+      "license": "BSD-2-Clause",
+      "homepage": "",
+      "copyright": "Copyright (c) Meryn Stol (\"Author\")",
       "ecosystem": "node"
     },
     {
@@ -2886,6 +3942,46 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/rust-num/num-traits",
       "ecosystem": "rust"
+    },
+    {
+      "name": "oas-kit-common",
+      "version": "1.0.8",
+      "license": "BSD-3-Clause",
+      "homepage": "",
+      "copyright": "Copyright (c) 2016, Mermade Software",
+      "ecosystem": "node"
+    },
+    {
+      "name": "oas-linter",
+      "version": "3.2.2",
+      "license": "BSD-3-Clause",
+      "homepage": "",
+      "copyright": "Copyright (c) 2016, Mermade Software",
+      "ecosystem": "node"
+    },
+    {
+      "name": "oas-resolver",
+      "version": "2.5.6",
+      "license": "BSD-3-Clause",
+      "homepage": "",
+      "copyright": "Copyright (c) 2016, Mermade Software",
+      "ecosystem": "node"
+    },
+    {
+      "name": "oas-schema-walker",
+      "version": "1.1.5",
+      "license": "BSD-3-Clause",
+      "homepage": "",
+      "copyright": "Copyright (c) 2016, Mermade Software",
+      "ecosystem": "node"
+    },
+    {
+      "name": "oas-validator",
+      "version": "5.0.8",
+      "license": "BSD-3-Clause",
+      "homepage": "",
+      "copyright": "Copyright (c) 2016, Mermade Software",
+      "ecosystem": "node"
     },
     {
       "name": "objc2",
@@ -3014,6 +4110,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "object-inspect",
+      "version": "1.13.4",
+      "license": "MIT",
+      "homepage": "https://github.com/inspect-js/object-inspect",
+      "copyright": "Copyright (c) 2013 James Halliday",
+      "ecosystem": "node"
+    },
+    {
       "name": "once_cell",
       "version": "1.21.4",
       "license": "MIT OR Apache-2.0",
@@ -3040,6 +4144,14 @@
       "license": "MIT",
       "homepage": "https://github.com/Byron/open-rs",
       "ecosystem": "rust"
+    },
+    {
+      "name": "openapi-typescript",
+      "version": "7.13.0",
+      "license": "MIT",
+      "homepage": "https://openapi-ts.dev",
+      "copyright": "Copyright (c) 2020 Drew Powers",
+      "ecosystem": "node"
     },
     {
       "name": "openssl",
@@ -3098,6 +4210,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "package-json-from-dist",
+      "version": "1.0.1",
+      "license": "BlueOak-1.0.0",
+      "homepage": "",
+      "copyright": "## Copyright",
+      "ecosystem": "node"
+    },
+    {
       "name": "pango",
       "version": "0.18.3",
       "license": "MIT",
@@ -3133,6 +4253,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "parse-json",
+      "version": "8.3.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
       "name": "path-browserify",
       "version": "1.0.1",
       "license": "MIT",
@@ -3141,11 +4269,27 @@
       "ecosystem": "node"
     },
     {
+      "name": "path-scurry",
+      "version": "2.0.2",
+      "license": "BlueOak-1.0.0",
+      "homepage": "",
+      "copyright": "## Copyright",
+      "ecosystem": "node"
+    },
+    {
       "name": "pathdiff",
       "version": "0.2.3",
       "license": "MIT/Apache-2.0",
       "homepage": "https://github.com/Manishearth/pathdiff",
       "ecosystem": "rust"
+    },
+    {
+      "name": "pathe",
+      "version": "2.0.3",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Pooya Parsa <pooya@pi0.io> - Daniel Roe <daniel@roe.dev>",
+      "ecosystem": "node"
     },
     {
       "name": "percent-encoding",
@@ -3234,6 +4378,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "pluralize",
+      "version": "8.0.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2013 Blake Embrey (hello@blakeembrey.com)",
+      "ecosystem": "node"
+    },
+    {
       "name": "png",
       "version": "0.17.16",
       "license": "MIT OR Apache-2.0",
@@ -3320,6 +4472,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "prettier",
+      "version": "3.9.9",
+      "license": "MIT",
+      "homepage": "https://prettier.io",
+      "copyright": "Copyright © James Long and contributors",
+      "ecosystem": "node"
+    },
+    {
       "name": "prettyplease",
       "version": "0.2.37",
       "license": "MIT OR Apache-2.0",
@@ -3374,6 +4534,30 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/dtolnay/proc-macro2",
       "ecosystem": "rust"
+    },
+    {
+      "name": "proxy-from-env",
+      "version": "1.1.0",
+      "license": "MIT",
+      "homepage": "https://github.com/Rob--W/proxy-from-env#readme",
+      "copyright": "Copyright (C) 2016-2018 Rob Wu <rob@robwu.nl>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "qs",
+      "version": "6.16.0",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/ljharb/qs",
+      "copyright": "Copyright (c) 2014, Nathan LaFreniere and other [contributors](https://github.com/ljharb/qs/graphs/contributors)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "quansync",
+      "version": "1.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/quansync-dev/quansync#readme",
+      "copyright": "Copyright (c) 2025-PRESENT Anthony Fu <https://github.com/antfu> and Kevin Deng <https://github.com/sxzz>",
+      "ecosystem": "node"
     },
     {
       "name": "quick-xml",
@@ -3474,6 +4658,22 @@
       "ecosystem": "rust"
     },
     {
+      "name": "rattail",
+      "version": "1.8.3",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2024 varletjs",
+      "ecosystem": "node"
+    },
+    {
+      "name": "rattail",
+      "version": "2.2.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2024 varletjs",
+      "ecosystem": "node"
+    },
+    {
       "name": "raw-window-handle",
       "version": "0.6.2",
       "license": "MIT OR Apache-2.0 OR Zlib",
@@ -3507,6 +4707,14 @@
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/dtolnay/ref-cast",
       "ecosystem": "rust"
+    },
+    {
+      "name": "reftools",
+      "version": "1.1.9",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/mermade/oas-kit#readme",
+      "copyright": "Copyright (c) 2017, Mike Ralphson",
+      "ecosystem": "node"
     },
     {
       "name": "regex",
@@ -3559,6 +4767,14 @@
       "ecosystem": "node"
     },
     {
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Vsevolod Strukchinsky <floatdrop@gmail.com> (github.com/floatdrop)",
+      "ecosystem": "node"
+    },
+    {
       "name": "reqwest",
       "version": "0.12.28",
       "license": "MIT OR Apache-2.0",
@@ -3573,6 +4789,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "rimraf",
+      "version": "6.1.3",
+      "license": "BlueOak-1.0.0",
+      "homepage": "",
+      "copyright": "## Copyright",
+      "ecosystem": "node"
+    },
+    {
       "name": "ring",
       "version": "0.17.14",
       "license": "Apache-2.0 AND ISC",
@@ -3585,6 +4809,30 @@
       "license": "MIT",
       "homepage": "https://rollupjs.org/",
       "copyright": "Copyright (c) 2017 [these people](https://github.com/rollup/rollup/graphs/contributors)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "rslog",
+      "version": "1.3.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2023-present Bytedance, Inc. and its affiliates.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "rslog",
+      "version": "2.3.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2023-present Bytedance, Inc. and its affiliates.",
+      "ecosystem": "node"
+    },
+    {
+      "name": "ruler-factory",
+      "version": "0.0.14",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2025 varletjs",
       "ecosystem": "node"
     },
     {
@@ -3757,6 +5005,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "semver",
+      "version": "7.8.5",
+      "license": "ISC",
+      "homepage": "",
+      "copyright": "Copyright (c) Isaac Z. Schlueter and Contributors",
+      "ecosystem": "node"
+    },
+    {
       "name": "serde",
       "version": "1.0.228",
       "license": "MIT OR Apache-2.0",
@@ -3926,6 +5182,86 @@
       "ecosystem": "rust"
     },
     {
+      "name": "should",
+      "version": "13.2.3",
+      "license": "MIT",
+      "homepage": "https://github.com/shouldjs/should.js",
+      "copyright": "Copyright(c) 2010-2013 TJ Holowaychuk <tj@vision-media.ca>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "should-equal",
+      "version": "2.0.0",
+      "license": "MIT",
+      "homepage": "https://github.com/shouldjs/equal",
+      "copyright": "Copyright (c) 2014",
+      "ecosystem": "node"
+    },
+    {
+      "name": "should-format",
+      "version": "3.0.3",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2014",
+      "ecosystem": "node"
+    },
+    {
+      "name": "should-type",
+      "version": "1.4.0",
+      "license": "MIT",
+      "homepage": "https://github.com/shouldjs/type",
+      "copyright": "Copyright (c) 2014",
+      "ecosystem": "node"
+    },
+    {
+      "name": "should-type-adaptors",
+      "version": "1.1.0",
+      "license": "MIT",
+      "homepage": "https://github.com/shouldjs/type-adaptors#readme",
+      "copyright": "Copyright (c) 2016 Should.js assertion library",
+      "ecosystem": "node"
+    },
+    {
+      "name": "should-util",
+      "version": "1.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/shouldjs/util#readme",
+      "copyright": "Copyright (c) 2016 Should.js assertion library",
+      "ecosystem": "node"
+    },
+    {
+      "name": "side-channel",
+      "version": "1.1.1",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/side-channel#readme",
+      "copyright": "Copyright (c) 2019 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "side-channel-list",
+      "version": "1.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/side-channel-list#readme",
+      "copyright": "Copyright (c) 2024 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "side-channel-map",
+      "version": "1.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/side-channel-map#readme",
+      "copyright": "Copyright (c) 2024 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
+      "name": "side-channel-weakmap",
+      "version": "1.0.2",
+      "license": "MIT",
+      "homepage": "https://github.com/ljharb/side-channel-weakmap#readme",
+      "copyright": "Copyright (c) 2019 Jordan Harband",
+      "ecosystem": "node"
+    },
+    {
       "name": "signal-hook-registry",
       "version": "1.4.8",
       "license": "MIT OR Apache-2.0",
@@ -3959,6 +5295,14 @@
       "license": "MIT/Apache-2.0",
       "homepage": "https://docs.rs/siphasher",
       "ecosystem": "rust"
+    },
+    {
+      "name": "sisteransi",
+      "version": "1.0.5",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2018 Terkel Gjervig Nielsen",
+      "ecosystem": "node"
     },
     {
       "name": "slab",
@@ -4003,6 +5347,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "source-map",
+      "version": "0.6.1",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/mozilla/source-map",
+      "copyright": "Copyright (c) 2009-2011, Mozilla Foundation and contributors",
+      "ecosystem": "node"
+    },
+    {
       "name": "source-map-js",
       "version": "1.2.1",
       "license": "BSD-3-Clause",
@@ -4011,11 +5363,51 @@
       "ecosystem": "node"
     },
     {
+      "name": "spdx-correct",
+      "version": "3.2.0",
+      "license": "Apache-2.0",
+      "homepage": "",
+      "copyright": "\"Licensor\" shall mean the copyright owner or entity authorized by",
+      "ecosystem": "node"
+    },
+    {
+      "name": "spdx-exceptions",
+      "version": "2.5.0",
+      "license": "CC-BY-3.0",
+      "homepage": "",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
+      "name": "spdx-expression-parse",
+      "version": "3.0.1",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2015 Kyle E. Mitchell & other authors listed in AUTHORS",
+      "ecosystem": "node"
+    },
+    {
+      "name": "spdx-license-ids",
+      "version": "3.0.24",
+      "license": "CC0-1.0",
+      "homepage": "",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
       "name": "stable_deref_trait",
       "version": "1.2.1",
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/storyyeller/stable_deref_trait",
       "ecosystem": "rust"
+    },
+    {
+      "name": "standard-changelog",
+      "version": "7.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/standard-changelog#readme",
+      "copyright": "Copyright © [conventional-changelog team](https://github.com/conventional-changelog)",
+      "ecosystem": "node"
     },
     {
       "name": "string_cache",
@@ -4063,6 +5455,14 @@
     },
     {
       "name": "supports-color",
+      "version": "10.2.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "supports-color",
       "version": "7.2.0",
       "license": "MIT",
       "homepage": "",
@@ -4075,6 +5475,14 @@
       "license": "MIT",
       "homepage": "",
       "copyright": "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)",
+      "ecosystem": "node"
+    },
+    {
+      "name": "swagger2openapi",
+      "version": "7.0.8",
+      "license": "BSD-3-Clause",
+      "homepage": "",
+      "copyright": "Copyright (c) 2016, Mermade Software",
       "ecosystem": "node"
     },
     {
@@ -4312,6 +5720,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "terminal-columns",
+      "version": "2.0.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>",
+      "ecosystem": "node"
+    },
+    {
       "name": "text-segmentation",
       "version": "1.0.3",
       "license": "MIT",
@@ -4395,6 +5811,14 @@
       "license": "CC0-1.0",
       "homepage": "https://github.com/debris/tiny-keccak",
       "ecosystem": "rust"
+    },
+    {
+      "name": "tinyexec",
+      "version": "1.3.1",
+      "license": "MIT",
+      "homepage": "https://github.com/tinylibs/tinyexec#readme",
+      "copyright": "Copyright (c) 2024 Tinylibs",
+      "ecosystem": "node"
     },
     {
       "name": "tinyglobby",
@@ -4559,6 +5983,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "tr46",
+      "version": "0.0.3",
+      "license": "MIT",
+      "homepage": "https://github.com/Sebmaster/tr46.js#readme",
+      "copyright": "",
+      "ecosystem": "node"
+    },
+    {
       "name": "tracing",
       "version": "0.1.44",
       "license": "MIT",
@@ -4610,11 +6042,35 @@
       "ecosystem": "node"
     },
     {
+      "name": "tsx",
+      "version": "4.23.15",
+      "license": "MIT",
+      "homepage": "https://tsx.hirok.io",
+      "copyright": "Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>",
+      "ecosystem": "node"
+    },
+    {
       "name": "tungstenite",
       "version": "0.24.0",
       "license": "MIT OR Apache-2.0",
       "homepage": "https://github.com/snapview/tungstenite-rs",
       "ecosystem": "rust"
+    },
+    {
+      "name": "type-fest",
+      "version": "4.41.0",
+      "license": "(MIT OR CC0-1.0)",
+      "homepage": "",
+      "copyright": "exclusive Copyright and Related Rights (defined below) upon the creator",
+      "ecosystem": "node"
+    },
+    {
+      "name": "type-flag",
+      "version": "4.5.2",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>",
+      "ecosystem": "node"
     },
     {
       "name": "typeid",
@@ -4653,6 +6109,38 @@
       "ecosystem": "rust"
     },
     {
+      "name": "uglify-js",
+      "version": "3.19.3",
+      "license": "BSD-2-Clause",
+      "homepage": "",
+      "copyright": "Copyright 2012-2024 (c) Mihai Bazon <mihai.bazon@gmail.com>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "unconfig",
+      "version": "0.6.1",
+      "license": "MIT",
+      "homepage": "https://github.com/antfu/unconfig#readme",
+      "copyright": "Copyright (c) 2021-PRESENT Anthony Fu <https://github.com/antfu>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "unconfig",
+      "version": "7.5.0",
+      "license": "MIT",
+      "homepage": "https://github.com/antfu-collective/unconfig#readme",
+      "copyright": "Copyright (c) 2021-PRESENT Anthony Fu <https://github.com/antfu>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "unconfig-core",
+      "version": "7.5.0",
+      "license": "MIT",
+      "homepage": "https://github.com/antfu-collective/unconfig#readme",
+      "copyright": "Copyright (c) 2021-PRESENT Anthony Fu <https://github.com/antfu>",
+      "ecosystem": "node"
+    },
+    {
       "name": "unicase",
       "version": "2.9.0",
       "license": "MIT OR Apache-2.0",
@@ -4688,6 +6176,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "universalify",
+      "version": "2.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/RyanZim/universalify#readme",
+      "copyright": "Copyright (c) 2017, Ryan Zimmerman <opensrc@ryanzim.com>",
+      "ecosystem": "node"
+    },
+    {
       "name": "unsafe-libyaml",
       "version": "0.2.11",
       "license": "MIT",
@@ -4707,6 +6203,14 @@
       "license": "MIT",
       "homepage": "",
       "copyright": "Copyright 2022 Andrey Sitnik <andrey@sitnik.ru> and other contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "uri-js-replace",
+      "version": "1.0.1",
+      "license": "MIT",
+      "homepage": "https://github.com/andreinwald/uri-js-replace",
+      "copyright": "",
       "ecosystem": "node"
     },
     {
@@ -4765,6 +6269,22 @@
       "license": "Apache-2.0 OR MIT",
       "homepage": "https://github.com/uuid-rs/uuid",
       "ecosystem": "rust"
+    },
+    {
+      "name": "uuid",
+      "version": "13.0.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2010-2020 Robert Kieffer and other contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "validate-npm-package-license",
+      "version": "3.0.4",
+      "license": "Apache-2.0",
+      "homepage": "",
+      "copyright": "\"Licensor\" shall mean the copyright owner or entity authorized by",
+      "ecosystem": "node"
     },
     {
       "name": "vcpkg",
@@ -4855,6 +6375,14 @@
       "license": "MIT",
       "homepage": "",
       "copyright": "Copyright (c) 2021-present Johnson Chu",
+      "ecosystem": "node"
+    },
+    {
+      "name": "walk-up-path",
+      "version": "4.0.0",
+      "license": "ISC",
+      "homepage": "",
+      "copyright": "Copyright (c) 2020-2023 Isaac Z. Schlueter",
       "ecosystem": "node"
     },
     {
@@ -4984,6 +6512,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "webidl-conversions",
+      "version": "3.0.1",
+      "license": "BSD-2-Clause",
+      "homepage": "",
+      "copyright": "Copyright (c) 2014, Domenic Denicola",
+      "ecosystem": "node"
+    },
+    {
       "name": "webkit2gtk",
       "version": "2.0.2",
       "license": "MIT",
@@ -5031,6 +6567,14 @@
       "license": "MIT",
       "homepage": "https://github.com/wravery/webview2-rs",
       "ecosystem": "rust"
+    },
+    {
+      "name": "whatwg-url",
+      "version": "5.0.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "Copyright (c) 2015–2016 Sebastian Mayr",
+      "ecosystem": "node"
     },
     {
       "name": "winapi",
@@ -5593,6 +7137,14 @@
       "ecosystem": "rust"
     },
     {
+      "name": "wordwrap",
+      "version": "1.0.0",
+      "license": "MIT",
+      "homepage": "",
+      "copyright": "The above copyright notice and this permission notice shall be included in all",
+      "ecosystem": "node"
+    },
+    {
       "name": "wrap-ansi",
       "version": "7.0.0",
       "license": "MIT",
@@ -5662,6 +7214,30 @@
       "license": "ISC",
       "homepage": "https://github.com/yargs/y18n",
       "copyright": "Copyright (c) 2015, Contributors",
+      "ecosystem": "node"
+    },
+    {
+      "name": "yaml",
+      "version": "1.10.3",
+      "license": "ISC",
+      "homepage": "https://eemeli.org/yaml/v1/",
+      "copyright": "Copyright 2018 Eemeli Aro <eemeli@gmail.com>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "yaml",
+      "version": "2.9.1",
+      "license": "ISC",
+      "homepage": "https://eemeli.org/yaml/",
+      "copyright": "Copyright Eemeli Aro <eemeli@gmail.com>",
+      "ecosystem": "node"
+    },
+    {
+      "name": "yaml-ast-parser",
+      "version": "0.0.43",
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/mulesoft-labs/yaml-ast-parser",
+      "copyright": "Copyright 2015 (c) MuleSoft, Inc.",
       "ecosystem": "node"
     },
     {
@@ -5828,6 +7404,8 @@
     "BSD-2-Clause",
     "BSD-3-Clause",
     "BSL-1.0",
+    "BlueOak-1.0.0",
+    "CC-BY-3.0",
     "CC-BY-4.0",
     "CC0-1.0",
     "CDLA-Permissive-2.0",
@@ -5838,6 +7416,7 @@
     "MIT-0",
     "MPL-2.0",
     "OFL-1.1",
+    "Python-2.0",
     "Unicode-3.0",
     "Unlicense",
     "Zlib"

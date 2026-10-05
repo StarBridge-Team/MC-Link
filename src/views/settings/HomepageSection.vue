@@ -67,8 +67,8 @@ function clearUrl() {
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
-      <SettingCard :icon="'bi bi-house-gear'" :title="t('homepage.title')" :desc="t('homepage.desc')" wide>
+    <div class="grid stagger">
+      <SettingCard :icon="'home'" :title="t('homepage.title')" :desc="t('homepage.desc')" wide>
         <div class="field-label">{{ t("homepage.mode") }}</div>
         <ChipSelect :model-value="state.homepage_mode" :options="modeOptions" @update:model-value="setMode" />
         <p class="hint">{{ modeHint }}</p>
@@ -76,13 +76,11 @@ function clearUrl() {
         <template v-if="state.homepage_mode === 'webpage'">
           <div class="field-label">{{ t("homepage.url") }}</div>
           <div class="url-row" @keyup.enter="applyUrl">
-            <var-input
-              v-model="urlInput"
-              class="url-row__input"
-              :placeholder="t('homepage.urlPlaceholder')"
-            />
-            <var-button type="primary" @click="applyUrl">{{ t("common.apply") }}</var-button>
-            <var-button text @click="clearUrl">{{ t("common.clear") }}</var-button>
+            <m3e-form-field variant="outlined" class="url-row__input">
+              <input v-model="urlInput" :placeholder="t('homepage.urlPlaceholder')" />
+            </m3e-form-field>
+            <m3e-button variant="filled" @click="applyUrl">{{ t("common.apply") }}</m3e-button>
+            <m3e-button @click="clearUrl">{{ t("common.clear") }}</m3e-button>
           </div>
           <InfoBar v-if="urlError" kind="danger" :text="t('homepage.urlInvalid')" />
         </template>

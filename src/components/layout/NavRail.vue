@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
- * M3 导航栏（Navigation Rail）：图标 + 文案竖排，选中项用
- * `secondary-container` 的胶囊指示器标示，与 M3 规范一致。
+ * M3 导航栏（Navigation Rail）。
  *
- * 不用 Varlet 的 `var-rail-navigation`：它的选中态与槽位约定是给移动端横向
- * 折叠场景设计的，桌面端需要固定宽度 + 文案常显，自己写更可控。
+ * 用 @m3e/web 的原生 `<m3e-nav-rail>` + `<m3e-nav-item>`：选中指示器、图标/标签
+ * 配色、键盘导航全部由组件按 M3 规范处理。
+ *
+ * 选中态**声明式绑定**（`:selected="item.id === active"`），由路由驱动：
+ * 这样首次挂载即处于正确选中态，不依赖"元素是否已升级/`items` 是否已收集"的时序，
+ * 也不会出现"点了一下又变灰"（那是手动按索引同步 selected 时与组件内部选择状态打架导致的）。
  */
 export interface NavItem {
   id: string;
@@ -21,81 +24,21 @@ const emit = defineEmits<{ select: [id: string] }>();
 </script>
 
 <template>
-  <nav class="rail" role="tablist">
-    <button
+  <m3e-nav-rail class="rail">
+    <m3e-nav-item
       v-for="item in items"
       :key="item.id"
-      class="rail__item"
-      :class="{ 'is-active': item.id === active }"
-      type="button"
-      role="tab"
-      :aria-selected="item.id === active"
-      :title="item.label"
+      :selected="item.id === active"
       @click="emit('select', item.id)"
     >
-      <span class="rail__indicator">
-        <i :class="item.icon" />
-      </span>
-      <span class="rail__label">{{ item.label }}</span>
-    </button>
-  </nav>
+      <m3e-icon slot="icon" :name="item.icon" />
+      {{ item.label }}
+    </m3e-nav-item>
+  </m3e-nav-rail>
 </template>
 
 <style scoped>
 .rail {
-  width: var(--rail-width);
   flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-2);
-  background: transparent;
-}
-
-.rail__item {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 0;
-  color: var(--text-secondary);
-  font-size: var(--fs-label);
-  transition: color var(--motion-medium) var(--ease-standard);
-}
-
-.rail__indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 32px;
-  border-radius: var(--r-full);
-  font-size: 20px;
-  transition: background-color var(--motion-medium) var(--ease-standard),
-    color var(--motion-medium) var(--ease-standard);
-}
-
-.rail__item:hover .rail__indicator {
-  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-  color: var(--text-primary);
-}
-
-.rail__item.is-active {
-  color: var(--text-primary);
-  font-weight: var(--fw-semibold);
-}
-
-.rail__item.is-active .rail__indicator {
-  background: var(--secondary-container);
-  color: var(--on-secondary-container);
-}
-
-.rail__label {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

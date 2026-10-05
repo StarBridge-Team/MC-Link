@@ -31,6 +31,19 @@ const languageOptions = computed(() =>
 const regionOptions = computed(() =>
   props.regions.map((code) => ({ label: regionLabel(code), value: code })),
 );
+
+function selectValue(e: Event): string {
+  const el = e.target as HTMLElement & { value?: string };
+  return el.value ?? "";
+}
+
+function onLanguageChange(e: Event) {
+  emit("update:language", selectValue(e));
+}
+
+function onRegionChange(e: Event) {
+  emit("update:region", selectValue(e));
+}
 </script>
 
 <template>
@@ -39,20 +52,20 @@ const regionOptions = computed(() =>
 
     <label class="field">
       <span class="field-label">{{ t("oobe.languageLabel") }}</span>
-      <var-select
-        :model-value="language"
-        :options="languageOptions"
-        @update:model-value="(v: string) => emit('update:language', String(v))"
-      />
+      <m3e-select :value="language" @change="onLanguageChange">
+        <m3e-option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
+          {{ opt.label }}
+        </m3e-option>
+      </m3e-select>
     </label>
 
     <label class="field">
       <span class="field-label">{{ t("oobe.regionLabel") }}</span>
-      <var-select
-        :model-value="region"
-        :options="regionOptions"
-        @update:model-value="(v: string) => emit('update:region', String(v))"
-      />
+      <m3e-select :value="region" @change="onRegionChange">
+        <m3e-option v-for="opt in regionOptions" :key="opt.value" :value="opt.value">
+          {{ opt.label }}
+        </m3e-option>
+      </m3e-select>
     </label>
 
     <p class="hint">{{ t("oobe.regionHint") }}</p>

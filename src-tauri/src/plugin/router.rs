@@ -122,17 +122,11 @@ pub fn plan(
                 format!("游戏画像 `{}` 显式指定的适配器", game_id.unwrap_or("-")),
             ),
             None => match fallback_rank {
-                Some(i) => (
-                    600 - i as i32,
-                    "首选适配器清单声明的回退链".to_string(),
-                ),
+                Some(i) => (600 - i as i32, "首选适配器清单声明的回退链".to_string()),
                 None => {
                     let wildcard = record.manifest.games.iter().any(|g| g == "*");
                     if wildcard {
-                        (
-                            100,
-                            "通过 `*` 通配覆盖全部游戏".to_string(),
-                        )
+                        (100, "通过 `*` 通配覆盖全部游戏".to_string())
                     } else {
                         (
                             200,
@@ -217,7 +211,11 @@ mod tests {
     #[test]
     fn wildcard_candidate_is_kept_for_any_game() {
         let tmp = std::env::temp_dir();
-        let reg = registry_with(vec![record(adapter("dev.a.one", &["*"], 0), &tmp, TrustLevel::Official)]);
+        let reg = registry_with(vec![record(
+            adapter("dev.a.one", &["*"], 0),
+            &tmp,
+            TrustLevel::Official,
+        )]);
         let games = GameRegistry::with_builtins();
         let p = plan(&reg, &games, PluginKind::Adapter, Some("terraria"));
         assert_eq!(p.primary(), Some("dev.a.one"));
@@ -228,8 +226,16 @@ mod tests {
     fn game_specific_plugin_outranks_wildcard() {
         let tmp = std::env::temp_dir();
         let reg = registry_with(vec![
-            record(adapter("dev.a.generic", &["*"], 0), &tmp, TrustLevel::Official),
-            record(adapter("dev.a.terraria", &["terraria"], 0), &tmp, TrustLevel::Official),
+            record(
+                adapter("dev.a.generic", &["*"], 0),
+                &tmp,
+                TrustLevel::Official,
+            ),
+            record(
+                adapter("dev.a.terraria", &["terraria"], 0),
+                &tmp,
+                TrustLevel::Official,
+            ),
         ]);
         let games = GameRegistry::with_builtins();
         let p = plan(&reg, &games, PluginKind::Adapter, Some("terraria"));
@@ -253,7 +259,11 @@ mod tests {
     #[test]
     fn disabled_and_blocked_plugins_are_ignored() {
         let tmp = std::env::temp_dir();
-        let mut blocked = record(adapter("dev.a.blocked", &["*"], 0), &tmp, TrustLevel::Blocked);
+        let mut blocked = record(
+            adapter("dev.a.blocked", &["*"], 0),
+            &tmp,
+            TrustLevel::Blocked,
+        );
         blocked.enabled = true;
         let reg = registry_with(vec![blocked]);
         let games = GameRegistry::with_builtins();
@@ -266,7 +276,11 @@ mod tests {
         let tmp = std::env::temp_dir();
         let reg = registry_with(vec![
             record(adapter("dev.a.low", &["*"], 0), &tmp, TrustLevel::Official),
-            record(adapter("dev.a.high", &["*"], 50), &tmp, TrustLevel::Official),
+            record(
+                adapter("dev.a.high", &["*"], 50),
+                &tmp,
+                TrustLevel::Official,
+            ),
         ]);
         let games = GameRegistry::with_builtins();
         let p = plan(&reg, &games, PluginKind::Adapter, None);

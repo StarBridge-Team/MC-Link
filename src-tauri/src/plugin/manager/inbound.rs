@@ -23,7 +23,10 @@ pub(super) async fn consume_inbound(inner: Arc<Inner>, mut rx: mpsc::UnboundedRe
                 if let Ok(mut providers) = inner.providers.write() {
                     providers.insert(plugin_id.clone(), Provider::Remote(handle));
                 }
-                emit(&inner, json!({ "type": "connected", "pluginId": plugin_id }));
+                emit(
+                    &inner,
+                    json!({ "type": "connected", "pluginId": plugin_id }),
+                );
             }
             Inbound::Disconnected { plugin_id, reason } => {
                 // 只移除远程提供者：内置提供者不经过这条通道。

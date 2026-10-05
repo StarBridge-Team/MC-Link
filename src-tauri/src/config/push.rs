@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use super::PersonalizationSettings;
 use crate::datadir::{background_dir, old_background_dir};
 use crate::mgr::AppMgr;
-use super::PersonalizationSettings;
 use serde::Serialize;
+use std::sync::Arc;
 
 #[derive(Serialize)]
 pub(crate) struct BackgroundFile {
@@ -66,7 +66,11 @@ pub(crate) fn get_background_files(
     Ok(files)
 }
 
-fn read_bg_files(bg_dir: &std::path::Path, files: &mut Vec<BackgroundFile>, seen: &mut std::collections::HashSet<String>) {
+fn read_bg_files(
+    bg_dir: &std::path::Path,
+    files: &mut Vec<BackgroundFile>,
+    seen: &mut std::collections::HashSet<String>,
+) {
     if !bg_dir.exists() {
         return;
     }
@@ -76,8 +80,12 @@ fn read_bg_files(bg_dir: &std::path::Path, files: &mut Vec<BackgroundFile>, seen
             if path.is_file() {
                 if let Some(ext) = path.extension() {
                     let ext = ext.to_string_lossy().to_lowercase();
-                    let is_video = matches!(ext.as_str(), "mp4" | "webm" | "avi" | "mov" | "mkv" | "flv");
-                    let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg");
+                    let is_video =
+                        matches!(ext.as_str(), "mp4" | "webm" | "avi" | "mov" | "mkv" | "flv");
+                    let is_image = matches!(
+                        ext.as_str(),
+                        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg"
+                    );
                     if is_image || is_video {
                         if let Some(name) = path.file_name() {
                             let name = name.to_string_lossy().to_string();

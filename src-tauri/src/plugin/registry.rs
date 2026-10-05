@@ -220,7 +220,10 @@ impl PluginRegistry {
             let verdict = crate::plugin::trust::verify_directory(&dir);
             if let crate::plugin::trust::Verdict::Invalid(reason) = &verdict {
                 // trust.rs 的约定：校验不通过必须拒绝，不允许降级成"未验签"
-                warnings.push(format!("插件 {} 验签未通过，已忽略: {}", manifest.id, reason));
+                warnings.push(format!(
+                    "插件 {} 验签未通过，已忽略: {}",
+                    manifest.id, reason
+                ));
                 continue;
             }
             let verified = verdict.grants_verified();
@@ -265,10 +268,7 @@ impl PluginRegistry {
                 permissions,
             };
             if self.records.contains_key(record.id()) {
-                warnings.push(format!(
-                    "插件 ID 冲突，磁盘版本已忽略: {}",
-                    record.id()
-                ));
+                warnings.push(format!("插件 ID 冲突，磁盘版本已忽略: {}", record.id()));
                 continue;
             }
             self.records.insert(record.id().to_string(), record);
@@ -388,7 +388,6 @@ impl PluginRegistry {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -143,9 +143,9 @@ async function openManual(url: string) {
 
 <template>
   <div class="scroll-area">
-    <div class="grid">
+    <div class="grid stagger">
       <SettingCard
-        :icon="'bi bi-cloud-arrow-down'"
+        :icon="'cloud_download'"
         :title="t('update.title')"
         :desc="t('update.desc')"
         wide
@@ -163,29 +163,28 @@ async function openManual(url: string) {
         </div>
 
         <div class="actions">
-          <var-button
-            type="primary"
-            :loading="updater.checking.value"
+          <m3e-button
+            variant="filled"
+            :disabled="updater.checking.value"
             @click="check"
           >
-            <i class="bi bi-arrow-repeat" />
+            <m3e-icon slot="icon" name="sync" />
             <span>{{ updater.checking.value ? t("update.checking") : t("update.check") }}</span>
-          </var-button>
-          <var-button text :disabled="updater.downloading.value" @click="clearCache">
+          </m3e-button>
+          <m3e-button :disabled="updater.downloading.value" @click="clearCache">
             {{ t("update.clearCache") }}
-          </var-button>
+          </m3e-button>
         </div>
 
         <!-- 不允许自动更新时，先解释原因，而不是显示"已是最新" -->
         <InfoBar v-if="blockedText" kind="warning" :text="blockedText">
-          <var-button
+          <m3e-button
             v-if="updater.manualUrl.value"
             size="small"
-            text
             @click="openManual(updater.manualUrl.value!)"
           >
             {{ t("update.manualDownload") }}
-          </var-button>
+          </m3e-button>
         </InfoBar>
 
         <InfoBar
@@ -214,21 +213,20 @@ async function openManual(url: string) {
           </div>
 
           <div class="actions">
-            <var-button
+            <m3e-button
               v-if="updater.canAutoInstall.value"
-              type="primary"
-              :loading="updater.installing.value"
+              variant="filled"
+              :disabled="updater.installing.value"
               @click="install"
             >
               {{ t("update.autoInstall") }}
-            </var-button>
-            <var-button
+            </m3e-button>
+            <m3e-button
               v-if="updater.manualUrl.value"
-              text
               @click="openManual(updater.manualUrl.value!)"
             >
               {{ t("update.manualDownload") }}
-            </var-button>
+            </m3e-button>
           </div>
 
           <InfoBar v-if="updater.canAutoInstall.value" kind="info" :text="t('update.installHint')" />
@@ -239,10 +237,10 @@ async function openManual(url: string) {
           />
 
           <!-- 长度未知时后端给 total = 0，此时用不确定进度条而不是假装有个百分比 -->
-          <var-progress
+          <m3e-linear-progress-indicator
             v-if="updater.downloading.value || updater.installing.value"
             :value="updater.progress.value < 0 ? 0 : updater.progress.value"
-            :indeterminate="updater.progress.value < 0"
+            :mode="updater.progress.value < 0 ? 'indeterminate' : 'determinate'"
           />
           <p v-if="progressText" class="hint">
             {{ t("update.progress") }}: <span class="mono">{{ progressText }}</span>

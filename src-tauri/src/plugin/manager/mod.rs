@@ -21,15 +21,19 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
 use crate::adapter::AdapterManager;
-use crate::plugin::builtin::{TerracottaProvider, TERRACOTTA_PLUGIN_ID};
+use crate::plugin::builtin::{
+    MinecraftCouplerProvider, MinecraftScannerProvider, TerracottaProvider,
+    MINECRAFT_COUPLER_PLUGIN_ID, MINECRAFT_DETECTOR_PLUGIN_ID, TERRACOTTA_PLUGIN_ID,
+};
 use crate::plugin::capability::Provider;
 use crate::plugin::game::GameRegistry;
 use crate::plugin::gateway::{self, AuthTable, Gateway};
 use crate::plugin::manifest::PluginKind;
 use crate::plugin::permission::{required_for, Permission};
-use crate::plugin::protocol::{error_code, ErrorInfo};
+use crate::plugin::protocol::{detector_method, error_code, event_topic, ErrorInfo, LocalGameFound};
 use crate::plugin::registry::{PluginRecord, PluginRegistry, PluginSource};
 use crate::plugin::router::{self, RoutePlan};
+use crate::plugin::localgames::LocalGamesCache;
 use crate::plugin::session::{Inbound, InboundTx};
 
 /// 插件管理器。
@@ -55,6 +59,8 @@ struct Inner {
     launch_lock: tokio::sync::Mutex<()>,
     gateway: RwLock<Option<Arc<Gateway>>>,
     auth: AuthTable,
+    /// 最近一次扫描到的本地游戏，供前端主动拉取（事件补发不了，见 `plugin::localgames`）。
+    local_games: LocalGamesCache,
     inbound_tx: InboundTx,
     inbound_rx: SyncMutex<Option<mpsc::UnboundedReceiver<Inbound>>>,
     shutdown: Arc<AtomicBool>,
@@ -80,6 +86,14 @@ impl PluginManager {
             TERRACOTTA_PLUGIN_ID.to_string(),
             Provider::Builtin(Arc::new(TerracottaProvider::new(adapter.clone())?)),
         );
+        providers.insert(
+            MINECRAFT_DETECTOR_PLUGIN_ID.to_string(),
+            Provider::Builtin(Arc::new(MinecraftScannerProvider::new())),
+        );
+        providers.insert(
+            MINECRAFT_COUPLER_PLUGIN_ID.to_string(),
+            Provider::Builtin(Arc::new(MinecraftCouplerProvider::new())),
+        );
 
         let inner = Inner {
             data_dir: data_dir.to_path_buf(),
@@ -90,6 +104,7 @@ impl PluginManager {
             launch_lock: tokio::sync::Mutex::new(()),
             gateway: RwLock::new(None),
             auth: Arc::new(RwLock::new(HashMap::new())),
+            local_games: LocalGamesCache::new(),
             inbound_tx,
             inbound_rx: SyncMutex::new(Some(inbound_rx)),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -98,7 +113,9 @@ impl PluginManager {
             warnings: RwLock::new(warnings),
         };
 
-        Ok(Arc::new(Self { inner: Arc::new(inner) }))
+        Ok(Arc::new(Self {
+            inner: Arc::new(inner),
+        }))
     }
 
     pub fn data_dir(&self) -> &Path {
@@ -117,7 +134,13 @@ impl PluginManager {
         if self.inner.shutdown.load(Ordering::SeqCst) {
             return Err("插件管理器已关闭".to_string());
         }
-        if self.inner.gateway.read().map(|g| g.is_some()).unwrap_or(false) {
+        if self
+            .inner
+            .gateway
+            .read()
+            .map(|g| g.is_some())
+            .unwrap_or(false)
+        {
             return Ok(());
         }
 
@@ -128,12 +151,7 @@ impl PluginManager {
             *slot = Some(gateway.clone());
         }
 
-        let rx = self
-            .inner
-            .inbound_rx
-            .lock()
-            .ok()
-            .and_then(|mut g| g.take());
+        let rx = self.inner.inbound_rx.lock().ok().and_then(|mut g| g.take());
 
         if let Some(rx) = rx {
             let inner = self.inner.clone();
@@ -229,9 +247,9 @@ impl PluginManager {
                     p.close("插件已被停用");
                 }
                 providers.remove(plugin_id);
-                }
-                // 进程也要收掉：只关会话时插件可以选择不理会，进程会继续跑
-                self.reap_child(plugin_id, "插件已被停用");
+            }
+            // 进程也要收掉：只关会话时插件可以选择不理会，进程会继续跑
+            self.reap_child(plugin_id, "插件已被停用");
         }
         Ok(())
     }
@@ -438,9 +456,109 @@ impl PluginManager {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            ErrorInfo::new(error_code::UNAVAILABLE, "全部候选插件均调用失败")
-        }))
+        Err(last_error
+            .unwrap_or_else(|| ErrorInfo::new(error_code::UNAVAILABLE, "全部候选插件均调用失败")))
+    }
+
+    /// 应用打开时调用：遍历所有【已启用且可运行】的检测类(detector)插件，
+    /// 逐个触发 `detector.scan`，把发现的本地游戏回传前端首页。
+    ///
+    /// 没有实现扫描能力的检测器时返回空列表——这是正常的：扫描能力本就由插件提供，
+    /// 核心只负责编排（见模块文档的职责边界）。
+    pub async fn scan_local_games(&self) -> Vec<LocalGameFound> {
+        // 先收集检测器清单（释放读锁后再逐个 invoke，避免持锁调用）。
+        let detectors: Vec<(String, String)> = match self.inner.registry.read() {
+            Ok(reg) => reg
+                .by_kind(PluginKind::Detector)
+                .iter()
+                .map(|r| (r.manifest.id.clone(), r.manifest.name.clone()))
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+
+        let mut found = Vec::new();
+        for (id, name) in detectors {
+            match self
+                .invoke(PluginKind::Detector, None, detector_method::SCAN, json!({}))
+                .await
+            {
+                Ok((plugin_id, raw)) => {
+                    // `detector.scan` 的契约是返回**数组**（可能有多台服务器），
+                    // 这里逐个展开。早期版本按对象取字段，于是 `process` 实际拿到的是
+                    // `id`（`minecraft-java`）而不是 MOTD——首页与联机页显示的会是同一个
+                    // 游戏却写出两个不同的名字。
+                    let entries = match raw {
+                        Value::Array(a) => a,
+                        other => vec![other],
+                    };
+                    for value in entries {
+                        let game_id = value
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let process = value
+                            .get("process")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| value.get("id").and_then(|v| v.as_str()))
+                            .unwrap_or("")
+                            .to_string();
+                        let game_name = value
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let adapter = self.recommended_adapter_name(&game_id);
+                        let item = LocalGameFound {
+                            process,
+                            game_name,
+                            scanner: name.clone(),
+                            adapter,
+                        };
+                        found.push(item.clone());
+                        // 同时走既有 detector.found 契约通道，保持插件事件一致。
+                        self.emit(json!({
+                            "topic": event_topic::DETECTOR_FOUND,
+                            "plugin": plugin_id,
+                            "game": serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
+                        }));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[动作] 检测器 {} 扫描失败: {}", id, e.message);
+                }
+            }
+        }
+
+        // 记下这次结果，供前端主动拉取（事件是一次性广播，补发不了）。
+        self.remember_local_games(&found);
+        found
+    }
+
+    /// 记录最近一次扫描结果，供前端主动拉取。
+    pub(super) fn remember_local_games(&self, games: &[LocalGameFound]) {
+        self.inner.local_games.set(games);
+    }
+
+    /// 读取最近一次扫描结果（**不重新扫描**）。
+    pub fn local_games(&self) -> Vec<LocalGameFound> {
+        self.inner.local_games.get()
+    }
+
+    /// 给定游戏 ID，返回路由计划首选的适配器展示名（无则空串）。
+    fn recommended_adapter_name(&self, game_id: &str) -> String {
+        let plan = self.plan(
+            PluginKind::Adapter,
+            if game_id.is_empty() { None } else { Some(game_id) },
+        );
+        if let Some(pid) = plan.primary() {
+            if let Ok(reg) = self.inner.registry.read() {
+                if let Some(rec) = reg.get(pid) {
+                    return rec.manifest.name.clone();
+                }
+            }
+        }
+        String::new()
     }
 
     /// 向所有已就绪插件广播上下文（游戏信息 / 房间信息 / 其他插件信息）。

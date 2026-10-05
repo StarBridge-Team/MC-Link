@@ -17,8 +17,6 @@
 export const KEYS = {
   /** 窗口位置与大小（含 x/y/width/height 的 JSON） */
   windowState: "window_state",
-  /** M3 主题参数（seed/variant/contrast 的 JSON） */
-  m3Theme: "m3-theme-config",
   /** 玩家名 */
   playerName: "player_name",
   /** 快速联机表单（联机能力重接后使用） */

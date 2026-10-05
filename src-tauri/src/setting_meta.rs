@@ -3,10 +3,10 @@
 //! 从资产服务器拉取 `SettingMeta/<section>.yml` 内容并返回给前端。
 //! 前端根据元配置渲染表单字段（label/desc/options 等），不再硬编码。
 
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use serde::{Deserialize, Serialize};
 
 use crate::asset_server::{assets_server_url, join};
 use crate::cache::{cache_path, ensure_cache_dir, is_cached};
@@ -73,7 +73,9 @@ pub struct FieldMeta {
     pub group: String,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FieldOption {
@@ -124,8 +126,7 @@ pub async fn fetch_setting_manifest(
         .await
         .map_err(|e| format!("读取设置清单失败: {}", e))?;
 
-    std::fs::write(&cache_file, &text)
-        .map_err(|e| format!("保存设置清单缓存失败: {}", e))?;
+    std::fs::write(&cache_file, &text).map_err(|e| format!("保存设置清单缓存失败: {}", e))?;
 
     parse_manifest(&text)
 }
@@ -154,7 +155,10 @@ pub async fn fetch_setting_meta(
         return parse_meta(&text);
     }
 
-    let url = join(&assets_server_url(data_dir), &format!("settings/meta/{}", safe_section));
+    let url = join(
+        &assets_server_url(data_dir),
+        &format!("settings/meta/{}", safe_section),
+    );
     let text = client
         .get(&url)
         .timeout(META_DOWNLOAD_TIMEOUT)
@@ -165,8 +169,7 @@ pub async fn fetch_setting_meta(
         .await
         .map_err(|e| format!("读取元配置失败: {}", e))?;
 
-    std::fs::write(&cache_file, &text)
-        .map_err(|e| format!("保存元配置缓存失败: {}", e))?;
+    std::fs::write(&cache_file, &text).map_err(|e| format!("保存元配置缓存失败: {}", e))?;
 
     parse_meta(&text)
 }
@@ -176,7 +179,8 @@ fn parse_meta(text: &str) -> Result<SettingMeta, String> {
 }
 
 fn sanitize_section(input: &str) -> String {
-    input.chars()
+    input
+        .chars()
         .filter(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.'))
         .collect()
 }
@@ -187,8 +191,7 @@ pub fn clear_setting_meta_cache(data_dir: &Path) -> Result<(), String> {
     if !dir.exists() {
         return Ok(());
     }
-    std::fs::remove_dir_all(&dir)
-        .map_err(|e| format!("清理元配置缓存失败: {}", e))
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("清理元配置缓存失败: {}", e))
 }
 
 #[tauri::command]

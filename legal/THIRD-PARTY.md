@@ -14,22 +14,35 @@
 
 ## 依赖清单
 
-共 808 个依赖包。
+共 1005 个依赖包。
 
 | 名称 | 版本 | 许可证 |
 |---|---|---|
 | @alloc/quick-lru | 5.2.0 | MIT |
+| @antfu/utils | 8.1.1 | MIT |
+| @babel/code-frame | 7.29.7 | MIT |
 | @babel/helper-string-parser | 7.27.1 | MIT |
 | @babel/helper-validator-identifier | 7.28.5 | MIT |
+| @babel/helper-validator-identifier | 7.29.7 | MIT |
 | @babel/parser | 7.29.3 | MIT |
 | @babel/types | 7.29.0 | MIT |
+| @clack/core | 1.5.1 | MIT |
+| @clack/prompts | 1.8.1 | MIT |
+| @configurajs/vite-plus | 0.2.2 | MIT |
+| @conventional-changelog/git-client | 2.7.0 | MIT |
 | @ctrl/tinycolor | 4.2.0 | MIT |
 | @element-plus/icons-vue | 2.3.2 | MIT |
 | @esbuild/win32-x64 | 0.25.12 | MIT |
+| @esbuild/win32-x64 | 0.28.2 | MIT |
+| @exodus/schemasafe | 1.3.0 | MIT |
 | @floating-ui/core | 1.7.5 | MIT |
+| @floating-ui/core | 1.8.0 | MIT |
 | @floating-ui/dom | 1.7.6 | MIT |
+| @floating-ui/dom | 1.8.0 | MIT |
 | @floating-ui/utils | 0.2.11 | MIT |
+| @floating-ui/utils | 0.2.12 | MIT |
 | @fontsource/poppins | 5.3.0 | OFL-1.1 |
+| @fontsource/roboto | 5.3.0 | OFL-1.1 |
 | @intlify/core-base | 11.4.12 | MIT |
 | @intlify/devtools-types | 11.4.12 | MIT |
 | @intlify/message-compiler | 11.4.12 | MIT |
@@ -39,8 +52,20 @@
 | @jridgewell/resolve-uri | 3.1.2 | MIT |
 | @jridgewell/sourcemap-codec | 1.5.5 | MIT |
 | @jridgewell/trace-mapping | 0.3.31 | MIT |
+| @lit-labs/ssr-dom-shim | 1.6.0 | BSD-3-Clause |
+| @lit/reactive-element | 2.1.2 | BSD-3-Clause |
+| @m3e/web | 2.8.3 | MIT |
+| @material/material-color-utilities | 0.4.0 | Apache-2.0 |
+| @popperjs/core | 2.11.8 | MIT |
+| @quansync/fs | 1.1.0 | MIT |
+| @redocly/ajv | 8.11.2 | MIT |
+| @redocly/config | 0.22.0 | MIT |
+| @redocly/openapi-core | 1.34.20 | MIT |
 | @rollup/rollup-win32-x64-gnu | 4.60.2 | MIT |
 | @rollup/rollup-win32-x64-msvc | 4.60.2 | MIT |
+| @simple-libs/child-process-utils | 1.0.2 | MIT |
+| @simple-libs/hosted-git-info | 1.0.2 | MIT |
+| @simple-libs/stream-utils | 1.2.0 | MIT |
 | @sxzz/popperjs-es | 2.11.8 | MIT |
 | @tailwindcss/node | 4.2.4 | MIT |
 | @tailwindcss/oxide | 4.2.4 | MIT |
@@ -57,7 +82,16 @@
 | @types/estree | 1.0.8 | MIT |
 | @types/lodash | 4.17.24 | MIT |
 | @types/lodash-es | 4.17.12 | MIT |
+| @types/normalize-package-data | 2.4.4 | MIT |
+| @types/pluralize | 0.0.33 | MIT |
+| @types/trusted-types | 2.0.7 | MIT |
 | @types/web-bluetooth | 0.0.20 | MIT |
+| @varlet/axle | 1.0.2 | MIT |
+| @varlet/icons | 3.20.6 | MIT |
+| @varlet/release | 2.2.3 | MIT |
+| @varlet/shared | 3.20.6 | MIT |
+| @varlet/ui | 3.20.6 | MIT |
+| @varlet/use | 3.20.6 | MIT |
 | @vitejs/plugin-vue | 5.2.4 | MIT |
 | @volar/language-core | 2.4.15 | MIT |
 | @volar/language-core | 2.4.28 | MIT |
@@ -85,6 +119,7 @@
 | aead | 0.5.2 | MIT OR Apache-2.0 |
 | aes | 0.8.4 | MIT OR Apache-2.0 |
 | aes-gcm | 0.10.3 | Apache-2.0 OR MIT |
+| agent-base | 7.1.4 | MIT |
 | ahash | 0.8.12 | MIT OR Apache-2.0 |
 | aho-corasick | 1.1.4 | Unlicense OR MIT |
 | alien-signals | 1.0.13 | MIT |
@@ -93,16 +128,22 @@
 | alloc-stdlib | 0.2.2 | BSD-3-Clause |
 | alloc-stdlib | 0.3.0 | BSD-3-Clause |
 | android_system_properties | 0.1.5 | MIT/Apache-2.0 |
+| ansi-colors | 4.1.3 | MIT |
 | ansi-regex | 5.0.1 | MIT |
 | ansi-styles | 4.3.0 | MIT |
+| ansis | 4.2.0 | ISC |
 | anstream | 1.0.0 | MIT OR Apache-2.0 |
 | anstyle | 1.0.14 | MIT OR Apache-2.0 |
 | anstyle-parse | 1.0.0 | MIT OR Apache-2.0 |
 | anstyle-query | 1.1.5 | MIT OR Apache-2.0 |
 | anstyle-wincon | 3.0.11 | MIT OR Apache-2.0 |
 | anyhow | 1.0.102 | MIT OR Apache-2.0 |
+| api-farmer | 0.1.5 | MIT |
 | arbitrary | 1.4.2 | MIT OR Apache-2.0 |
+| argparse | 2.0.1 | Python-2.0 |
+| array-ify | 1.0.0 | MIT |
 | ascii | 1.1.0 | Apache-2.0 OR MIT |
+| async | 3.2.6 | MIT |
 | async-broadcast | 0.7.2 | MIT OR Apache-2.0 |
 | async-channel | 2.5.0 | Apache-2.0 OR MIT |
 | async-compression | 0.4.42 | MIT OR Apache-2.0 |
@@ -115,12 +156,15 @@
 | async-task | 4.7.1 | Apache-2.0 OR MIT |
 | async-trait | 0.1.89 | MIT OR Apache-2.0 |
 | async-validator | 4.2.5 | MIT |
+| asynckit | 0.4.0 | MIT |
 | atk | 0.18.2 | MIT |
 | atk-sys | 0.18.2 | MIT |
 | atomic-waker | 1.1.2 | Apache-2.0 OR MIT |
 | autocfg | 1.5.0 | Apache-2.0 OR MIT |
 | autoprefixer | 10.5.0 | MIT |
+| axios | 1.7.3 | MIT |
 | balanced-match | 1.0.2 | MIT |
+| balanced-match | 4.0.4 | MIT |
 | base64 | 0.21.7 | MIT OR Apache-2.0 |
 | base64 | 0.22.1 | MIT OR Apache-2.0 |
 | base64-arraybuffer | 1.0.2 | MIT |
@@ -134,17 +178,22 @@
 | blocking | 1.6.2 | Apache-2.0 OR MIT |
 | bootstrap-icons | 1.13.1 | MIT |
 | brace-expansion | 2.1.0 | MIT |
+| brace-expansion | 5.0.12 | MIT |
 | brotli | 8.0.2 | BSD-3-Clause AND MIT |
 | brotli | 9.0.0 | BSD-3-Clause AND MIT |
 | brotli-decompressor | 5.0.0 | BSD-3-Clause/MIT |
 | brotli-decompressor | 6.0.1 | BSD-3-Clause/MIT |
 | browserslist | 4.28.2 | MIT |
 | bumpalo | 3.20.2 | MIT OR Apache-2.0 |
+| bundle-require | 5.1.0 | MIT |
 | bytemuck | 1.25.0 | Zlib OR Apache-2.0 OR MIT |
 | byteorder | 1.5.0 | Unlicense OR MIT |
 | bytes | 1.11.1 | MIT |
 | cairo-rs | 0.18.5 | MIT |
 | cairo-sys-rs | 0.18.2 | MIT |
+| call-bind-apply-helpers | 1.0.2 | MIT |
+| call-bound | 1.0.4 | MIT |
+| call-me-maybe | 1.0.2 | MIT |
 | camino | 1.2.2 | MIT OR Apache-2.0 |
 | caniuse-lite | 1.0.30001791 | CC-BY-4.0 |
 | cargo_metadata | 0.19.2 | MIT |
@@ -157,22 +206,35 @@
 | cfg-expr | 0.15.8 | MIT OR Apache-2.0 |
 | cfg-if | 1.0.4 | MIT OR Apache-2.0 |
 | chalk | 4.1.2 | MIT |
+| change-case | 5.4.4 | MIT |
 | chrono | 0.4.44 | MIT OR Apache-2.0 |
 | chunked_transfer | 1.5.0 | MIT OR Apache-2.0 |
 | cipher | 0.4.4 | MIT OR Apache-2.0 |
 | class-variance-authority | 0.7.1 | Apache-2.0 |
+| cleye | 2.7.0 | MIT |
 | cliui | 8.0.1 | ISC |
 | clsx | 2.1.1 | MIT |
 | color-convert | 2.0.1 | MIT |
 | color-name | 1.1.4 | MIT |
 | colorchoice | 1.0.5 | MIT OR Apache-2.0 |
+| colorette | 1.4.0 | MIT |
 | combine | 4.6.7 | MIT |
+| combined-stream | 1.0.8 | MIT |
+| commander | 13.1.0 | MIT |
+| compare-func | 2.0.0 | MIT |
+| composed-offset-position | 0.0.6 | MIT |
 | compression-codecs | 0.4.38 | MIT OR Apache-2.0 |
 | compression-core | 0.4.32 | MIT OR Apache-2.0 |
 | concurrent-queue | 2.5.0 | Apache-2.0 OR MIT |
 | concurrently | 9.2.4 | MIT |
 | const-random | 0.1.18 | MIT OR Apache-2.0 |
 | const-random-macro | 0.1.16 | MIT OR Apache-2.0 |
+| conventional-changelog | 7.2.1 | MIT |
+| conventional-changelog-angular | 8.3.1 | ISC |
+| conventional-changelog-preset-loader | 5.0.0 | MIT |
+| conventional-changelog-writer | 8.4.0 | MIT |
+| conventional-commits-filter | 5.0.0 | MIT |
+| conventional-commits-parser | 6.4.0 | MIT |
 | cookie | 0.18.1 | MIT OR Apache-2.0 |
 | core-foundation | 0.10.1 | MIT OR Apache-2.0 |
 | core-foundation | 0.9.4 | MIT OR Apache-2.0 |
@@ -185,6 +247,7 @@
 | crossbeam-utils | 0.8.21 | MIT OR Apache-2.0 |
 | crunchy | 0.2.4 | MIT |
 | crypto-common | 0.1.7 | MIT OR Apache-2.0 |
+| crypto-js | 4.2.0 | MIT |
 | css-line-break | 2.1.0 | MIT |
 | cssparser | 0.37.0 | MPL-2.0 |
 | cssparser-macros | 0.7.1 | MPL-2.0 |
@@ -196,11 +259,16 @@
 | darling_macro | 0.23.0 | MIT |
 | data-encoding | 2.11.1 | MIT |
 | dayjs | 1.11.20 | MIT |
+| dayjs | 1.11.23 | MIT |
 | dbus | 0.9.11 | Apache-2.0/MIT |
 | de-indent | 1.0.2 | MIT |
+| debug | 4.4.3 | MIT |
+| decimal.js | 10.6.0 | MIT |
 | defmt | 1.1.1 | MIT OR Apache-2.0 |
 | defmt-macros | 1.1.1 | MIT OR Apache-2.0 |
 | defmt-parser | 1.0.0 | MIT OR Apache-2.0 |
+| defu | 6.1.7 | MIT |
+| delayed-stream | 1.0.0 | MIT |
 | deranged | 0.5.8 | MIT OR Apache-2.0 |
 | derive_arbitrary | 1.4.2 | MIT OR Apache-2.0 |
 | derive_more | 2.1.1 | MIT |
@@ -215,12 +283,15 @@
 | dlopen2_derive | 0.4.3 | MIT |
 | dlv-list | 0.5.2 | MIT OR Apache-2.0 |
 | dom_query | 0.28.0 | MIT |
+| dot-prop | 5.3.0 | MIT |
 | dpi | 0.1.2 | Apache-2.0 AND MIT |
 | dtoa | 1.0.11 | MIT OR Apache-2.0 |
 | dtoa-short | 0.3.5 | MPL-2.0 |
 | dunce | 1.0.5 | CC0-1.0 OR MIT-0 OR Apache-2.0 |
+| dunder-proto | 1.0.1 | MIT |
 | dyn-clone | 1.0.20 | MIT OR Apache-2.0 |
 | either | 1.16.0 | MIT OR Apache-2.0 |
+| ejs | 3.1.10 | Apache-2.0 |
 | electron-to-chromium | 1.5.349 | ISC |
 | element-plus | 2.13.7 | MIT |
 | embed_plist | 1.2.2 | MIT OR Apache-2.0 |
@@ -237,28 +308,45 @@
 | equivalent | 1.0.2 | Apache-2.0 OR MIT |
 | erased-serde | 0.4.10 | MIT OR Apache-2.0 |
 | errno | 0.3.14 | MIT OR Apache-2.0 |
+| es-define-property | 1.0.1 | MIT |
+| es-errors | 1.3.0 | MIT |
+| es-object-atoms | 1.1.2 | MIT |
+| es-set-tostringtag | 2.1.0 | MIT |
+| es6-promise | 3.3.1 | MIT |
 | esbuild | 0.25.12 | MIT |
+| esbuild | 0.28.2 | MIT |
 | escalade | 3.2.0 | MIT |
 | estree-walker | 2.0.2 | MIT |
 | event-listener | 5.4.1 | Apache-2.0 OR MIT |
 | event-listener-strategy | 0.5.4 | Apache-2.0 OR MIT |
+| fast-deep-equal | 3.1.3 | MIT |
+| fast-safe-stringify | 2.1.1 | MIT |
+| fast-string-truncated-width | 3.0.3 | MIT |
+| fast-string-width | 3.0.2 | MIT |
+| fast-wrap-ansi | 0.2.2 | MIT |
 | fastrand | 2.4.1 | Apache-2.0 OR MIT |
+| fd-package-json | 2.0.0 | MIT |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
 | fdir | 6.5.0 | MIT |
 | field-offset | 0.3.6 | MIT OR Apache-2.0 |
+| filelist | 1.0.6 | Apache-2.0 |
 | filetime | 0.2.29 | MIT/Apache-2.0 |
 | find-msvc-tools | 0.1.9 | MIT OR Apache-2.0 |
 | flate2 | 1.1.9 | MIT OR Apache-2.0 |
 | fnv | 1.0.7 | Apache-2.0 / MIT |
 | foldhash | 0.1.5 | Zlib |
 | foldhash | 0.2.0 | Zlib |
+| follow-redirects | 1.16.1 | MIT |
 | foreign-types | 0.3.2 | MIT/Apache-2.0 |
 | foreign-types | 0.5.0 | MIT/Apache-2.0 |
 | foreign-types-macros | 0.2.3 | MIT/Apache-2.0 |
 | foreign-types-shared | 0.1.1 | MIT/Apache-2.0 |
 | foreign-types-shared | 0.3.1 | MIT/Apache-2.0 |
 | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |
+| form-data | 4.0.6 | MIT |
 | fraction.js | 5.3.4 | MIT |
+| fs-extra | 11.4.1 | MIT |
+| function-bind | 1.1.2 | MIT |
 | futures-channel | 0.3.32 | MIT OR Apache-2.0 |
 | futures-core | 0.3.32 | MIT OR Apache-2.0 |
 | futures-executor | 0.3.32 | MIT OR Apache-2.0 |
@@ -277,6 +365,8 @@
 | gdkx11-sys | 0.18.2 | MIT |
 | generic-array | 0.14.7 | MIT |
 | get-caller-file | 2.0.5 | ISC |
+| get-intrinsic | 1.3.0 | MIT |
+| get-proto | 1.0.1 | MIT |
 | gethostname | 1.1.0 | Apache-2.0 |
 | getrandom | 0.2.17 | MIT OR Apache-2.0 |
 | getrandom | 0.3.4 | MIT OR Apache-2.0 |
@@ -288,19 +378,25 @@
 | glib-macros | 0.18.5 | MIT |
 | glib-sys | 0.18.1 | MIT |
 | glob | 0.3.3 | MIT OR Apache-2.0 |
+| glob | 13.0.6 | BlueOak-1.0.0 |
 | global-hotkey | 0.7.0 | Apache-2.0 OR MIT |
 | gobject-sys | 0.18.0 | MIT |
+| gopd | 1.2.0 | MIT |
 | graceful-fs | 4.2.11 | ISC |
 | gtk | 0.18.2 | MIT |
 | gtk-sys | 0.18.2 | MIT |
 | gtk3-macros | 0.18.2 | MIT |
 | h2 | 0.4.14 | MIT |
+| handlebars | 4.7.9 | MIT |
 | has-flag | 4.0.0 | MIT |
+| has-symbols | 1.1.0 | MIT |
+| has-tostringtag | 1.0.2 | MIT |
 | hashbrown | 0.12.3 | MIT OR Apache-2.0 |
 | hashbrown | 0.14.5 | MIT OR Apache-2.0 |
 | hashbrown | 0.15.5 | MIT OR Apache-2.0 |
 | hashbrown | 0.17.0 | MIT OR Apache-2.0 |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 |
+| hasown | 2.0.4 | MIT |
 | he | 1.2.0 | MIT |
 | heck | 0.4.1 | MIT OR Apache-2.0 |
 | heck | 0.5.0 | MIT OR Apache-2.0 |
@@ -308,14 +404,17 @@
 | hex | 0.4.3 | MIT OR Apache-2.0 |
 | hkdf | 0.12.4 | MIT OR Apache-2.0 |
 | hmac | 0.12.1 | MIT OR Apache-2.0 |
+| hosted-git-info | 8.1.0 | ISC |
 | html2canvas | 1.4.1 | MIT |
 | html5ever | 0.39.0 | MIT OR Apache-2.0 |
 | http | 1.4.0 | MIT OR Apache-2.0 |
 | http-body | 1.0.1 | MIT |
 | http-body-util | 0.1.3 | MIT |
 | http-range | 0.1.5 | MIT |
+| http2-client | 1.3.5 | MIT |
 | httparse | 1.10.1 | MIT OR Apache-2.0 |
 | httpdate | 1.0.3 | MIT OR Apache-2.0 |
+| https-proxy-agent | 7.0.6 | MIT |
 | hyper | 1.9.0 | MIT |
 | hyper-rustls | 0.27.9 | Apache-2.0 OR ISC OR MIT |
 | hyper-tls | 0.6.0 | MIT/Apache-2.0 |
@@ -334,6 +433,8 @@
 | ident_case | 1.0.1 | MIT/Apache-2.0 |
 | idna | 1.1.0 | MIT OR Apache-2.0 |
 | idna_adapter | 1.2.2 | Apache-2.0 OR MIT |
+| importx | 0.5.2 | MIT |
+| index-to-position | 1.2.0 | MIT |
 | indexmap | 1.9.3 | Apache-2.0 OR MIT |
 | indexmap | 2.14.0 | Apache-2.0 OR MIT |
 | infer | 0.22.0 | MIT |
@@ -343,8 +444,10 @@
 | is_terminal_polyfill | 1.70.2 | MIT OR Apache-2.0 |
 | is-docker | 0.2.0 | MIT |
 | is-fullwidth-code-point | 3.0.0 | MIT |
+| is-obj | 2.0.0 | MIT |
 | is-wsl | 0.4.0 | MIT |
 | itoa | 1.0.18 | MIT OR Apache-2.0 |
+| jake | 10.9.4 | Apache-2.0 |
 | javascriptcore-rs | 1.1.2 | MIT |
 | javascriptcore-rs-sys | 1.1.1 | MIT |
 | jiff | 0.2.34 | Unlicense OR MIT |
@@ -357,8 +460,14 @@
 | jni-sys | 0.3.1 | MIT OR Apache-2.0 |
 | jni-sys | 0.4.1 | MIT OR Apache-2.0 |
 | jni-sys-macros | 0.4.1 | MIT OR Apache-2.0 |
+| js-cookie | 3.0.5 | MIT |
+| js-levenshtein | 1.1.6 | MIT |
 | js-sys | 0.3.97 | MIT OR Apache-2.0 |
+| js-tokens | 4.0.0 | MIT |
+| js-yaml | 4.3.2 | MIT |
 | json-patch | 4.2.0 | MIT/Apache-2.0 |
+| json-schema-traverse | 1.0.0 | MIT |
+| jsonfile | 6.2.1 | MIT |
 | jsonptr | 0.7.1 | MIT OR Apache-2.0 |
 | keyboard-types | 0.7.0 | MIT OR Apache-2.0 |
 | keyboard-types | 0.8.3 | MIT OR Apache-2.0 |
@@ -372,30 +481,48 @@
 | lightningcss | 1.32.0 | MPL-2.0 |
 | lightningcss-win32-x64-msvc | 1.32.0 | MPL-2.0 |
 | linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
+| lit | 3.3.3 | BSD-3-Clause |
+| lit-element | 4.2.2 | BSD-3-Clause |
+| lit-html | 3.3.3 | BSD-3-Clause |
 | litemap | 0.8.2 | Unicode-3.0 |
+| load-tsconfig | 0.2.5 | MIT |
 | local-ip-address | 0.5.7 | MIT OR Apache-2.0 |
 | lock_api | 0.4.14 | MIT OR Apache-2.0 |
+| lodash | 4.17.21 | MIT |
 | lodash | 4.18.1 | MIT |
 | lodash-es | 4.18.1 | MIT |
 | lodash-unified | 1.0.3 | MIT |
 | log | 0.4.29 | MIT OR Apache-2.0 |
 | log | 0.4.33 | MIT OR Apache-2.0 |
+| lru-cache | 10.4.3 | ISC |
+| lru-cache | 11.5.3 | BlueOak-1.0.0 |
 | lru-slab | 0.1.2 | MIT OR Apache-2.0 OR Zlib |
 | lucide-vue-next | 1.0.0 | ISC |
 | magic-string | 0.30.21 | MIT |
 | markup5ever | 0.39.0 | MIT OR Apache-2.0 |
 | material-colors | 0.3.3 | Apache-2.0 |
+| material-symbols | 0.47.6 | Apache-2.0 |
+| math-intrinsics | 1.1.0 | MIT |
 | memchr | 2.8.0 | Unlicense OR MIT |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | memoffset | 0.9.1 | MIT |
 | memoize-one | 6.0.0 | MIT |
+| meow | 13.2.0 | MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |
 | mime_guess | 2.0.5 | MIT |
+| mime-db | 1.52.0 | MIT |
+| mime-types | 2.1.35 | MIT |
+| minimatch | 10.2.6 | BlueOak-1.0.0 |
+| minimatch | 5.1.9 | ISC |
 | minimatch | 9.0.9 | ISC |
+| minimist | 1.2.8 | MIT |
+| minipass | 7.1.3 | BlueOak-1.0.0 |
 | minisign-verify | 0.2.5 | MIT |
 | minisign-verify | 0.3.0 | MIT |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | mio | 1.2.0 | MIT |
+| mitt | 3.0.1 | MIT |
+| ms | 2.1.3 | MIT |
 | muda | 0.20.0 | Apache-2.0 OR MIT |
 | muggle-string | 0.4.1 | MIT |
 | nanoid | 3.3.12 | MIT |
@@ -405,13 +532,23 @@
 | ndk-sys | 0.6.0+11769913 | MIT OR Apache-2.0 |
 | neli | 0.6.5 | BSD-3-Clause |
 | neli-proc-macros | 0.1.4 | BSD-3-Clause |
+| neo-async | 2.6.2 | MIT |
 | new_debug_unreachable | 1.0.6 | MIT |
+| node-fetch | 2.7.0 | MIT |
+| node-fetch-h2 | 2.3.0 | MIT |
+| node-readfiles | 0.2.0 | MIT |
 | node-releases | 2.0.38 | MIT |
+| normalize-package-data | 7.0.1 | BSD-2-Clause |
 | normalize-wheel-es | 1.2.0 | BSD-3-Clause |
 | num_enum | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
 | num_enum_derive | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
 | num-conv | 0.2.1 | MIT OR Apache-2.0 |
 | num-traits | 0.2.19 | MIT OR Apache-2.0 |
+| oas-kit-common | 1.0.8 | BSD-3-Clause |
+| oas-linter | 3.2.2 | BSD-3-Clause |
+| oas-resolver | 2.5.6 | BSD-3-Clause |
+| oas-schema-walker | 1.1.5 | BSD-3-Clause |
+| oas-validator | 5.0.8 | BSD-3-Clause |
 | objc2 | 0.6.4 | MIT |
 | objc2-app-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-cloud-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
@@ -430,10 +567,12 @@
 | objc2-ui-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-user-notifications | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-web-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| object-inspect | 1.13.4 | MIT |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 |
 | once_cell_polyfill | 1.70.2 | MIT OR Apache-2.0 |
 | opaque-debug | 0.3.1 | MIT OR Apache-2.0 |
 | open | 5.3.4 | MIT |
+| openapi-typescript | 7.13.0 | MIT |
 | openssl | 0.10.80 | Apache-2.0 |
 | openssl-macros | 0.1.1 | MIT/Apache-2.0 |
 | openssl-probe | 0.2.1 | MIT OR Apache-2.0 |
@@ -442,13 +581,17 @@
 | ordered-multimap | 0.7.3 | MIT |
 | ordered-stream | 0.2.0 | MIT OR Apache-2.0 |
 | osakit | 0.3.1 | MIT OR Apache-2.0 |
+| package-json-from-dist | 1.0.1 | BlueOak-1.0.0 |
 | pango | 0.18.3 | MIT |
 | pango-sys | 0.18.0 | MIT |
 | parking | 2.2.1 | Apache-2.0 OR MIT |
 | parking_lot | 0.12.5 | MIT OR Apache-2.0 |
 | parking_lot_core | 0.9.12 | MIT OR Apache-2.0 |
+| parse-json | 8.3.0 | MIT |
 | path-browserify | 1.0.1 | MIT |
+| path-scurry | 2.0.2 | BlueOak-1.0.0 |
 | pathdiff | 0.2.3 | MIT/Apache-2.0 |
+| pathe | 2.0.3 | MIT |
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 |
 | phf | 0.13.1 | MIT |
 | phf_codegen | 0.13.1 | MIT |
@@ -461,6 +604,7 @@
 | piper | 0.2.5 | MIT OR Apache-2.0 |
 | pkg-config | 0.3.33 | MIT OR Apache-2.0 |
 | plist | 1.9.0 | MIT |
+| pluralize | 8.0.0 | MIT |
 | png | 0.17.16 | MIT OR Apache-2.0 |
 | png | 0.18.1 | MIT OR Apache-2.0 |
 | polling | 3.11.0 | Apache-2.0 OR MIT |
@@ -473,6 +617,7 @@
 | powerfmt | 0.2.0 | MIT OR Apache-2.0 |
 | ppv-lite86 | 0.2.21 | MIT OR Apache-2.0 |
 | precomputed-hash | 0.1.1 | MIT |
+| prettier | 3.9.9 | MIT |
 | prettyplease | 0.2.37 | MIT OR Apache-2.0 |
 | proc-macro-crate | 1.3.1 | MIT OR Apache-2.0 |
 | proc-macro-crate | 2.0.2 | MIT OR Apache-2.0 |
@@ -481,6 +626,9 @@
 | proc-macro-error-attr | 1.0.4 | MIT OR Apache-2.0 |
 | proc-macro2 | 1.0.106 | MIT OR Apache-2.0 |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
+| proxy-from-env | 1.1.0 | MIT |
+| qs | 6.16.0 | BSD-3-Clause |
+| quansync | 1.0.0 | MIT |
 | quick-xml | 0.39.2 | MIT |
 | quinn | 0.11.9 | MIT OR Apache-2.0 |
 | quinn-proto | 0.11.14 | MIT OR Apache-2.0 |
@@ -495,11 +643,14 @@
 | rand_chacha | 0.9.0 | MIT OR Apache-2.0 |
 | rand_core | 0.6.4 | MIT OR Apache-2.0 |
 | rand_core | 0.9.5 | MIT OR Apache-2.0 |
+| rattail | 1.8.3 | MIT |
+| rattail | 2.2.0 | MIT |
 | raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib |
 | redox_syscall | 0.5.18 | MIT |
 | redox_users | 0.5.2 | MIT |
 | ref-cast | 1.0.25 | MIT OR Apache-2.0 |
 | ref-cast-impl | 1.0.25 | MIT OR Apache-2.0 |
+| reftools | 1.1.9 | BSD-3-Clause |
 | regex | 1.12.3 | MIT OR Apache-2.0 |
 | regex | 1.13.1 | MIT OR Apache-2.0 |
 | regex-automata | 0.4.14 | MIT OR Apache-2.0 |
@@ -507,10 +658,15 @@
 | regex-syntax | 0.8.10 | MIT OR Apache-2.0 |
 | regex-syntax | 0.8.11 | MIT OR Apache-2.0 |
 | require-directory | 2.1.1 | MIT |
+| require-from-string | 2.0.2 | MIT |
 | reqwest | 0.12.28 | MIT OR Apache-2.0 |
 | reqwest | 0.13.3 | MIT OR Apache-2.0 |
+| rimraf | 6.1.3 | BlueOak-1.0.0 |
 | ring | 0.17.14 | Apache-2.0 AND ISC |
 | rollup | 4.60.2 | MIT |
+| rslog | 1.3.2 | MIT |
+| rslog | 2.3.0 | MIT |
+| ruler-factory | 0.0.14 | MIT |
 | rust-ini | 0.21.3 | MIT |
 | rustc_version | 0.4.1 | MIT OR Apache-2.0 |
 | rustc-hash | 2.1.2 | Apache-2.0 OR MIT |
@@ -535,6 +691,7 @@
 | security-framework-sys | 2.17.0 | MIT OR Apache-2.0 |
 | selectors | 0.38.0 | MPL-2.0 |
 | semver | 1.0.28 | MIT OR Apache-2.0 |
+| semver | 7.8.5 | ISC |
 | serde | 1.0.228 | MIT OR Apache-2.0 |
 | serde | 1.0.229 | MIT OR Apache-2.0 |
 | serde_core | 1.0.228 | MIT OR Apache-2.0 |
@@ -559,27 +716,46 @@
 | sha2 | 0.10.9 | MIT OR Apache-2.0 |
 | shell-quote | 1.9.0 | MIT |
 | shlex | 1.3.0 | MIT OR Apache-2.0 |
+| should | 13.2.3 | MIT |
+| should-equal | 2.0.0 | MIT |
+| should-format | 3.0.3 | MIT |
+| should-type | 1.4.0 | MIT |
+| should-type-adaptors | 1.1.0 | MIT |
+| should-util | 1.0.1 | MIT |
+| side-channel | 1.1.1 | MIT |
+| side-channel-list | 1.0.1 | MIT |
+| side-channel-map | 1.0.1 | MIT |
+| side-channel-weakmap | 1.0.2 | MIT |
 | signal-hook-registry | 1.4.8 | MIT OR Apache-2.0 |
 | simd_cesu8 | 1.2.0 | Apache-2.0 OR MIT |
 | simd-adler32 | 0.3.9 | MIT |
 | simdutf8 | 0.1.5 | MIT OR Apache-2.0 |
 | siphasher | 1.0.2 | MIT/Apache-2.0 |
+| sisteransi | 1.0.5 | MIT |
 | slab | 0.4.12 | MIT |
 | smallvec | 1.15.1 | MIT OR Apache-2.0 |
 | socket2 | 0.6.3 | MIT OR Apache-2.0 |
 | softbuffer | 0.4.8 | MIT OR Apache-2.0 |
 | soup3 | 0.5.0 | MIT |
 | soup3-sys | 0.5.0 | MIT |
+| source-map | 0.6.1 | BSD-3-Clause |
 | source-map-js | 1.2.1 | BSD-3-Clause |
+| spdx-correct | 3.2.0 | Apache-2.0 |
+| spdx-exceptions | 2.5.0 | CC-BY-3.0 |
+| spdx-expression-parse | 3.0.1 | MIT |
+| spdx-license-ids | 3.0.24 | CC0-1.0 |
 | stable_deref_trait | 1.2.1 | MIT OR Apache-2.0 |
+| standard-changelog | 7.0.1 | MIT |
 | string_cache | 0.9.0 | MIT OR Apache-2.0 |
 | string_cache_codegen | 0.6.1 | MIT OR Apache-2.0 |
 | string-width | 4.2.3 | MIT |
 | strip-ansi | 6.0.1 | MIT |
 | strsim | 0.11.1 | MIT |
 | subtle | 2.6.1 | BSD-3-Clause |
+| supports-color | 10.2.2 | MIT |
 | supports-color | 7.2.0 | MIT |
 | supports-color | 8.1.1 | MIT |
+| swagger2openapi | 7.0.8 | BSD-3-Clause |
 | swift-rs | 1.0.8 | MIT OR Apache-2.0 |
 | syn | 1.0.109 | MIT OR Apache-2.0 |
 | syn | 2.0.117 | MIT OR Apache-2.0 |
@@ -613,6 +789,7 @@
 | tauri-winres | 0.3.6 | MIT |
 | tempfile | 3.27.0 | MIT OR Apache-2.0 |
 | tendril | 0.5.0 | MIT OR Apache-2.0 |
+| terminal-columns | 2.0.0 | MIT |
 | text-segmentation | 1.0.3 | MIT |
 | thiserror | 1.0.69 | MIT OR Apache-2.0 |
 | thiserror | 2.0.18 | MIT OR Apache-2.0 |
@@ -625,6 +802,7 @@
 | time-macros | 0.2.27 | MIT OR Apache-2.0 |
 | tiny_http | 0.12.0 | MIT OR Apache-2.0 |
 | tiny-keccak | 2.0.2 | CC0-1.0 |
+| tinyexec | 1.3.1 | MIT |
 | tinyglobby | 0.2.16 | MIT |
 | tinystr | 0.8.3 | Unicode-3.0 |
 | tinyvec | 1.11.0 | Zlib OR Apache-2.0 OR MIT |
@@ -648,6 +826,7 @@
 | tower-http | 0.6.8 | MIT |
 | tower-layer | 0.3.3 | MIT |
 | tower-service | 0.3.3 | MIT |
+| tr46 | 0.0.3 | MIT |
 | tracing | 0.1.44 | MIT |
 | tracing-attributes | 0.1.31 | MIT |
 | tracing-core | 0.1.36 | MIT |
@@ -655,20 +834,29 @@
 | tree-kill | 1.2.2 | MIT |
 | try-lock | 0.2.5 | MIT |
 | tslib | 2.8.1 | 0BSD |
+| tsx | 4.23.15 | MIT |
 | tungstenite | 0.24.0 | MIT OR Apache-2.0 |
+| type-fest | 4.41.0 | (MIT OR CC0-1.0) |
+| type-flag | 4.5.2 | MIT |
 | typeid | 1.0.3 | MIT OR Apache-2.0 |
 | typenum | 1.20.0 | MIT OR Apache-2.0 |
 | typescript | 5.6.3 | Apache-2.0 |
 | uapi-sdk-rust | 0.1.17 | MIT OR Apache-2.0 |
 | uds_windows | 1.2.1 | MIT |
+| uglify-js | 3.19.3 | BSD-2-Clause |
+| unconfig | 0.6.1 | MIT |
+| unconfig | 7.5.0 | MIT |
+| unconfig-core | 7.5.0 | MIT |
 | unicase | 2.9.0 | MIT OR Apache-2.0 |
 | unicode-ident | 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 |
 | unicode-segmentation | 1.13.2 | MIT OR Apache-2.0 |
 | unicode-xid | 0.2.6 | MIT OR Apache-2.0 |
 | universal-hash | 0.5.1 | MIT OR Apache-2.0 |
+| universalify | 2.0.1 | MIT |
 | unsafe-libyaml | 0.2.11 | MIT |
 | untrusted | 0.9.0 | ISC |
 | update-browserslist-db | 1.2.3 | MIT |
+| uri-js-replace | 1.0.1 | MIT |
 | url | 2.5.8 | MIT OR Apache-2.0 |
 | urlencoding | 2.1.3 | MIT |
 | urlpattern | 0.6.0 | MIT |
@@ -677,6 +865,8 @@
 | utf8parse | 0.2.2 | Apache-2.0 OR MIT |
 | utrie | 1.0.2 | MIT |
 | uuid | 1.23.1 | Apache-2.0 OR MIT |
+| uuid | 13.0.0 | MIT |
+| validate-npm-package-license | 3.0.4 | Apache-2.0 |
 | vcpkg | 0.2.15 | MIT/Apache-2.0 |
 | version_check | 0.9.5 | MIT/Apache-2.0 |
 | version-compare | 0.2.1 | MIT |
@@ -689,6 +879,7 @@
 | vue-i18n | 11.4.12 | MIT |
 | vue-router | 4.6.4 | MIT |
 | vue-tsc | 2.2.12 | MIT |
+| walk-up-path | 4.0.0 | ISC |
 | walkdir | 2.5.0 | Unlicense/MIT |
 | want | 0.3.1 | MIT |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
@@ -707,6 +898,7 @@
 | web_atoms | 0.2.4 | MIT OR Apache-2.0 |
 | web-sys | 0.3.97 | MIT OR Apache-2.0 |
 | web-time | 1.1.0 | MIT OR Apache-2.0 |
+| webidl-conversions | 3.0.1 | BSD-2-Clause |
 | webkit2gtk | 2.0.2 | MIT |
 | webkit2gtk-sys | 2.0.2 | MIT |
 | webpki-root-certs | 1.0.9 | CDLA-Permissive-2.0 |
@@ -714,6 +906,7 @@
 | webview2-com | 0.39.1 | MIT |
 | webview2-com-macros | 0.8.1 | MIT |
 | webview2-com-sys | 0.39.1 | MIT |
+| whatwg-url | 5.0.0 | MIT |
 | winapi | 0.3.9 | MIT/Apache-2.0 |
 | winapi-i686-pc-windows-gnu | 0.4.0 | MIT/Apache-2.0 |
 | winapi-util | 0.1.11 | Unlicense OR MIT |
@@ -794,6 +987,7 @@
 | wit-bindgen-rust-macro | 0.51.0 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | wit-component | 0.244.0 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | wit-parser | 0.244.0 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
+| wordwrap | 1.0.0 | MIT |
 | wrap-ansi | 7.0.0 | MIT |
 | writeable | 0.6.3 | Unicode-3.0 |
 | wry | 0.57.0 | Apache-2.0 OR MIT |
@@ -804,6 +998,9 @@
 | xattr | 1.6.1 | MIT OR Apache-2.0 |
 | xkeysym | 0.2.1 | MIT OR Apache-2.0 OR Zlib |
 | y18n | 5.0.8 | ISC |
+| yaml | 1.10.3 | ISC |
+| yaml | 2.9.1 | ISC |
+| yaml-ast-parser | 0.0.43 | Apache-2.0 |
 | yargs | 17.7.2 | MIT |
 | yargs-parser | 21.1.1 | ISC |
 | yoke | 0.8.2 | Unicode-3.0 |
@@ -832,16 +1029,27 @@
 各依赖包附带的版权声明（MIT 一类要求保留）：
 
 - @alloc/quick-lru@5.2.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+- @antfu/utils@8.1.1：Copyright (c) 2021 Anthony Fu <https://github.com/antfu>
+- @babel/code-frame@7.29.7：Copyright (c) 2014-present Sebastian McKenzie and other contributors
 - @babel/helper-string-parser@7.27.1：Copyright (c) 2014-present Sebastian McKenzie and other contributors
 - @babel/helper-validator-identifier@7.28.5：Copyright (c) 2014-present Sebastian McKenzie and other contributors
+- @babel/helper-validator-identifier@7.29.7：Copyright (c) 2014-present Sebastian McKenzie and other contributors
 - @babel/parser@7.29.3：Copyright (C) 2012-2014 by various contributors (see AUTHORS)
 - @babel/types@7.29.0：Copyright (c) 2014-present Sebastian McKenzie and other contributors
+- @clack/core@1.5.1：MIT License Copyright (c) 2025-Present [Bombshell contributors](https://bomb.sh/team)
+- @clack/prompts@1.8.1：MIT License Copyright (c) 2025-Present [Bombshell contributors](https://bomb.sh/team)
+- @conventional-changelog/git-client@2.7.0：Copyright © [conventional-changelog team](https://github.com/conventional-changelog)
 - @ctrl/tinycolor@4.2.0：Copyright (c) Scott Cooper <scttcper@gmail.com>
 - @element-plus/icons-vue@2.3.2：Copyright (c) 2020-PRESENT Element Plus (https://github.com/element-plus)
+- @exodus/schemasafe@1.3.0：Copyright (c) 2014 Mathias Buus
 - @floating-ui/core@1.7.5：Copyright (c) 2021-present Floating UI contributors
+- @floating-ui/core@1.8.0：Copyright (c) 2021-present Floating UI contributors
 - @floating-ui/dom@1.7.6：Copyright (c) 2021-present Floating UI contributors
+- @floating-ui/dom@1.8.0：Copyright (c) 2021-present Floating UI contributors
 - @floating-ui/utils@0.2.11：Copyright (c) 2021-present Floating UI contributors
+- @floating-ui/utils@0.2.12：Copyright (c) 2021-present Floating UI contributors
 - @fontsource/poppins@5.3.0：Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins) Poppins-ThinItalic.ttf: Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins) Poppins-Extr
+- @fontsource/roboto@5.3.0：Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic) Roboto-Italic[wdth,wght].ttf: Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto
 - @intlify/core-base@11.4.12：Copyright (c) 2020 kazuya kawaguchi
 - @intlify/devtools-types@11.4.12：Copyright (c) 2024 kazuya kawaguchi
 - @intlify/message-compiler@11.4.12：Copyright (c) 2020 kazuya kawaguchi
@@ -851,6 +1059,16 @@
 - @jridgewell/resolve-uri@3.1.2：Copyright 2019 Justin Ridgewell <jridgewell@google.com>
 - @jridgewell/sourcemap-codec@1.5.5：Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
 - @jridgewell/trace-mapping@0.3.31：Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
+- @lit/reactive-element@2.1.2：Copyright (c) 2017 Google LLC. All rights reserved.
+- @m3e/web@2.8.3：Copyright (c) 2025–2026 matraic
+- @material/material-color-utilities@0.4.0："Licensor" shall mean the copyright owner or entity authorized by
+- @popperjs/core@2.11.8：Copyright (c) 2019 Federico Zivolo
+- @quansync/fs@1.1.0：Copyright © 2025-PRESENT Kevin Deng (https://github.com/sxzz)
+- @redocly/ajv@8.11.2：Copyright (c) 2015-2021 Evgeny Poberezkin
+- @redocly/config@0.22.0：Copyright 2024 Redocly Inc.
+- @simple-libs/child-process-utils@1.0.2：Copyright (c) 2016 - present, TrigenSoftware
+- @simple-libs/hosted-git-info@1.0.2：Copyright (c) 2016 - present, TrigenSoftware
+- @simple-libs/stream-utils@1.2.0：Copyright (c) 2016 - present, TrigenSoftware
 - @sxzz/popperjs-es@2.11.8：Copyright (c) 2019 Federico Zivolo
 - @tailwindcss/node@4.2.4：Copyright (c) Tailwind Labs, Inc.
 - @tailwindcss/oxide@4.2.4：Copyright (c) Tailwind Labs, Inc.
@@ -865,7 +1083,16 @@
 - @types/estree@1.0.8：Copyright (c) Microsoft Corporation.
 - @types/lodash@4.17.24：Copyright (c) Microsoft Corporation.
 - @types/lodash-es@4.17.12：Copyright (c) Microsoft Corporation.
+- @types/normalize-package-data@2.4.4：Copyright (c) Microsoft Corporation.
+- @types/pluralize@0.0.33：Copyright (c) Microsoft Corporation.
+- @types/trusted-types@2.0.7：Copyright (c) Microsoft Corporation.
 - @types/web-bluetooth@0.0.20：Copyright (c) Microsoft Corporation.
+- @varlet/axle@1.0.2：Copyright (c) 2022 varlet
+- @varlet/icons@3.20.6：Copyright (c) 2024 varletjs
+- @varlet/release@2.2.3：Copyright (c) 2022 varlet
+- @varlet/shared@3.20.6：Copyright (c) 2024 varletjs
+- @varlet/ui@3.20.6：Copyright (c) 2024 varletjs
+- @varlet/use@3.20.6：Copyright (c) 2024 varletjs
 - @vitejs/plugin-vue@5.2.4：Copyright (c) 2019-present, Yuxi (Evan) You and Vite contributors
 - @volar/language-core@2.4.15：Copyright (c) 2021-present Johnson Chu
 - @volar/language-core@2.4.28：Copyright (c) 2021-present Johnson Chu
@@ -887,82 +1114,230 @@
 - @vueuse/core@12.0.0：Copyright (c) 2019-PRESENT Anthony Fu<https://github.com/antfu>
 - @vueuse/metadata@12.0.0：Copyright (c) 2019-PRESENT Anthony Fu<https://github.com/antfu>
 - @vueuse/shared@12.0.0：Copyright (c) 2019-PRESENT Anthony Fu<https://github.com/antfu>
+- agent-base@7.1.4：Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>
 - alien-signals@1.0.13：Copyright (c) 2024-present Johnson Chu
+- ansi-colors@4.1.3：Copyright (c) 2015-present, Brian Woodward.
 - ansi-regex@5.0.1：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 - ansi-styles@4.3.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+- ansis@4.2.0：Copyright (c) 2025, webdiscus
+- api-farmer@0.1.5：Copyright (c) 2024 varletjs
+- argparse@2.0.1：provided, however, that PSF's License Agreement and PSF's notice of copyright,
+- async@3.2.6：Copyright (c) 2010-2018 Caolan McMahon
 - async-validator@4.2.5：Copyright (c) 2014-present yiminghe
+- asynckit@0.4.0：Copyright (c) 2016 Alex Indigo
 - autoprefixer@10.5.0：Copyright 2013 Andrey Sitnik <andrey@sitnik.es>
+- axios@1.7.3：# Copyright (c) 2014-present Matt Zabriskie & Collaborators
 - balanced-match@1.0.2：Copyright (c) 2013 Julian Gruber &lt;julian@juliangruber.com&gt;
+- balanced-match@4.0.4：Original code Copyright Julian Gruber <julian@juliangruber.com>
 - base64-arraybuffer@1.0.2：Copyright (c) 2012 Niklas von Hertzen
 - baseline-browser-mapping@2.10.27："Licensor" shall mean the copyright owner or entity authorized by
 - bootstrap-icons@1.13.1：Copyright (c) 2019-2024 The Bootstrap Authors
 - brace-expansion@2.1.0：Copyright (c) 2013 Julian Gruber <julian@juliangruber.com>
+- brace-expansion@5.0.12：Copyright Julian Gruber <julian@juliangruber.com>
 - browserslist@4.28.2：Copyright 2014 Andrey Sitnik <andrey@sitnik.es> and other contributors
+- bundle-require@5.1.0：Copyright © 2021 EGOIST (https://github.com/sponsors/egoist)
+- call-bind-apply-helpers@1.0.2：Copyright (c) 2024 Jordan Harband
+- call-bound@1.0.4：Copyright (c) 2024 Jordan Harband
+- call-me-maybe@1.0.2：Copyright (c) 2015 Eric McCarthy
 - caniuse-lite@1.0.30001791：original works of authorship and other material subject to copyright
 - chalk@4.1.2：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 - class-variance-authority@0.7.1："Licensor" shall mean the copyright owner or entity authorized by
+- cleye@2.7.0：Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>
 - cliui@8.0.1：Copyright (c) 2015, Contributors
 - clsx@2.1.1：Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
 - color-convert@2.0.1：Copyright (c) 2011-2016 Heather Arthur <fayearthur@gmail.com>
 - color-name@1.1.4：Copyright (c) 2015 Dmitry Ivanov
+- colorette@1.4.0：Copyright © Jorge Bucaran <<https://jorgebucaran.com>>
+- combined-stream@1.0.8：Copyright (c) 2011 Debuggable Limited <felix@debuggable.com>
+- commander@13.1.0：Copyright (c) 2011 TJ Holowaychuk <tj@vision-media.ca>
+- compare-func@2.0.0：Copyright (c) 2015 Steve Mao
+- composed-offset-position@0.0.6：Copyright (c) 2023 composed-offset-position contributors
 - concurrently@9.2.4：Copyright (c) 2015 Kimmo Brunfeldt
+- conventional-changelog@7.2.1：Copyright © [conventional-changelog team](https://github.com/conventional-changelog)
+- conventional-changelog-angular@8.3.1：Copyright © [conventional-changelog team](https://github.com/conventional-changelog)
+- conventional-changelog-preset-loader@5.0.0：Copyright © [conventional-changelog team](https://github.com/conventional-changelog)
+- conventional-changelog-writer@8.4.0：Copyright © [conventional-changelog team](https://github.com/conventional-changelog)
+- conventional-commits-filter@5.0.0：Copyright (c) 2015 Steve Mao <maochenyan@gmail.com> (https://github.com/stevemao)
+- conventional-commits-parser@6.4.0：Copyright © [conventional-changelog team](https://github.com/conventional-changelog)
+- crypto-js@4.2.0：Copyright (c) 2009-2013 Jeff Mott
 - css-line-break@2.1.0：Copyright (c) 2017 Niklas von Hertzen
 - csstype@3.2.3：Copyright (c) 2017-2018 Fredrik Nicol
 - dayjs@1.11.20：Copyright (c) 2018-present, iamkun
+- dayjs@1.11.23：Copyright (c) 2018-present, iamkun
+- debug@4.4.3：Copyright (c) 2014-2017 TJ Holowaychuk <tj@vision-media.ca>
+- decimal.js@10.6.0：Copyright (c) 2025 Michael Mclaughlin
+- defu@6.1.7：Copyright (c) Pooya Parsa <pooya@pi0.io>
+- delayed-stream@1.0.0：Copyright (c) 2011 Debuggable Limited <felix@debuggable.com>
 - detect-libc@2.1.2："Licensor" shall mean the copyright owner or entity authorized by
+- dot-prop@5.3.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+- dunder-proto@1.0.1：Copyright (c) 2024 ECMAScript Shims
+- ejs@3.1.10："Licensor" shall mean the copyright owner or entity authorized by
 - electron-to-chromium@1.5.349：Copyright 2018 Kilian Valkhof
 - element-plus@2.13.7：Copyright (c) 2020-PRESENT Element Plus
 - emoji-regex@8.0.0：Copyright Mathias Bynens <https://mathiasbynens.be/>
 - enhanced-resolve@5.21.0：Copyright JS Foundation and other contributors
 - entities@7.0.1：Copyright (c) Felix Böhm
+- es-define-property@1.0.1：Copyright (c) 2024 Jordan Harband
+- es-errors@1.3.0：Copyright (c) 2024 Jordan Harband
+- es-object-atoms@1.1.2：Copyright (c) 2024 Jordan Harband
+- es-set-tostringtag@2.1.0：Copyright (c) 2022 ECMAScript Shims
+- es6-promise@3.3.1：Copyright (c) 2014 Yehuda Katz, Tom Dale, Stefan Penner and contributors
 - esbuild@0.25.12：Copyright (c) 2020 Evan Wallace
+- esbuild@0.28.2：Copyright (c) 2020 Evan Wallace
 - escalade@3.2.0：Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
 - estree-walker@2.0.2：Copyright (c) 2015-20 [these people](https://github.com/Rich-Harris/estree-walker/graphs/contributors)
+- fast-deep-equal@3.1.3：Copyright (c) 2017 Evgeny Poberezkin
+- fast-safe-stringify@2.1.1：Copyright (c) 2016 David Mark Clements
+- fast-string-truncated-width@3.0.3：Copyright (c) 2024-present Fabio Spampinato
+- fast-string-width@3.0.2：Copyright (c) 2024-present Fabio Spampinato
+- fast-wrap-ansi@0.2.2：Copyright (c) 2025 James Garbutt
+- fd-package-json@2.0.0：Copyright (c) 2024 ES Community Tooling
 - fdir@6.5.0：Copyright 2023 Abdullah Atta
+- follow-redirects@1.16.1：Copyright 2014–present Olivier Lalonde <olalonde@gmail.com>, James Talmage <james@talmage.io>, Ruben Verborgh
+- form-data@4.0.6：Copyright (c) 2012 Felix Geisendörfer (felix@debuggable.com) and contributors
 - fraction.js@5.3.4：Copyright (c) 2025 Robert Eisele
+- fs-extra@11.4.1：Copyright (c) 2011-2024 JP Richardson
+- function-bind@1.1.2：Copyright (c) 2013 Raynos.
 - get-caller-file@2.0.5：Copyright 2018 Stefan Penner
+- get-intrinsic@1.3.0：Copyright (c) 2020 Jordan Harband
+- get-proto@1.0.1：Copyright (c) 2025 Jordan Harband
+- glob@13.0.6：## Copyright
+- gopd@1.2.0：Copyright (c) 2022 Jordan Harband
 - graceful-fs@4.2.11：Copyright (c) 2011-2022 Isaac Z. Schlueter, Ben Noordhuis, and Contributors
+- handlebars@4.7.9：Copyright (C) 2011-2019 by Yehuda Katz
 - has-flag@4.0.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+- has-symbols@1.1.0：Copyright (c) 2016 Jordan Harband
+- has-tostringtag@1.0.2：Copyright (c) 2021 Inspect JS
+- hasown@2.0.4：Copyright (c) Jordan Harband and contributors
 - he@1.2.0：Copyright Mathias Bynens <https://mathiasbynens.be/>
+- hosted-git-info@8.1.0：Copyright (c) 2015, Rebecca Turner
 - html2canvas@1.4.1：Copyright (c) 2012 Niklas von Hertzen
+- http2-client@1.3.5：Copyright (c) 2019 Eyal.D <hisco@googlegroups.com‬>
+- https-proxy-agent@7.0.6：Copyright (c) 2013 Nathan Rajlich <nathan@tootallnate.net>
+- importx@0.5.2：Copyright (c) 2024-PRESENT Anthony Fu <https://github.com/antfu>
+- index-to-position@1.2.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 - is-fullwidth-code-point@3.0.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+- is-obj@2.0.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 - jiti@2.6.1：Copyright (c) Pooya Parsa <pooya@pi0.io>
+- js-cookie@3.0.5：Copyright (c) 2018 Copyright 2018 Klaus Hartl, Fagner Brack, GitHub Contributors
+- js-levenshtein@1.1.6：Copyright (c) 2017 Gustaf Andersson
+- js-tokens@4.0.0：Copyright (c) 2014, 2015, 2016, 2017, 2018 Simon Lydell
+- js-yaml@4.3.2：Copyright (C) 2011-2015 by Vitaly Puzrin
+- json-schema-traverse@1.0.0：Copyright (c) 2017 Evgeny Poberezkin
+- jsonfile@6.2.1：Copyright (c) 2012-2015, JP Richardson <jprichardson@gmail.com>
 - lightningcss@1.32.0：applicable copyright doctrines of fair use, fair dealing, or other
 - lightningcss-win32-x64-msvc@1.32.0：applicable copyright doctrines of fair use, fair dealing, or other
+- lit@3.3.3：Copyright (c) 2017 Google LLC. All rights reserved.
+- lit-element@4.2.2：Copyright (c) 2017 Google LLC. All rights reserved.
+- lit-html@3.3.3：Copyright (c) 2017 Google LLC. All rights reserved.
+- load-tsconfig@0.2.5：Copyright © 2021 EGOIST (https://github.com/sponsors/egoist)
+- lodash@4.17.21：Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 - lodash@4.18.1：Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 - lodash-es@4.18.1：Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
+- lru-cache@10.4.3：Copyright (c) 2010-2023 Isaac Z. Schlueter and Contributors
+- lru-cache@11.5.3：## Copyright
 - lucide-vue-next@1.0.0：Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2026 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2026.
 - magic-string@0.30.21：Copyright 2018 Rich Harris
+- material-symbols@0.47.6："Licensor" shall mean the copyright owner or entity authorized by
+- math-intrinsics@1.1.0：Copyright (c) 2024 ECMAScript Shims
 - memoize-one@6.0.0：Copyright (c) 2019 Alexander Reardon
+- meow@13.2.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+- mime-db@1.52.0：Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>
+- mime-types@2.1.35：Copyright (c) 2014 Jonathan Ong <me@jongleberry.com>
+- minimatch@10.2.6：## Copyright
+- minimatch@5.1.9：Copyright (c) 2011-2023 Isaac Z. Schlueter and Contributors
 - minimatch@9.0.9：Copyright (c) 2011-2023 Isaac Z. Schlueter and Contributors
+- minimist@1.2.8：The above copyright notice and this permission notice shall be included in all
+- minipass@7.1.3：## Copyright
+- mitt@3.0.1：Copyright (c) 2021 Jason Miller
+- ms@2.1.3：Copyright (c) 2020 Vercel, Inc.
 - muggle-string@0.4.1：Copyright (c) 2022-present Johnson Chu
 - nanoid@3.3.12：Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
+- neo-async@2.6.2：Copyright (c) 2014-2018 Suguru Motegi
+- node-fetch@2.7.0：Copyright (c) 2016 David Frank
+- node-fetch-h2@2.3.0：Copyright (c) 2016 David Frank
+- node-readfiles@0.2.0：Copyright (c) 2016 Alejandro Gonzalez <guatedude2@hotmial.com>
 - node-releases@2.0.38：Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)
+- normalize-package-data@7.0.1：Copyright (c) Meryn Stol ("Author")
 - normalize-wheel-es@1.2.0：Copyright (c) 2015, Facebook, Inc. All rights reserved.
+- oas-kit-common@1.0.8：Copyright (c) 2016, Mermade Software
+- oas-linter@3.2.2：Copyright (c) 2016, Mermade Software
+- oas-resolver@2.5.6：Copyright (c) 2016, Mermade Software
+- oas-schema-walker@1.1.5：Copyright (c) 2016, Mermade Software
+- oas-validator@5.0.8：Copyright (c) 2016, Mermade Software
+- object-inspect@1.13.4：Copyright (c) 2013 James Halliday
+- openapi-typescript@7.13.0：Copyright (c) 2020 Drew Powers
+- package-json-from-dist@1.0.1：## Copyright
+- parse-json@8.3.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 - path-browserify@1.0.1：Copyright (c) 2013 James Halliday
+- path-scurry@2.0.2：## Copyright
+- pathe@2.0.3：Copyright (c) Pooya Parsa <pooya@pi0.io> - Daniel Roe <daniel@roe.dev>
 - picocolors@1.1.1：Copyright (c) 2021-2024 Oleksii Raspopov, Kostiantyn Denysov, Anton Verinov
 - picomatch@4.0.4：Copyright (c) 2017-present, Jon Schlinkert.
+- pluralize@8.0.0：Copyright (c) 2013 Blake Embrey (hello@blakeembrey.com)
 - postcss@8.5.13：Copyright 2013 Andrey Sitnik <andrey@sitnik.es>
 - postcss-value-parser@4.2.0：Copyright (c) Bogdan Chadkin <trysound@yandex.ru>
+- prettier@3.9.9：Copyright © James Long and contributors
+- proxy-from-env@1.1.0：Copyright (C) 2016-2018 Rob Wu <rob@robwu.nl>
+- qs@6.16.0：Copyright (c) 2014, Nathan LaFreniere and other [contributors](https://github.com/ljharb/qs/graphs/contributors)
+- quansync@1.0.0：Copyright (c) 2025-PRESENT Anthony Fu <https://github.com/antfu> and Kevin Deng <https://github.com/sxzz>
+- rattail@1.8.3：Copyright (c) 2024 varletjs
+- rattail@2.2.0：Copyright (c) 2024 varletjs
+- reftools@1.1.9：Copyright (c) 2017, Mike Ralphson
 - require-directory@2.1.1：Copyright (c) 2011 Troy Goode <troygoode@gmail.com>
+- require-from-string@2.0.2：Copyright (c) Vsevolod Strukchinsky <floatdrop@gmail.com> (github.com/floatdrop)
+- rimraf@6.1.3：## Copyright
 - rollup@4.60.2：Copyright (c) 2017 [these people](https://github.com/rollup/rollup/graphs/contributors)
+- rslog@1.3.2：Copyright (c) 2023-present Bytedance, Inc. and its affiliates.
+- rslog@2.3.0：Copyright (c) 2023-present Bytedance, Inc. and its affiliates.
+- ruler-factory@0.0.14：Copyright (c) 2025 varletjs
 - rxjs@7.8.2："Licensor" shall mean the copyright owner or entity authorized by
+- semver@7.8.5：Copyright (c) Isaac Z. Schlueter and Contributors
 - shell-quote@1.9.0：Copyright (c) 2013 James Halliday (mail@substack.net)
+- should@13.2.3：Copyright(c) 2010-2013 TJ Holowaychuk <tj@vision-media.ca>
+- should-equal@2.0.0：Copyright (c) 2014
+- should-format@3.0.3：Copyright (c) 2014
+- should-type@1.4.0：Copyright (c) 2014
+- should-type-adaptors@1.1.0：Copyright (c) 2016 Should.js assertion library
+- should-util@1.0.1：Copyright (c) 2016 Should.js assertion library
+- side-channel@1.1.1：Copyright (c) 2019 Jordan Harband
+- side-channel-list@1.0.1：Copyright (c) 2024 Jordan Harband
+- side-channel-map@1.0.1：Copyright (c) 2024 Jordan Harband
+- side-channel-weakmap@1.0.2：Copyright (c) 2019 Jordan Harband
+- sisteransi@1.0.5：Copyright (c) 2018 Terkel Gjervig Nielsen
+- source-map@0.6.1：Copyright (c) 2009-2011, Mozilla Foundation and contributors
 - source-map-js@1.2.1：Copyright (c) 2009-2011, Mozilla Foundation and contributors
+- spdx-correct@3.2.0："Licensor" shall mean the copyright owner or entity authorized by
+- spdx-expression-parse@3.0.1：Copyright (c) 2015 Kyle E. Mitchell & other authors listed in AUTHORS
+- standard-changelog@7.0.1：Copyright © [conventional-changelog team](https://github.com/conventional-changelog)
 - string-width@4.2.3：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 - strip-ansi@6.0.1：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+- supports-color@10.2.2：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 - supports-color@7.2.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 - supports-color@8.1.1：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+- swagger2openapi@7.0.8：Copyright (c) 2016, Mermade Software
 - tailwind-merge@3.5.0：Copyright (c) 2021 Dany Castillo
 - tailwindcss@4.2.4：Copyright (c) Tailwind Labs, Inc.
 - tapable@2.3.3：Copyright JS Foundation and other contributors
+- terminal-columns@2.0.0：Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>
 - text-segmentation@1.0.3：Copyright (c) 2021 Niklas von Hertzen
+- tinyexec@1.3.1：Copyright (c) 2024 Tinylibs
 - tinyglobby@0.2.16：Copyright (c) 2024 Madeline Gurriarán
 - tree-kill@1.2.2：Copyright (c) 2018 Peter Krumins
 - tslib@2.8.1：Copyright (c) Microsoft Corporation.
+- tsx@4.23.15：Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>
+- type-fest@4.41.0：exclusive Copyright and Related Rights (defined below) upon the creator
+- type-flag@4.5.2：Copyright (c) Hiroki Osame <hiroki.osame@gmail.com>
 - typescript@5.6.3："Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+- uglify-js@3.19.3：Copyright 2012-2024 (c) Mihai Bazon <mihai.bazon@gmail.com>
+- unconfig@0.6.1：Copyright (c) 2021-PRESENT Anthony Fu <https://github.com/antfu>
+- unconfig@7.5.0：Copyright (c) 2021-PRESENT Anthony Fu <https://github.com/antfu>
+- unconfig-core@7.5.0：Copyright (c) 2021-PRESENT Anthony Fu <https://github.com/antfu>
+- universalify@2.0.1：Copyright (c) 2017, Ryan Zimmerman <opensrc@ryanzim.com>
 - update-browserslist-db@1.2.3：Copyright 2022 Andrey Sitnik <andrey@sitnik.ru> and other contributors
 - utrie@1.0.2：Copyright (c) 2021 Niklas von Hertzen
+- uuid@13.0.0：Copyright (c) 2010-2020 Robert Kieffer and other contributors
+- validate-npm-package-license@3.0.4："Licensor" shall mean the copyright owner or entity authorized by
 - vite@6.4.2：Copyright (c) 2019-present, VoidZero Inc. and Vite contributors
 - vscode-uri@3.1.0：Copyright (c) Microsoft
 - vue@3.5.33：Copyright (c) 2018-present, Yuxi (Evan) You
@@ -970,8 +1345,15 @@
 - vue-i18n@11.4.12：Copyright (c) 2020 kazuya kawaguchi
 - vue-router@4.6.4：Copyright (c) 2019-present Eduardo San Martin Morote
 - vue-tsc@2.2.12：Copyright (c) 2021-present Johnson Chu
+- walk-up-path@4.0.0：Copyright (c) 2020-2023 Isaac Z. Schlueter
+- webidl-conversions@3.0.1：Copyright (c) 2014, Domenic Denicola
+- whatwg-url@5.0.0：Copyright (c) 2015–2016 Sebastian Mayr
+- wordwrap@1.0.0：The above copyright notice and this permission notice shall be included in all
 - wrap-ansi@7.0.0：Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 - y18n@5.0.8：Copyright (c) 2015, Contributors
+- yaml@1.10.3：Copyright 2018 Eemeli Aro <eemeli@gmail.com>
+- yaml@2.9.1：Copyright Eemeli Aro <eemeli@gmail.com>
+- yaml-ast-parser@0.0.43：Copyright 2015 (c) MuleSoft, Inc.
 - yargs@17.7.2：Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com)
 - yargs-parser@21.1.1：Copyright (c) 2016, Contributors
 
@@ -1773,6 +2155,164 @@ Permission is hereby granted, free of charge, to any person or organization obta
 The copyright notices in the Software and this entire statement, including the above license grant, this restriction and the following disclaimer, must be included in all copies of the Software, in whole or in part, and all derivative works of the Software, unless such copies or derivative works are solely in the form of machine-executable object code generated by a source language processor.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### BlueOak-1.0.0
+
+```text
+# Blue Oak Model License
+
+Version 1.0.0
+
+## Purpose
+
+This license gives everyone as much permission to work with
+this software as possible, while protecting contributors
+from liability.
+
+## Acceptance
+
+In order to receive this license, you must agree to its
+rules.  The rules of this license are both obligations
+under that agreement and conditions to your license.
+You must not do anything with this software that triggers
+a rule that you cannot or will not follow.
+
+## Copyright
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe that contributor's
+copyright in it.
+
+## Notices
+
+You must ensure that everyone who gets a copy of
+any part of this software from you, with or without
+changes, also gets the text of this license or a link to
+<https://blueoakcouncil.org/license/1.0.0>.
+
+## Excuse
+
+If anyone notifies you in writing that you have not
+complied with [Notices](#notices), you can keep your
+license by taking all practical steps to comply within 30
+days after the notice.  If you do not do so, your license
+ends immediately.
+
+## Patent
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe any patent claims
+they can license or become able to license.
+
+## Reliability
+
+No contributor can revoke this license.
+
+## No Liability
+
+***As far as the law allows, this software comes as is,
+without any warranty or condition, and no contributor
+will be liable to anyone for any damages related to this
+software or this license, under any kind of legal claim.***
+```
+
+### CC-BY-3.0
+
+```text
+Creative Commons Attribution 3.0 Unported
+
+<<beginOptional;name=ccOptionalIntro>> CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE LEGAL SERVICES. DISTRIBUTION OF THIS LICENSE DOES NOT CREATE AN ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES REGARDING THE INFORMATION PROVIDED, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM ITS USE. <<endOptional>>
+
+License
+
+THE WORK (AS DEFINED BELOW) IS PROVIDED UNDER THE TERMS OF THIS CREATIVE COMMONS PUBLIC LICENSE ("CCPL" OR "LICENSE"). THE WORK IS PROTECTED BY COPYRIGHT AND/OR OTHER APPLICABLE LAW. ANY USE OF THE WORK OTHER THAN AS AUTHORIZED UNDER THIS LICENSE OR COPYRIGHT LAW IS PROHIBITED.
+
+BY EXERCISING ANY RIGHTS TO THE WORK PROVIDED HERE, YOU ACCEPT AND AGREE TO BE BOUND BY THE TERMS OF THIS LICENSE. TO THE EXTENT THIS LICENSE MAY BE CONSIDERED TO BE A CONTRACT, THE LICENSOR GRANTS YOU THE RIGHTS CONTAINED HERE IN CONSIDERATION OF YOUR ACCEPTANCE OF SUCH TERMS AND CONDITIONS.
+
+1. Definitions
+
+     a. "Adaptation" means a work based upon the Work, or upon the Work and other pre-existing works, such as a translation, adaptation, derivative work, arrangement of music or other alterations of a literary or artistic work, or phonogram or performance and includes cinematographic adaptations or any other form in which the Work may be recast, transformed, or adapted including in any form recognizably derived from the original, except that a work that constitutes a Collection will not be considered an Adaptation for the purpose of this License. For the avoidance of doubt, where the Work is a musical work, performance or phonogram, the synchronization of the Work in timed-relation with a moving image ("synching") will be considered an Adaptation for the purpose of this License.
+
+     b. "Collection" means a collection of literary or artistic works, such as encyclopedias and anthologies, or performances, phonograms or broadcasts, or other works or subject matter other than works listed in Section 1(f) below, which, by reason of the selection and arrangement of their contents, constitute intellectual creations, in which the Work is included in its entirety in unmodified form along with one or more other contributions, each constituting separate and independent works in themselves, which together are assembled into a collective whole. A work that constitutes a Collection will not be considered an Adaptation (as defined above) for the purposes of this License.
+
+     c. "Distribute" means to make available to the public the original and copies of the Work or Adaptation, as appropriate, through sale or other transfer of ownership.
+
+     d. "Licensor" means the individual, individuals, entity or entities that offer(s) the Work under the terms of this License.
+
+     e. "Original Author" means, in the case of a literary or artistic work, the individual, individuals, entity or entities who created the Work or if no individual or entity can be identified, the publisher; and in addition (i) in the case of a performance the actors, singers, musicians, dancers, and other persons who act, sing, deliver, declaim, play in, interpret or otherwise perform literary or artistic works or expressions of folklore; (ii) in the case of a phonogram the producer being the person or legal entity who first fixes the sounds of a performance or other sounds; and, (iii) in the case of broadcasts, the organization that transmits the broadcast.
+
+     f. "Work" means the literary and/or artistic work offered under the terms of this License including without limitation any production in the literary, scientific and artistic domain, whatever may be the mode or form of its expression including digital form, such as a book, pamphlet and other writing; a lecture, address, sermon or other work of the same nature; a dramatic or dramatico-musical work; a choreographic work or entertainment in dumb show; a musical composition with or without words; a cinematographic work to which are assimilated works expressed by a process analogous to cinematography; a work of drawing, painting, architecture, sculpture, engraving or lithography; a photographic work to which are assimilated works expressed by a process analogous to photography; a work of applied art; an illustration, map, plan, sketch or three-dimensional work relative to geography, topography, architecture or science; a performance; a broadcast; a phonogram; a compilation of data to the extent it is protected as a copyrightable work; or a work performed by a variety or circus performer to the extent it is not otherwise considered a literary or artistic work.
+
+     g. "You" means an individual or entity exercising rights under this License who has not previously violated the terms of this License with respect to the Work, or who has received express permission from the Licensor to exercise rights under this License despite a previous violation.
+
+     h. "Publicly Perform" means to perform public recitations of the Work and to communicate to the public those public recitations, by any means or process, including by wire or wireless means or public digital performances; to make available to the public Works in such a way that members of the public may access these Works from a place and at a place individually chosen by them; to perform the Work to the public by any means or process and the communication to the public of the performances of the Work, including by public digital performance; to broadcast and rebroadcast the Work by any means including signs, sounds or images.
+
+     i. "Reproduce" means to make copies of the Work by any means including without limitation by sound or visual recordings and the right of fixation and reproducing fixations of the Work, including storage of a protected performance or phonogram in digital form or other electronic medium.
+
+2. Fair Dealing Rights. Nothing in this License is intended to reduce, limit, or restrict any uses free from copyright or rights arising from limitations or exceptions that are provided for in connection with the copyright protection under copyright law or other applicable laws.
+
+3. License Grant. Subject to the terms and conditions of this License, Licensor hereby grants You a worldwide, royalty-free, non-exclusive, perpetual (for the duration of the applicable copyright) license to exercise the rights in the Work as stated below:
+
+     a. to Reproduce the Work, to incorporate the Work into one or more Collections, and to Reproduce the Work as incorporated in the Collections;
+
+     b. to create and Reproduce Adaptations provided that any such Adaptation, including any translation in any medium, takes reasonable steps to clearly label, demarcate or otherwise identify that changes were made to the original Work. For example, a translation could be marked "The original work was translated from English to Spanish," or a modification could indicate "The original work has been modified.";
+
+     c. to Distribute and Publicly Perform the Work including as incorporated in Collections; and,
+
+     d. to Distribute and Publicly Perform Adaptations.
+
+     e. For the avoidance of doubt:
+
+          i. Non-waivable Compulsory License Schemes. In those jurisdictions in which the right to collect royalties through any statutory or compulsory licensing scheme cannot be waived, the Licensor reserves the exclusive right to collect such royalties for any exercise by You of the rights granted under this License;
+
+          ii. Waivable Compulsory License Schemes. In those jurisdictions in which the right to collect royalties through any statutory or compulsory licensing scheme can be waived, the Licensor waives the exclusive right to collect such royalties for any exercise by You of the rights granted under this License; and,
+
+          iii. Voluntary License Schemes. The Licensor waives the right to collect royalties, whether individually or, in the event that the Licensor is a member of a collecting society that administers voluntary licensing schemes, via that society, from any exercise by You of the rights granted under this License.
+
+The above rights may be exercised in all media and formats whether now known or hereafter devised. The above rights include the right to make such modifications as are technically necessary to exercise the rights in other media and formats. Subject to Section 8(f), all rights not expressly granted by Licensor are hereby reserved. 
+
+4. Restrictions. The license granted in Section 3 above is expressly made subject to and limited by the following restrictions:
+
+     a. You may Distribute or Publicly Perform the Work only under the terms of this License. You must include a copy of, or the Uniform Resource Identifier (URI) for, this License with every copy of the Work You Distribute or Publicly Perform. You may not offer or impose any terms on the Work that restrict the terms of this License or the ability of the recipient of the Work to exercise the rights granted to that recipient under the terms of the License. You may not sublicense the Work. You must keep intact all notices that refer to this License and to the disclaimer of warranties with every copy of the Work You Distribute or Publicly Perform. When You Distribute or Publicly Perform the Work, You may not impose any effective technological measures on the Work that restrict the ability of a recipient of the Work from You to exercise the rights granted to that recipient under the terms of the License. This Section 4(a) applies to the Work as incorporated in a Collection, but this does not require the Collection apart from the Work itself to be made subject to the terms of this License. If You create a Collection, upon notice from any Licensor You must, to the extent practicable, remove from the Collection any credit as required by Section 4(b), as requested. If You create an Adaptation, upon notice from any Licensor You must, to the extent practicable, remove from the Adaptation any credit as required by Section 4(b), as requested.
+
+     b. If You Distribute, or Publicly Perform the Work or any Adaptations or Collections, You must, unless a request has been made pursuant to Section 4(a), keep intact all copyright notices for the Work and provide, reasonable to the medium or means You are utilizing: (i) the name of the Original Author (or pseudonym, if applicable) if supplied, and/or if the Original Author and/or Licensor designate another party or parties (e.g., a sponsor institute, publishing entity, journal) for attribution ("Attribution Parties") in Licensor's copyright notice, terms of service or by other reasonable means, the name of such party or parties; (ii) the title of the Work if supplied; (iii) to the extent reasonably practicable, the URI, if any, that Licensor specifies to be associated with the Work, unless such URI does not refer to the copyright notice or licensing information for the Work; and (iv) , consistent with Section 3(b), in the case of an Adaptation, a credit identifying the use of the Work in the Adaptation (e.g., "French translation of the Work by Original Author," or "Screenplay based on original Work by Original Author"). The credit required by this Section 4 (b) may be implemented in any reasonable manner; provided, however, that in the case of a Adaptation or Collection, at a minimum such credit will appear, if a credit for all contributing authors of the Adaptation or Collection appears, then as part of these credits and in a manner at least as prominent as the credits for the other contributing authors. For the avoidance of doubt, You may only use the credit required by this Section for the purpose of attribution in the manner set out above and, by exercising Your rights under this License, You may not implicitly or explicitly assert or imply any connection with, sponsorship or endorsement by the Original Author, Licensor and/or Attribution Parties, as appropriate, of You or Your use of the Work, without the separate, express prior written permission of the Original Author, Licensor and/or Attribution Parties.
+
+     c. Except as otherwise agreed in writing by the Licensor or as may be otherwise permitted by applicable law, if You Reproduce, Distribute or Publicly Perform the Work either by itself or as part of any Adaptations or Collections, You must not distort, mutilate, modify or take other derogatory action in relation to the Work which would be prejudicial to the Original Author's honor or reputation. Licensor agrees that in those jurisdictions (e.g. Japan), in which any exercise of the right granted in Section 3(b) of this License (the right to make Adaptations) would be deemed to be a distortion, mutilation, modification or other derogatory action prejudicial to the Original Author's honor and reputation, the Licensor will waive or not assert, as appropriate, this Section, to the fullest extent permitted by the applicable national law, to enable You to reasonably exercise Your right under Section 3(b) of this License (right to make Adaptations) but not otherwise.
+
+5. Representations, Warranties and Disclaimer
+
+UNLESS OTHERWISE MUTUALLY AGREED TO BY THE PARTIES IN WRITING, LICENSOR OFFERS THE WORK AS-IS AND MAKES NO REPRESENTATIONS OR WARRANTIES OF ANY KIND CONCERNING THE WORK, EXPRESS, IMPLIED, STATUTORY OR OTHERWISE, INCLUDING, WITHOUT LIMITATION, WARRANTIES OF TITLE, MERCHANTIBILITY, FITNESS FOR A PARTICULAR PURPOSE, NONINFRINGEMENT, OR THE ABSENCE OF LATENT OR OTHER DEFECTS, ACCURACY, OR THE PRESENCE OF ABSENCE OF ERRORS, WHETHER OR NOT DISCOVERABLE. SOME JURISDICTIONS DO NOT ALLOW THE EXCLUSION OF IMPLIED WARRANTIES, SO SUCH EXCLUSION MAY NOT APPLY TO YOU.
+
+6. Limitation on Liability. EXCEPT TO THE EXTENT REQUIRED BY APPLICABLE LAW, IN NO EVENT WILL LICENSOR BE LIABLE TO YOU ON ANY LEGAL THEORY FOR ANY SPECIAL, INCIDENTAL, CONSEQUENTIAL, PUNITIVE OR EXEMPLARY DAMAGES ARISING OUT OF THIS LICENSE OR THE USE OF THE WORK, EVEN IF LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+7. Termination
+
+     a. This License and the rights granted hereunder will terminate automatically upon any breach by You of the terms of this License. Individuals or entities who have received Adaptations or Collections from You under this License, however, will not have their licenses terminated provided such individuals or entities remain in full compliance with those licenses. Sections 1, 2, 5, 6, 7, and 8 will survive any termination of this License.
+
+     b. Subject to the above terms and conditions, the license granted here is perpetual (for the duration of the applicable copyright in the Work). Notwithstanding the above, Licensor reserves the right to release the Work under different license terms or to stop distributing the Work at any time; provided, however that any such election will not serve to withdraw this License (or any other license that has been, or is required to be, granted under the terms of this License), and this License will continue in full force and effect unless terminated as stated above.
+
+8. Miscellaneous
+
+     a. Each time You Distribute or Publicly Perform the Work or a Collection, the Licensor offers to the recipient a license to the Work on the same terms and conditions as the license granted to You under this License.
+
+     b. Each time You Distribute or Publicly Perform an Adaptation, Licensor offers to the recipient a license to the original Work on the same terms and conditions as the license granted to You under this License.
+
+     c. If any provision of this License is invalid or unenforceable under applicable law, it shall not affect the validity or enforceability of the remainder of the terms of this License, and without further action by the parties to this agreement, such provision shall be reformed to the minimum extent necessary to make such provision valid and enforceable.
+
+     d. No term or provision of this License shall be deemed waived and no breach consented to unless such waiver or consent shall be in writing and signed by the party to be charged with such waiver or consent. This License constitutes the entire agreement between the parties with respect to the Work licensed here. There are no understandings, agreements or representations with respect to the Work not specified here. Licensor shall not be bound by any additional provisions that may appear in any communication from You.
+
+     e. This License may not be modified without the mutual written agreement of the Licensor and You.
+
+     f. The rights granted under, and the subject matter referenced, in this License were drafted utilizing the terminology of the Berne Convention for the Protection of Literary and Artistic Works (as amended on September 28, 1979), the Rome Convention of 1961, the WIPO Copyright Treaty of 1996, the WIPO Performances and Phonograms Treaty of 1996 and the Universal Copyright Convention (as revised on July 24, 1971). These rights and subject matter take effect in the relevant jurisdiction in which the License terms are sought to be enforced according to the corresponding provisions of the implementation of those treaty provisions in the applicable national law. If the standard suite of rights granted under applicable copyright law includes additional rights not granted under this License, such additional rights are deemed to be included in the License; this License is not intended to restrict the license of any rights under applicable law. 
+
+Creative Commons Notice
+
+Creative Commons is not a party to this License, and makes no warranty whatsoever in connection with the Work. Creative Commons will not be liable to You or any party on any legal theory for any damages whatsoever, including without limitation any general, special, incidental or consequential damages arising in connection to this license. Notwithstanding the foregoing two (2) sentences, if Creative Commons has expressly identified itself as the Licensor hereunder, it shall have all rights and obligations of Licensor.
+
+Except for the limited purpose of indicating to the public that the Work is licensed under the CCPL, Creative Commons does not authorize the use by either party of the trademark "Creative Commons" or any related trademark or logo of Creative Commons without the prior written consent of Creative Commons. Any permitted use will be in compliance with Creative Commons' then-current trademark usage guidelines, as may be published on its website or otherwise made available upon request from time to time. For the avoidance of doubt, this trademark restriction does not form part of this License.
+
+Creative Commons may be contacted at http://creativecommons.org/.
 ```
 
 ### CC-BY-4.0
@@ -2783,6 +3323,83 @@ This license becomes null and void if any of the above conditions are not met.
 DISCLAIMER
 
 THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### Python-2.0
+
+```text
+PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2 
+
+     1. This LICENSE AGREEMENT is between the Python Software Foundation ("PSF"), and the Individual or Organization ("Licensee") accessing and otherwise using this software ("Python") in source or binary form and its associated documentation.
+
+     2. Subject to the terms and conditions of this License Agreement, PSF hereby grants Licensee a nonexclusive, royalty-free, world-wide license to reproduce, analyze, test, perform and/or display publicly, prepare derivative works, distribute, and otherwise use Python alone or in any derivative version, provided, however, that PSF's License Agreement and PSF's notice of copyright, i.e., "Copyright (c) 2001, 2002, 2003, 2004, 2005, 2006 Python Software Foundation; All Rights Reserved" are retained in Python alone or in any derivative version prepared by Licensee.
+
+     3. In the event Licensee prepares a derivative work that is based on or incorporates Python or any part thereof, and wants to make the derivative work available to others as provided herein, then Licensee hereby agrees to include in any such work a brief summary of the changes made to Python.
+
+     4. PSF is making Python available to Licensee on an "AS IS" basis. PSF MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR IMPLIED. BY WAY OF EXAMPLE, BUT NOT LIMITATION, PSF MAKES NO AND DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON WILL NOT INFRINGE ANY THIRD PARTY RIGHTS.
+
+     5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON, OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
+
+     6. This License Agreement will automatically terminate upon a material breach of its terms and conditions.
+
+     7. Nothing in this License Agreement shall be deemed to create any relationship of agency, partnership, or joint venture between PSF and Licensee. This License Agreement does not grant permission to use PSF trademarks or trade name in a trademark sense to endorse or promote products or services of Licensee, or any third party.
+
+     8. By copying, installing or otherwise using Python, Licensee agrees to be bound by the terms and conditions of this License Agreement.
+
+
+BEOPEN.COM LICENSE AGREEMENT FOR PYTHON 2.0 
+
+BEOPEN PYTHON OPEN SOURCE LICENSE AGREEMENT VERSION 1
+
+     1. This LICENSE AGREEMENT is between BeOpen.com ("BeOpen"), having an office at 160 Saratoga Avenue, Santa Clara, CA 95051, and the Individual or Organization ("Licensee") accessing and otherwise using this software in source or binary form and its associated documentation ("the Software").
+
+     2. Subject to the terms and conditions of this BeOpen Python License Agreement, BeOpen hereby grants Licensee a non-exclusive, royalty-free, world-wide license to reproduce, analyze, test, perform and/or display publicly, prepare derivative works, distribute, and otherwise use the Software alone or in any derivative version, provided, however, that the BeOpen Python License is retained in the Software, alone or in any derivative version prepared by Licensee.
+
+     3. BeOpen is making the Software available to Licensee on an "AS IS" basis. BEOPEN MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR IMPLIED. BY WAY OF EXAMPLE, BUT NOT LIMITATION, BEOPEN MAKES NO AND DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF THE SOFTWARE WILL NOT INFRINGE ANY THIRD PARTY RIGHTS.
+
+     4. BEOPEN SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF THE SOFTWARE FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS A RESULT OF USING, MODIFYING OR DISTRIBUTING THE SOFTWARE, OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
+
+     5. This License Agreement will automatically terminate upon a material breach of its terms and conditions.
+
+     6. This License Agreement shall be governed by and interpreted in all respects by the law of the State of California, excluding conflict of law provisions. Nothing in this License Agreement shall be deemed to create any relationship of agency, partnership, or joint venture between BeOpen and Licensee. This License Agreement does not grant permission to use BeOpen trademarks or trade names in a trademark sense to endorse or promote products or services of Licensee, or any third party. As an exception, the "BeOpen Python" logos available at http://www.pythonlabs.com/logos.html may be used according to the permissions granted on that web page.
+
+     7. By copying, installing or otherwise using the software, Licensee agrees to be bound by the terms and conditions of this License Agreement.
+
+
+CNRI OPEN SOURCE LICENSE AGREEMENT (for Python 1.6b1) 
+
+IMPORTANT: PLEASE READ THE FOLLOWING AGREEMENT CAREFULLY.
+
+BY CLICKING ON "ACCEPT" WHERE INDICATED BELOW, OR BY COPYING, INSTALLING OR OTHERWISE USING PYTHON 1.6, beta 1 SOFTWARE, YOU ARE DEEMED TO HAVE AGREED TO THE TERMS AND CONDITIONS OF THIS LICENSE AGREEMENT.
+
+     1. This LICENSE AGREEMENT is between the Corporation for National Research Initiatives, having an office at 1895 Preston White Drive, Reston, VA 20191 ("CNRI"), and the Individual or Organization ("Licensee") accessing and otherwise using Python 1.6, beta 1 software in source or binary form and its associated documentation, as released at the www.python.org Internet site on August 4, 2000 ("Python 1.6b1").
+
+     2. Subject to the terms and conditions of this License Agreement, CNRI hereby grants Licensee a non-exclusive, royalty-free, world-wide license to reproduce, analyze, test, perform and/or display publicly, prepare derivative works, distribute, and otherwise use Python 1.6b1 alone or in any derivative version, provided, however, that CNRIs License Agreement is retained in Python 1.6b1, alone or in any derivative version prepared by Licensee.
+
+     Alternately, in lieu of CNRIs License Agreement, Licensee may substitute the following text (omitting the quotes): "Python 1.6, beta 1, is made available subject to the terms and conditions in CNRIs License Agreement. This Agreement may be located on the Internet using the following unique, persistent identifier (known as a handle): 1895.22/1011. This Agreement may also be obtained from a proxy server on the Internet using the URL:http://hdl.handle.net/1895.22/1011".
+
+     3. In the event Licensee prepares a derivative work that is based on or incorporates Python 1.6b1 or any part thereof, and wants to make the derivative work available to the public as provided herein, then Licensee hereby agrees to indicate in any such work the nature of the modifications made to Python 1.6b1.
+
+     4. CNRI is making Python 1.6b1 available to Licensee on an "AS IS" basis. CNRI MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR IMPLIED. BY WAY OF EXAMPLE, BUT NOT LIMITATION, CNRI MAKES NO AND DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON 1.6b1 WILL NOT INFRINGE ANY THIRD PARTY RIGHTS.
+
+     5. CNRI SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF THE SOFTWARE FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS A RESULT OF USING, MODIFYING OR DISTRIBUTING PYTHON 1.6b1, OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.
+
+     6. This License Agreement will automatically terminate upon a material breach of its terms and conditions.
+
+     7. This License Agreement shall be governed by and interpreted in all respects by the law of the State of Virginia, excluding conflict of law provisions. Nothing in this License Agreement shall be deemed to create any relationship of agency, partnership, or joint venture between CNRI and Licensee. This License Agreement does not grant permission to use CNRI trademarks or trade name in a trademark sense to endorse or promote products or services of Licensee, or any third party.
+
+     8. By clicking on the "ACCEPT" button where indicated, or by copying, installing or otherwise using Python 1.6b1, Licensee agrees to be bound by the terms and conditions of this License Agreement.
+
+ACCEPT
+
+
+CWI LICENSE AGREEMENT FOR PYTHON 0.9.0 THROUGH 1.2 
+
+Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam, The Netherlands. All rights reserved.
+
+     Permission to use, copy, modify, and distribute this software and its documentation for any purpose and without fee is hereby granted, provided that the above copyright notice appear in all copies and that both that copyright notice and this permission notice appear in supporting documentation, and that the name of Stichting Mathematisch Centrum or CWI not be used in advertising or publicity pertaining to distribution of the software without specific, written prior permission.
+
+     STICHTING MATHEMATISCH CENTRUM DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL STICHTING MATHEMATISCH CENTRUM BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
 ### Unicode-3.0

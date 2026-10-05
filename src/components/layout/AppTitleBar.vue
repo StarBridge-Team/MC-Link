@@ -7,6 +7,10 @@ import { useI18n } from "vue-i18n";
  * 左侧是「返回上一步」箭头（`canGoBack` 为假时置灰），中间是当前页面标题，
  * 右侧是窗口按钮。拖动由父组件传入的 `drag` 触发：走 Tauri 的
  * `start_dragging`，比纯 `data-tauri-drag-region` 在多层子元素下更稳。
+ *
+ * 保留自定义实现（而非 `<m3e-app-bar>`）：无边框窗口按钮需要 Windows 惯例的
+ * 紧凑尺寸与悬停红，M3 app bar 的尺寸/内边距会破坏标题栏的窗口控制区。
+ * 图标改用 `<m3e-icon>`，与全站图标字体统一。
  */
 defineProps<{
   title: string;
@@ -35,7 +39,7 @@ const { t } = useI18n();
         @mousedown.stop
         @click="emit('back')"
       >
-        <i class="bi bi-arrow-left" />
+        <m3e-icon name="arrow_back" />
       </button>
     </div>
 
@@ -49,7 +53,7 @@ const { t } = useI18n();
         @mousedown.stop
         @click="emit('minimize')"
       >
-        <i class="bi bi-dash-lg" />
+        <m3e-icon name="remove" />
       </button>
       <button
         class="titlebar__btn"
@@ -58,7 +62,7 @@ const { t } = useI18n();
         @mousedown.stop
         @click="emit('maximize')"
       >
-        <i class="bi bi-square" />
+        <m3e-icon name="crop_square" />
       </button>
       <button
         class="titlebar__btn titlebar__btn--danger"
@@ -67,7 +71,7 @@ const { t } = useI18n();
         @mousedown.stop
         @click="emit('close')"
       >
-        <i class="bi bi-x-lg" />
+        <m3e-icon name="close" />
       </button>
     </div>
   </header>
@@ -124,6 +128,10 @@ const { t } = useI18n();
     color var(--motion-short) var(--ease-standard);
 }
 
+.titlebar__btn m3e-icon {
+  font-size: inherit;
+}
+
 .titlebar__btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--on-surface) 10%, transparent);
   color: var(--text-primary);
@@ -134,7 +142,9 @@ const { t } = useI18n();
   cursor: default;
 }
 
-.titlebar__btn--danger:hover {
+/* 与通用悬停 `.titlebar__btn:hover:not(:disabled)` 特异性相同（0,3,0），
+   且本规则写在后面 → 关闭按钮悬停时优先取红色，不会被灰色通用态覆盖。 */
+.titlebar__btn--danger:hover:not(:disabled) {
   background: var(--error);
   color: var(--on-error);
 }

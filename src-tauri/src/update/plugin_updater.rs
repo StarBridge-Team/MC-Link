@@ -149,7 +149,8 @@ mod tests {
     #[test]
     fn portable_mode_never_prefers_the_plugin() {
         // 便携版必须走自研替换路径，插件只会把安装包装回去
-        if cfg!(windows) && crate::datadir::install_mode() == crate::datadir::InstallMode::Portable {
+        if cfg!(windows) && crate::datadir::install_mode() == crate::datadir::InstallMode::Portable
+        {
             assert!(!preferred());
         }
     }

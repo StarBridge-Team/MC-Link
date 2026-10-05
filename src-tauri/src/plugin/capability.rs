@@ -78,10 +78,7 @@ impl Provider {
                 tokio::task::spawn_blocking(move || builtin.invoke(&method, params))
                     .await
                     .map_err(|e| {
-                        ErrorInfo::new(
-                            error_code::INTERNAL,
-                            format!("内置插件任务异常: {}", e),
-                        )
+                        ErrorInfo::new(error_code::INTERNAL, format!("内置插件任务异常: {}", e))
                     })?
             }
             Provider::Remote(session) => session.call(method, params).await,
