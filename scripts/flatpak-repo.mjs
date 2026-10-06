@@ -69,6 +69,36 @@ function run(cmd, cmdArgs) {
 }
 
 /**
+ * 确保 `REPO_DIR` 是一个**已初始化的 OSTree 仓库**。
+ *
+ * # 为什么必须显式做这一步
+ *
+ * `flatpak build-import-bundle` **不会**在目标不存在时自动建仓库
+ * （`build-export` 会，所以这里很容易误以为它也会）。只 `mkdir` 出目录的话，
+ * 导入时会直接失败：
+ *
+ *     error: opening repo: opendir(objects): No such file or directory
+ *
+ * 判断依据是 OSTree 仓库的标志：`objects/` 子目录 + `config` 文件都存在。
+ * 已存在就跳过（幂等），这样重复发布只是往同一个仓库追加版本 ——
+ * 这也正是"用户可以 flatpak update"的前提。
+ */
+function ensureOstreeRepo() {
+  const looksInitialized =
+    existsSync(join(REPO_DIR, "objects")) && existsSync(join(REPO_DIR, "config"));
+  if (looksInitialized) {
+    console.log("[flatpak-repo] 仓库已存在，将追加新版本");
+    return;
+  }
+
+  // `--mode=archive`：Flatpak 本地/HTTP 分发仓库用的就是 archive 模式
+  // （bundle 里的 delta 也是针对它生成的）。用 bare 模式会导致
+  // 客户端取不到对象。
+  console.log(`[flatpak-repo] 初始化 OSTree 仓库: ${REPO_DIR}`);
+  run("ostree", ["init", `--repo=${REPO_DIR}`, "--mode=archive"]);
+}
+
+/**
  * 把 ASCII-armored 的 PGP 公钥转成 `.flatpakrepo` 要求的**单行 base64**。
  *
  * `flatpakrepo(5)` 对 `GPGKey` 的说明是 "The base64-encoded gpg key for the remote"，
@@ -128,11 +158,17 @@ function findBundle() {
 }
 
 function main() {
-  if (!hasCommand("flatpak")) {
+  // 两个都要：flatpak 负责导入与刷新摘要，ostree 负责首次初始化仓库
+  // （build-import-bundle 不会自动建仓库，见 `ensureOstreeRepo`）。
+  // Debian/Ubuntu 上 flatpak 包会带 ostree 依赖，但仍显式检查 ——
+  // 缺了它报错信息会指向内部命令而不是"环境缺东西"。
+  const missing = ["flatpak", "ostree"].filter((c) => !hasCommand(c));
+  if (missing.length > 0) {
     console.error(
-      "[flatpak-repo] 未找到 flatpak 命令。\n" +
-        "  安装：Debian/Ubuntu `sudo apt install flatpak`；Arch `sudo pacman -S flatpak`；\n" +
-        "        Fedora `sudo dnf install flatpak`。",
+      `[flatpak-repo] 未找到命令: ${missing.join(", ")}。\n` +
+        "  安装：Debian/Ubuntu `sudo apt install flatpak ostree`；\n" +
+        "        Arch `sudo pacman -S flatpak ostree`；\n" +
+        "        Fedora `sudo dnf install flatpak ostree`。",
     );
     process.exit(1);
   }
@@ -141,6 +177,7 @@ function main() {
   const bundle = skipBundle ? null : findBundle();
 
   mkdirSync(REPO_DIR, { recursive: true });
+  ensureOstreeRepo();
   const gpgKey = (process.env.FLATPAK_GPG_KEY || "").trim();
 
   if (!gpgKey) {

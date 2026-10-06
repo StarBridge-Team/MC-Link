@@ -219,12 +219,16 @@ jobs:
         with:
           node-version: "20"
 
-      - name: 安装 flatpak
+      - name: 安装 flatpak 与 ostree
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak
-          # 导入/更新仓库只需 flatpak 本体，不需要 flatpak-builder 与 runtime
+          # ostree 是必需的：`flatpak build-import-bundle` 不会自动建仓库，
+          # 首次发布要靠 `ostree init --mode=archive` 初始化，
+          # 否则报 `opendir(objects): No such file or directory`。
+          # 不需要 flatpak-builder 与 runtime（那些只在构建阶段用）。
+          sudo apt-get install -y flatpak ostree
           flatpak --version
+          ostree --version | head -n1
 
       - name: 下载 Flatpak 产物
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
