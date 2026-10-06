@@ -232,22 +232,27 @@ jobs:
           name: mc-link-flatpak-${{ needs.prepare.outputs.version }}
           path: flatpak-in
 
-      - name: 布置更新目录
-        run: |
-          set -e
-          mkdir -p assets-server/Assets/update
-          F=$(find flatpak-in -name '*.flatpak' | head -n1)
-          if [ -z "$F" ]; then echo "没有找到 .flatpak"; exit 1; fi
-          cp "$F" "assets-server/Assets/update/MC-Link-${{ needs.prepare.outputs.version }}-linux-x86_64-flatpak.flatpak"
-          echo "已放入: assets-server/Assets/update/"
-          ls -la assets-server/Assets/update/
-
-      - name: 导入 OSTree 仓库并生成 remote 描述
+      # 布置更新目录 + 导入 OSTree 仓库放一起：
+      # 两者都要用到同一个 `.flatpak`，分开写会让路径查找逻辑重复两遍
+      # （而且第一版就漏了 `flatpak-in/` 这个目录，见下面 `--bundle` 的说明）。
+      - name: 布置更新目录并导入 OSTree 仓库
         env:
           FLATPAK_GPG_KEY: ${{ secrets.FLATPAK_GPG_KEY }}
           FLATPAK_GPG_PUBLIC_KEY: ${{ secrets.FLATPAK_GPG_PUBLIC_KEY }}
           FLATPAK_REPO_URL: https://mclinkassets.xigo.top:54789/flatpak/repo
-        run: node scripts/flatpak-repo.mjs
+        run: |
+          set -e
+          F=$(find flatpak-in -name '*.flatpak' | head -n1)
+          if [ -z "$F" ]; then echo "没有找到 .flatpak"; exit 1; fi
+          echo "bundle = $F"
+
+          mkdir -p assets-server/Assets/update
+          cp "$F" "assets-server/Assets/update/MC-Link-${{ needs.prepare.outputs.version }}-linux-x86_64-flatpak.flatpak"
+
+          # 显式传路径：脚本默认只在自己知道的几个目录里找，
+          # 而 CI 把 artifact 解到了 `flatpak-in/`。靠"再加一条搜索路径"
+          # 会随 workflow 变化而漂移，直接传参最稳。
+          node scripts/flatpak-repo.mjs --bundle "$F"
 
       - name: 收集 Flatpak 仓库（仅发布）
         if: ${{ inputs.publish_assets }}
