@@ -42,6 +42,10 @@ jobs:
 
   release:
     needs: [build, build-linux]
+    # `!cancelled()`：Linux 构建失败（Flatpak/依赖等问题）不该让已经构建成功的
+    # Windows 产物也挂不上去。与 release.yml 的 publish-github 同一取向 ——
+    # 能挂多少挂多少，别让一个平台的故障废掉整次发布。
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -83,14 +87,16 @@ jobs:
             --generate-notes \
             --draft
 
+      # 三个下载都容错：任一平台构建失败时，能挂多少挂多少。
+      # 下面的挂载步骤会在确实"一个文件都没有"时明确失败，不会静默成功。
       - name: 下载构建产物
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: mc-link-windows-${{ steps.version.outputs.version }}
           path: dist
 
       # Linux / Flatpak 产物同样挂到这个草稿发行版。
-      # `continue-on-error`：Linux 构建失败不该让 Windows 产物也挂不上去。
       - name: 下载 Linux 产物
         continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

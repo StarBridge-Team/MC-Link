@@ -197,14 +197,50 @@ jobs:
           path: "*.flatpak"
           if-no-files-found: error
 
-      # 把 Flatpak 也放进更新目录并刷新清单，使 `latest.json` 里带上 flatpak 资产
-      # （客户端据此在 Flatpak 环境下给出手动下载/remote 引导）。
-      - name: 并入更新清单
+  # OSTree 仓库导入**必须放在普通 runner 上**，不能留在上面的 flatpak 容器里。
+  #
+  # 原因：`flatpak-builder` action 把 job 放进 `ghcr.io/flathub-infra/...` 容器，
+  # 那里有 flatpak/flatpak-builder，但**没有 Node.js**（源码是挂载进去的，
+  # 运行时不在容器内）。在容器里跑 `node scripts/flatpak-repo.mjs` 会以
+  # `node: command not found`（exit 127）失败 —— 实测踩过一次。
+  #
+  # `continue-on-error`：仓库导入只是"让 Flatpak 用户能 flatpak update"这一步，
+  # 失败不该让已经构建好的 .flatpak 包与更新清单白费。资源服务器未备案期间
+  # 这一步本来就推不上去，更不该拖垮整条发布。
+  flatpak-repo:
+    needs: [prepare, build, flatpak]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: 安装 flatpak
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak
+          # 导入/更新仓库只需 flatpak 本体，不需要 flatpak-builder 与 runtime
+          flatpak --version
+
+      - name: 下载 Flatpak 产物
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mc-link-flatpak-${{ needs.prepare.outputs.version }}
+          path: flatpak-in
+
+      - name: 布置更新目录
         run: |
           set -e
           mkdir -p assets-server/Assets/update
-          cp *.flatpak "assets-server/Assets/update/MC-Link-${{ needs.prepare.outputs.version }}-linux-x86_64-flatpak.flatpak"
-          ls -la assets-server/Assets/update/ | head -20
+          F=$(find flatpak-in -name '*.flatpak' | head -n1)
+          if [ -z "$F" ]; then echo "没有找到 .flatpak"; exit 1; fi
+          cp "$F" "assets-server/Assets/update/MC-Link-${{ needs.prepare.outputs.version }}-linux-x86_64-flatpak.flatpak"
+          echo "已放入: assets-server/Assets/update/"
+          ls -la assets-server/Assets/update/
 
       - name: 导入 OSTree 仓库并生成 remote 描述
         env:
