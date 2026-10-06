@@ -437,14 +437,29 @@ mod tests {
         assert_eq!(picked.kind, KIND_PORTABLE);
     }
 
+    /// 安装版必须按**当前编译平台**挑对应的包形态。
+    ///
+    /// 这个用例被 `auto_kinds` 的平台分支决定，所以必须跟着平台走：
+    /// Windows → NSIS 安装器，Linux → AppImage，macOS → `.app.tar.gz`。
+    /// 早先只断言 `KIND_INSTALLER`，导致它在 Linux CI 上必然失败
+    /// （`auto_kinds` 在 Linux 返回 `[KIND_APPIMAGE]`，`select_asset` 自然选不到安装器）。
     #[test]
     fn installed_mode_picks_installer_asset() {
+        let (platform, kind, file) = if cfg!(windows) {
+            ("windows-x86_64", KIND_INSTALLER, "setup.exe")
+        } else if cfg!(target_os = "linux") {
+            ("linux-x86_64", KIND_APPIMAGE, "app.AppImage")
+        } else {
+            ("macos-x86_64", KIND_MACOS_APP, "app.app.tar.gz")
+        };
+
         let m = manifest(vec![
-            asset("windows-x86_64", KIND_PORTABLE, "portable.exe"),
-            asset("windows-x86_64", KIND_INSTALLER, "setup.exe"),
+            asset(platform, KIND_PORTABLE, "portable"),
+            asset(platform, kind, file),
         ]);
-        let picked = select_asset(&m, "windows-x86_64", InstallMode::Installed, true).unwrap();
-        assert_eq!(picked.kind, KIND_INSTALLER);
+        let picked = select_asset(&m, platform, InstallMode::Installed, true)
+            .expect("当前平台应能选出可自动落地的资产");
+        assert_eq!(picked.kind, kind);
     }
 
     #[test]

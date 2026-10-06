@@ -126,10 +126,36 @@ fn write_local_manifest(data_dir: &Path, manifest: &AssetsManifest) -> Result<()
 /// 清单来自网络。若不校验就 `join`，被劫持或失陷的资源服务器可以让客户端把文件写到
 /// `Assets/` 之外的任意位置（`../..`、绝对路径、Windows 前缀都能做到）。
 /// 这里要求路径由**纯 Normal 组件**组成，`.`、`..`、根、盘符一律拒绝。
+///
+/// # 为什么要显式识别 Windows 盘符（而不是只靠 `is_absolute()`）
+///
+/// `is_absolute()` 的判定是**跟随编译平台**的：在 Linux 上 `Path::new("C:/x")`
+/// 不是绝对路径，`C:` 只是一个普通文件名组件，于是 `C:/Windows/evil.dll` 会**通过**校验。
+/// 也就是说同一份清单在 Windows 构建与 Linux 构建下被解释成不同的东西 ——
+/// 这是审计里明确记过的"平台相关行为漂移"。
+///
+/// 因此这里不依赖平台语义，**直接按字符串**拒绝盘符与 UNC 形态。
+/// 判定逻辑在所有平台一致，测试也不再需要按平台分叉。
 pub(crate) fn is_safe_relative(path: &str) -> bool {
     if path.is_empty() {
         return false;
     }
+
+    // Windows 盘符：`C:` / `C:/` / `C:\`（单字母 + 冒号）
+    let bytes = path.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        return false;
+    }
+    // UNC：`\\server\share` 或 `//server/share`
+    if path.starts_with(r"\\") || path.starts_with("//") {
+        return false;
+    }
+    // 反斜杠一律拒绝：合法相对路径只用 `/` 分隔（清单由我们生成）。
+    // 放过它会让 `..\\..` 这类写法在 Windows 上逃逸，而 Linux 上只是怪文件名。
+    if path.contains('\\') {
+        return false;
+    }
+
     let p = Path::new(path);
     if p.is_absolute() {
         return false;

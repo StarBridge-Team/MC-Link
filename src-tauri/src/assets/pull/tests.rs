@@ -1,17 +1,39 @@
 use super::*;
 
 #[test]
-fn rejects_unsafe_manifest_paths() {
+fn accepts_plain_relative_paths() {
     assert!(is_safe_relative("fonts/poppins.css"));
     assert!(is_safe_relative("icons/a.png"));
+    assert!(is_safe_relative("a.css"));
+}
 
-    // 越界与绝对路径必须被拒绝：清单来自网络，不能让它写到 Assets/ 之外
+/// 越界与绝对路径必须被拒绝：清单来自网络，不能让它写到 `Assets/` 之外。
+///
+/// **这些断言必须与编译平台无关**。曾经 `C:/Windows/...` 只在 Windows 上被拒：
+/// Linux 下 `is_absolute()` 为 false 且 `C:` 是普通组件，于是它通过校验 ——
+/// 同一份清单在两个平台上被解释成不同结果。现在按字符串显式拒绝盘符与反斜杠。
+#[test]
+fn rejects_unsafe_manifest_paths() {
     assert!(!is_safe_relative(""));
     assert!(!is_safe_relative("../evil.txt"));
     assert!(!is_safe_relative("fonts/../../evil.txt"));
     assert!(!is_safe_relative("/etc/passwd"));
-    assert!(!is_safe_relative("C:/Windows/system32/evil.dll"));
     assert!(!is_safe_relative("./relative"));
+    // 根目录
+    assert!(!is_safe_relative("/"));
+    // `..` 单独出现
+    assert!(!is_safe_relative(".."));
+
+    // Windows 盘符（含正/反斜杠两种写法）—— 必须在所有平台都被拒
+    assert!(!is_safe_relative("C:/Windows/system32/evil.dll"));
+    assert!(!is_safe_relative(r"C:\Windows\system32\evil.dll"));
+    assert!(!is_safe_relative("c:/x"));
+    assert!(!is_safe_relative("D:evil.dll"));
+
+    // UNC / 反斜杠逃逸
+    assert!(!is_safe_relative(r"\\server\share\evil.dll"));
+    assert!(!is_safe_relative(r"..\..\evil.dll"));
+    assert!(!is_safe_relative("fonts\\..\\..\\evil.dll"));
 }
 
 #[test]

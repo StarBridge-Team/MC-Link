@@ -486,10 +486,33 @@ pub fn validate_plugin_id(id: &str) -> Result<(), String> {
 /// 判断是否为不越界的相对路径。
 ///
 /// 拒绝绝对路径、盘符前缀、`..` 以及路径分隔符混合等一切可能逃逸插件目录的写法。
+///
+/// # 为什么显式识别盘符而不是只靠 `is_absolute()`
+///
+/// `is_absolute()` 跟随**编译平台**：Linux 上 `Path::new("C:/evil.exe")` 不是绝对路径，
+/// `C:` 只是个普通文件名组件，于是会**通过**校验。同一份清单在 Windows 与 Linux
+/// 构建下被解释成不同结果 —— 审计记录过的"平台相关行为漂移"。
+/// 这里改为按字符串直接拒绝，判定在所有平台一致。
 pub fn is_safe_relative_path(p: &str) -> bool {
-    if p.trim().is_empty() {
+    let p = p.trim();
+    if p.is_empty() {
         return false;
     }
+
+    // Windows 盘符：`C:` / `C:/` / `C:\`
+    let bytes = p.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        return false;
+    }
+    // UNC：`\\server\share` 或 `//server/share`
+    if p.starts_with(r"\\") || p.starts_with("//") {
+        return false;
+    }
+    // 反斜杠一律拒绝（合法相对路径只用 `/`）
+    if p.contains('\\') {
+        return false;
+    }
+
     let path = Path::new(p);
     if path.is_absolute() {
         return false;
@@ -566,13 +589,31 @@ mod tests {
         assert!(parse(sample(), |v| v["id"] = "adapter".into()).is_err());
     }
 
+    /// 越界入口必须被拒，且**判定与编译平台无关**。
+    ///
+    /// `C:/evil.exe` 曾经只在 Windows 被拒（Linux 下 `is_absolute()` 为 false、
+    /// `C:` 是普通组件），导致同一份清单在两个平台校验结果不同。
     #[test]
     fn rejects_escaping_entry() {
-        assert!(parse(sample(), |v| v["runtime"]["entry"] =
-            "../../evil.exe".into())
-        .is_err());
-        assert!(parse(sample(), |v| v["runtime"]["entry"] = "C:/evil.exe".into()).is_err());
-        assert!(parse(sample(), |v| v["runtime"]["entry"] = "/etc/passwd".into()).is_err());
+        for bad in [
+            "../../evil.exe",
+            "/etc/passwd",
+            // Windows 盘符（正/反斜杠两种写法）
+            "C:/evil.exe",
+            r"C:\evil.exe",
+            "d:evil.exe",
+            // UNC 与反斜杠逃逸
+            r"\\server\share\evil.exe",
+            r"..\..\evil.exe",
+            // 空 / 仅空白
+            "",
+            "   ",
+        ] {
+            assert!(
+                parse(sample(), |v| v["runtime"]["entry"] = bad.into()).is_err(),
+                "入口 {bad:?} 应被拒绝"
+            );
+        }
     }
 
     #[test]

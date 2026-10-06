@@ -138,30 +138,49 @@ mod tests {
         dir
     }
 
-    /// Windows 上三种标记任一存在即便携；都没有则为安装版。
+    /// 标记缺失时一律不是便携版（所有平台都成立）。
     #[test]
-    fn portable_marker_detection() {
-        let dir = temp_dir("marker");
-
-        // 都没有 → 不是便携
+    fn empty_dir_is_not_portable() {
+        let dir = temp_dir("empty-marker");
         assert!(!portable_marker_present(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
-        // `portable.txt`
+    /// **非 Windows 必须恒为 false**，哪怕三种标记全都放了。
+    ///
+    /// 这是刻意行为：Linux/macOS 不支持便携形态（裸二进制依赖系统 WebKitGTK 与
+    /// WebKit 子进程，无法"拷走就能跑"），标记文件不该改变数据目录位置。
+    ///
+    /// 注意这个用例**只在非 Windows 有意义**——Windows 上这些标记本来就是"是便携"。
+    #[cfg(not(windows))]
+    #[test]
+    fn portable_marker_is_always_false_off_windows() {
+        let dir = temp_dir("marker-off-windows");
         std::fs::write(dir.join("portable.txt"), b"").unwrap();
-        assert!(portable_marker_present(&dir));
+        std::fs::create_dir_all(dir.join("data")).unwrap();
+        std::fs::write(dir.join("portable"), b"").unwrap();
 
-        #[cfg(not(windows))]
-        {
-            // 非 Windows 必须恒为 false：Linux/macOS 刻意不支持便携形态，
-            // 哪怕目录里真放了 portable.txt 也不能据此改变数据目录位置。
-            std::fs::remove_file(dir.join("portable.txt")).unwrap();
-            std::fs::create_dir_all(dir.join("data")).unwrap();
-            assert!(
-                !portable_marker_present(&dir),
-                "非 Windows 平台不得判定为便携版"
-            );
+        assert!(
+            !portable_marker_present(&dir),
+            "非 Windows 平台不得因标记文件而判定为便携版"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Windows：三种标记任一存在即判定便携。
+    #[cfg(windows)]
+    #[test]
+    fn windows_recognises_all_three_markers() {
+        for marker in ["portable.txt", "portable"] {
+            let dir = temp_dir(marker);
+            std::fs::write(dir.join(marker), b"").unwrap();
+            assert!(portable_marker_present(&dir), "{marker} 应判定为便携版");
+            let _ = std::fs::remove_dir_all(&dir);
         }
 
+        let dir = temp_dir("data-dir-marker");
+        std::fs::create_dir_all(dir.join("data")).unwrap();
+        assert!(portable_marker_present(&dir), "data/ 目录应判定为便携版");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -172,10 +191,5 @@ mod tests {
         std::fs::create_dir_all(dir.join("data")).unwrap();
         assert!(portable_marker_present(&dir));
         let _ = std::fs::remove_dir_all(&dir);
-
-        let dir2 = temp_dir("plain-marker");
-        std::fs::write(dir2.join("portable"), b"").unwrap();
-        assert!(portable_marker_present(&dir2));
-        let _ = std::fs::remove_dir_all(&dir2);
     }
 }
