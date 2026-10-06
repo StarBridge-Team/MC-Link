@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ConnectAdapter, ConnectEvent, ConnectStatus, LocalGame } from "./types";
+import type {
+  ConnectAdapter,
+  ConnectEvent,
+  ConnectStatus,
+  LocalGame,
+  LocalGameFound,
+} from "./types";
 
 /**
  * 联机页的 IPC 封装（后端 `src-tauri/src/plugin/connect.rs`）。
@@ -24,9 +30,13 @@ export async function scanLocalGames(gameId?: string) {
  *
  * 供首页在挂载时兜底：扫描结果是一次性广播（`local-game-found`），没有补发，
  * 监听器晚一步就再也拿不到，界面会一直停在"正在寻找本地游戏…"。
+ *
+ * 返回的是核心加工后的展示结构（`LocalGameFound`），**不是** `detector.scan` 的
+ * 原始插件返回值（`LocalGame`）——后端 `connect_local_games` 直接回传
+ * `PluginManager::local_games()`。
  */
 export async function listLocalGames() {
-  return invoke<LocalGame[]>("connect_local_games");
+  return invoke<LocalGameFound[]>("connect_local_games");
 }
 
 /** 以房主身份创建房间。 */

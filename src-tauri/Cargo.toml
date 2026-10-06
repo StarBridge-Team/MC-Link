@@ -1,6 +1,6 @@
 [package]
 name = "mc-link"
-version = "0.5.3"
+version = "0.5.4"
 description = "MC Link - 我的世界联机工具"
 authors = ["Cugo,棱镜Prism工作室"]
 edition = "2021"
@@ -35,7 +35,14 @@ tokio-util = "0.7"
 hex = "0.4"
 sha2 = "0.10"
 tauri-plugin-deep-link = "2"
-tauri-plugin-single-instance = "2"
+# `deep-link` feature 是必需的，不是可选优化：
+# 不开启时，**程序已在运行时**点击 `mclink://` 链接，第二份进程被单实例拦截、
+# 通过 WM_COPYDATA 把 argv 送进回调，而插件此时**不会**把参数转交 deep-link 插件
+# （转发代码被 `#[cfg(feature = "deep-link")]` 包着，见
+#  tauri-plugin-single-instance-2.4.3/src/lib.rs:72-75）。
+# 后果是该次深链被静默丢弃——用户点了链接却什么都没发生，且没有任何日志。
+# 冷启动（程序没开）不受影响，因为它走 deep-link 自己解析 CLI 的路径。
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 # 剪切板：由后端提供命令，前端不申请剪贴板权限（见 `commands/clipboard.rs`）。
 # 刻意不用 `tauri-plugin-clipboard-manager`：它在 Windows 上会把整个 gtk 依赖树
@@ -56,12 +63,37 @@ subtle = "2"
 
 # M3 (Material Design 3) 动态配色引擎：从种子颜色生成色调调色板、明暗主题映射与颜色角色分配
 # 成熟稳定的 Rust crate 实现：https://crates.io/crates/material-colors
-material-colors = "0.3"
+#
+# `image` feature 提供「从图片提取种子色」（`material_colors::image`），用于"配色跟随
+# 背景图"。它只额外拉入 `image` crate 0.25（其默认 features 已覆盖 png/jpeg/webp/gif），
+# 不必自己写中位切分量化与打分。
+material-colors = { version = "0.3", features = ["image"] }
+# 直接依赖 `image`（与 material-colors 内部用的是同一份，不会重复编译）：
+# 取色前需要**只看表头**拿到像素尺寸，以挡住"几百字节的 PNG 声明成 30000×30000"
+# 这类解码炸弹。material_colors 只导出 `ImageReader::read`（整图解码），
+# 没有只读尺寸的入口，因此这里自己读。
+# 默认 features 已覆盖 png/jpeg/webp/gif；不关默认项以免与 material-colors 复用出两份。
+image = "0.25"
 tauri-plugin-updater = "2.13.1"
 minisign-verify = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+# Microsoft 官方维护的 Win32 绑定。
+#
+# 目前**只剩一处**用途：`effect.rs` 调 DwmApi 设置沉浸式深色模式
+# （`DwmSetWindowAttribute`）。Tauri 没有等价 API，这一步必须自己调系统；
+# 但手写 `#[link(name = "dwmapi")]` + `extern "system"` 声明一旦签名写错就是 UB，
+# 且常量 `DWMWA_USE_IMMERSIVE_DARK_MODE` 在旧 SDK 里是 19、新的是 20，也要自己维护。
+#
+# 另一处（托盘菜单取光标位置）已删除：`TrayIconEvent::Click` 自带 `position` 字段，
+# 由 Tauri 跨平台提供，不必自己查系统光标。
+#
+# 版本与 Tauri 自身依赖的 0.61 对齐，避免引入第二份 windows-sys 编译单元。
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # 与 Tauri 内部同款的材质库。目前只用于一件事：`set_effects(None)` 在 macOS 上

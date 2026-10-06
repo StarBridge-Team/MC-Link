@@ -210,6 +210,7 @@ function findAppExe(dir) {
  * 收集 Linux / macOS 的产物（只有在该平台上构建时才存在）。
  *
  * 插件能自动安装的形态：Linux 仅 AppImage（deb/rpm 不支持），macOS 为 `.app.tar.gz`。
+ * Flatpak 与 deb 只作为**手动下载**项（见各自的注释）。
  */
 function collectPlatformArtifacts(dir) {
   const found = [];
@@ -227,6 +228,24 @@ function collectPlatformArtifacts(dir) {
     }
   }
 
+  // deb / rpm：Tauri 直接产出，**只作手动下载**。
+  // 它们由系统包管理器安装，客户端既不能自动替换（`/usr` 归 dpkg 管），
+  // 官方更新插件也不支持 —— 所以不进 auto_kinds，只让用户能拿到文件。
+  for (const [bundleDir, ext, kind] of [
+    ["deb", ".deb", "deb"],
+    ["rpm", ".rpm", "rpm"],
+  ]) {
+    const dirPath = join(dir, "bundle", bundleDir);
+    if (!existsSync(dirPath)) continue;
+    const hit = readdirSync(dirPath).find((f) => f.endsWith(ext));
+    if (!hit) continue;
+    found.push({
+      source: join(dirPath, hit),
+      file: `MC-Link-${version}-linux-${arch}-${kind}${ext}`,
+      kind,
+    });
+  }
+
   const macosDir = join(dir, "bundle", "macos");
   if (existsSync(macosDir)) {
     const hit = readdirSync(macosDir).find((f) => f.endsWith(".app.tar.gz"));
@@ -237,6 +256,27 @@ function collectPlatformArtifacts(dir) {
         kind: "macos-app",
       });
     }
+  }
+
+  // Flatpak：由 flatpak-builder 产出（Tauri 的 bundle targets 不含 flatpak），
+  // 通常落在 `build-aux/flatpak/` 或 `target/release/bundle/flatpak/`。
+  //
+  // **只作为手动下载项**：Flatpak 是只读沙箱，应用自身（以及官方更新插件）
+  // 都无法替换它，必须由 `flatpak update` 完成。客户端 `auto_kinds` 刻意
+  // 不包含 `flatpak`，见 update/model.rs 的 KIND_FLATPAK 说明。
+  for (const flatpakDir of [
+    join(dir, "bundle", "flatpak"),
+    join(ROOT, "build-aux", "flatpak"),
+  ]) {
+    if (!existsSync(flatpakDir)) continue;
+    const hit = readdirSync(flatpakDir).find((f) => f.endsWith(".flatpak"));
+    if (!hit) continue;
+    found.push({
+      source: join(flatpakDir, hit),
+      file: `MC-Link-${version}-linux-${arch}-flatpak.flatpak`,
+      kind: "flatpak",
+    });
+    break; // 两处都可能有，取先命中的一处即可，避免重复条目
   }
 
   return found;

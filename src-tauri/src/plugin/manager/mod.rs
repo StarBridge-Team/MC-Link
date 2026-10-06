@@ -170,20 +170,19 @@ impl PluginManager {
     }
 
     /// 关闭全部插件并停止网关。
+    ///
+    /// # 顺序为什么重要
+    ///
+    /// 先置 `shutdown` 标志再收进程：`provider()` 会在拉起前检查该标志，
+    /// 避免"关闭的同时又有 invoke 拉起一个新进程，然后它落进已被 drain 的 children 表"
+    /// ——那会让插件进程活过核心（Windows 上表现为"应用退了插件还在跑"）。
     pub fn shutdown(&self) {
         self.inner.shutdown.store(true, Ordering::SeqCst);
-        let providers: Vec<Provider> = self
-            .inner
-            .providers
-            .read()
-            .map(|m| m.values().cloned().collect())
-            .unwrap_or_default();
-        for provider in providers {
-            provider.close("核心正在退出");
-            if let Provider::Builtin(builtin) = &provider {
-                builtin.shutdown();
-            }
-        }
+        // 关闭期间不允许再拉起新进程：`launch_lock` 把 `provider()` 的
+        // "拉起 + 等握手"整段串行化，拿到锁即意味着没有在途的拉起动作，
+        // 此时再收进程就不会有新的 `Child` 落进表里。
+        let _launch_guard = self.inner.launch_lock.blocking_lock();
+        self.close_providers();
         // 结束仍存活的外部插件进程：只 `close` 会话是不够的——插件可以不理会，
         // 或者根本没握手成功。Windows 上它们会活过本进程，Unix 上会成为僵尸。
         if let Ok(mut children) = self.inner.children.write() {
@@ -195,6 +194,25 @@ impl PluginManager {
         }
         if let Ok(mut slot) = self.inner.gateway.write() {
             *slot = None;
+        }
+    }
+
+    /// 关闭所有提供者（会话 + 内置资源）。
+    ///
+    /// 与 `shutdown()` 拆开：`platform_supported` 之外还需要在"停用/拉黑单个插件"时
+    /// 复用同一套关闭动作，避免两处逻辑漂移。
+    fn close_providers(&self) {
+        let providers: Vec<Provider> = self
+            .inner
+            .providers
+            .read()
+            .map(|m| m.values().cloned().collect())
+            .unwrap_or_default();
+        for provider in providers {
+            provider.close("核心正在退出");
+            if let Provider::Builtin(builtin) = &provider {
+                builtin.shutdown();
+            }
         }
     }
 
@@ -216,11 +234,14 @@ impl PluginManager {
     }
 
     pub fn list(&self) -> Vec<PluginRecord> {
-        self.inner
-            .registry
-            .read()
-            .map(|r| r.list().into_iter().cloned().collect())
-            .unwrap_or_default()
+        match self.inner.registry.read() {
+            Ok(r) => r.list().into_iter().cloned().collect(),
+            Err(_) => {
+                // 静默返回空列表会让"插件全都不见了"变成一个无迹可查的谜
+                eprintln!("[插件] 注册表读锁已中毒，无法列出插件");
+                Vec::new()
+            }
+        }
     }
 
     pub fn get(&self, plugin_id: &str) -> Option<PluginRecord> {
@@ -362,6 +383,15 @@ impl PluginManager {
             return Ok(existing);
         }
 
+        // 已进入关闭流程就拒绝拉起：否则新进程会落进已被 drain 的 children 表，
+        // 活过本进程（Windows 上表现为"应用退了插件还在跑"）。
+        if self.inner.shutdown.load(Ordering::SeqCst) {
+            return Err(ErrorInfo::new(
+                error_code::UNAVAILABLE,
+                "核心正在退出，不再启动插件".to_string(),
+            ));
+        }
+
         let Some(record) = self.get(plugin_id) else {
             return Err(ErrorInfo::new(
                 error_code::UNAVAILABLE,
@@ -400,13 +430,25 @@ impl PluginManager {
         }
     }
 
+    /// 取已就绪的提供者。
+    ///
+    /// # 锁中毒时为什么"当作已就绪"而不是返回 `None`
+    ///
+    /// 返回 `None` 会让 `provider()` 认为插件尚未拉起，于是**再拉起一个进程**——
+    /// 而 `children` 表里那个旧进程没人管，直接变成孤儿。返回一个"可疑但存在"的
+    /// 句柄反而更安全：调用方会在真正使用时失败，不会复制出进程。
+    /// （`plugin/utils.rs` 的 `lock_or_err` 是同一取向：安全状态宁可失败也不要恢复。）
     fn cached_provider(&self, plugin_id: &str) -> Option<Provider> {
-        self.inner
-            .providers
-            .read()
-            .ok()
-            .and_then(|m| m.get(plugin_id).cloned())
-            .filter(|p| p.is_available())
+        match self.inner.providers.read() {
+            Ok(m) => m.get(plugin_id).cloned().filter(|p| p.is_available()),
+            Err(_) => self
+                .inner
+                .providers
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(plugin_id)
+                .cloned(),
+        }
     }
 
     /// 按候选顺序调用能力方法，失败自动降级到下一个插件。
@@ -460,6 +502,22 @@ impl PluginManager {
             .unwrap_or_else(|| ErrorInfo::new(error_code::UNAVAILABLE, "全部候选插件均调用失败")))
     }
 
+    /// 定向调用**指定**插件的能力方法（不走路由回退链）。
+    ///
+    /// 用于调用方已经确定要哪个插件的场景（如"遍历所有检测器各扫一次"）。
+    /// 走 `invoke` 会重新路由并对全部候选依次尝试，导致重复调用。
+    /// 权限判定与 `invoke` 一致：候选身份不构成任何豁免。
+    pub async fn invoke_plugin(
+        &self,
+        plugin_id: &str,
+        required: Permission,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, ErrorInfo> {
+        let provider = self.provider(plugin_id).await?;
+        provider.invoke_checked(required, method, params).await
+    }
+
     /// 应用打开时调用：遍历所有【已启用且可运行】的检测类(detector)插件，
     /// 逐个触发 `detector.scan`，把发现的本地游戏回传前端首页。
     ///
@@ -478,11 +536,21 @@ impl PluginManager {
 
         let mut found = Vec::new();
         for (id, name) in detectors {
+            // 定向调用**这个**检测器。
+            //
+            // 不能走 `invoke(Detector, ..)`：那会重新算路由计划并对**全部候选**依次
+            // 尝试，N 个检测器就退化成 N² 次扫描（每次扫描含 3 秒 UDP 多播）。
+            // 这里已经拿到确切的插件 id，直接用它。
             match self
-                .invoke(PluginKind::Detector, None, detector_method::SCAN, json!({}))
+                .invoke_plugin(
+                    &id,
+                    required_for(PluginKind::Detector, detector_method::SCAN),
+                    detector_method::SCAN,
+                    json!({}),
+                )
                 .await
             {
-                Ok((plugin_id, raw)) => {
+                Ok(raw) => {
                     // `detector.scan` 的契约是返回**数组**（可能有多台服务器），
                     // 这里逐个展开。早期版本按对象取字段，于是 `process` 实际拿到的是
                     // `id`（`minecraft-java`）而不是 MOTD——首页与联机页显示的会是同一个
@@ -519,7 +587,7 @@ impl PluginManager {
                         // 同时走既有 detector.found 契约通道，保持插件事件一致。
                         self.emit(json!({
                             "topic": event_topic::DETECTOR_FOUND,
-                            "plugin": plugin_id,
+                            "plugin": id,
                             "game": serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
                         }));
                     }

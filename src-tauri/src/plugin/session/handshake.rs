@@ -7,6 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::WebSocketStream;
 
 use crate::plugin::auth::{new_challenge, Challenge, METHOD_PSK_HMAC};
@@ -168,7 +169,19 @@ pub async fn accept_ws(stream: TcpStream, expected_token: String) -> Result<Acce
         Ok(resp)
     };
 
-    let ws = tokio_tungstenite::accept_hdr_async(stream, callback)
+    // 握手阶段就把 WS 层帧上限收到 16 KB。
+    //
+    // tungstenite 默认 `max_message_size` 是 64 MB，而 `recv_handshake` 只在**拿到
+    // 整帧之后**才检查 `MAX_HANDSHAKE_BYTES` —— 也就是说恶意对端可以用一个 64 MB 的
+    // 文本帧把内存放大，或用无限 Ping 帧消耗 CPU。会话期有 `max_frame_bytes.min(4 MB)`
+    // 兜底（见 `session/io.rs`），握手期必须在这里配。
+    let config = WebSocketConfig {
+        max_message_size: Some(protocol::MAX_HANDSHAKE_BYTES),
+        max_frame_size: Some(protocol::MAX_HANDSHAKE_BYTES),
+        ..WebSocketConfig::default()
+    };
+
+    let ws = tokio_tungstenite::accept_hdr_async_with_config(stream, callback, Some(config))
         .await
         .map_err(|e| format!("WebSocket 升级失败: {}", e))?;
 
@@ -193,14 +206,20 @@ fn query_param(request: &Request, key: &str) -> Option<String> {
 }
 
 /// 极简百分号解码（仅用于令牌与插件 ID）。
+///
+/// 全程按**字节**操作，不切片 `&str`：`s[i+1..i+3]` 在 `%` 后面跟多字节字符
+/// （如 `%é`）时不是合法 char 边界，会直接 panic。这里改为在字节数组上取值，
+/// 非 ASCII 字节原样透传（`from_utf8_lossy` 兜底）。
 pub(super) fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v);
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(hi), Some(lo)) = (hi, lo) {
+                out.push((hi * 16 + lo) as u8);
                 i += 3;
                 continue;
             }

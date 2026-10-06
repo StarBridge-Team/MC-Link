@@ -65,3 +65,13 @@ export async function generateM3Scheme(
     contrast: CONTRASTS[contrast] ?? 0,
   });
 }
+
+/**
+ * 从一张本地背景图提取种子色（"配色跟随背景图"）。
+ *
+ * `filename` 是背景目录里的**纯文件名**（与 `getBackgroundFileUrl` 同源，后端会
+ * 重新做一遍路径收口）；失败时抛出错误，调用方应回退到用户手选的种子色。
+ */
+export async function extractBackgroundSeed(filename: string): Promise<string> {
+  return invoke<string>("extract_background_seed", { filename });
+}

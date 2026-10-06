@@ -11,6 +11,27 @@ export interface LocalGame {
   port: number;
 }
 
+/**
+ * 核心编排扫描后回传首页的发现结果。
+ *
+ * 与 {@link LocalGame} **不是同一个东西**：那个是 `detector.scan` 的**插件返回值**
+ * （带 `id`/`port`），这个是核心加工后的**前端展示结构**（带扫描器与推荐适配器名）。
+ * 权威定义见 `src-tauri/src/plugin/protocol.rs::LocalGameFound`。
+ *
+ * 此前首页在 `HomeView.vue` 里本地声明了一份同形接口，字段与这里不同（三处定义互不一致），
+ * 类型系统因此形同虚设——统一收口到此处。
+ */
+export interface LocalGameFound {
+  /** 游戏进程可执行文件名。 */
+  process: string;
+  /** 游戏展示名。 */
+  game_name: string;
+  /** 命中的扫描器（detector）插件展示名。 */
+  scanner: string;
+  /** 推荐的适配器（adapter）插件展示名；无则空串。 */
+  adapter: string;
+}
+
 /** 适配器自声明的一个字段（由 `adapter.init` 的 `host_fields` / `join_fields` 返回）。 */
 export interface JoinField {
   key: string;

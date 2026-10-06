@@ -324,7 +324,12 @@ pub struct PeerPluginInfo {
 ///
 /// 与 [`PeerPluginInfo`] 区分开：那个描述的是"本机其它插件"，这个描述的是"房间里的
 /// 人"。复用前者会让房间视图把插件名当玩家名显示。
+///
+/// 序列化成 **camelCase**：前端契约（`lib/api/typesConnect.ts` 的 `RoomMember`）
+/// 与其它联机 DTO（`ConnectEvent` 等）都读 `machineId` / `isSelf`。
+/// 不转换的话这两个字段恒为 `undefined`，表现为"无法区分同名玩家、本机标记失效"。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RoomMember {
     /// 展示名（陶瓦的 `profiles[].name`）。
     #[serde(default)]

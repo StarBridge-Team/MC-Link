@@ -120,9 +120,31 @@ export function checkKeyPubkeyPair() {
 }
 
 /**
+ * 本次构建是否**必须**具备可用的签名配置。
+ *
+ * 判据是"这次构建会不会被当作官方发布产物分发出去"：
+ *   - `MC_LINK_BUILD_CHANNEL=official`（发布流程注入）→ 必须签名；
+ *   - `CI=true` 且非 PR 环境（GitHub Actions 的发布 job）→ 必须签名。
+ *
+ * 本地 `pnpm tauri dev` / 随手 `pnpm build:release` 不属于此列：那时没有可用密钥是
+ * 正常的，不该把人拦在门外。
+ */
+function signingRequired() {
+  if ((process.env.MC_LINK_BUILD_CHANNEL || "").trim() === "official") return true;
+  const ci = (process.env.CI || "").trim().toLowerCase();
+  return ci === "true" || ci === "1";
+}
+
+/**
  * 发布前检查：返回 `{ level: "ok" | "warn" | "error", lines: string[] }`。
  *
  * 调用方自行决定是中断还是继续：`error` 一律应当中断发布。
+ *
+ * # 为什么"没配密钥"在发布环境是 error 而不是 warn
+ *
+ * 以前它只 warn，于是可能出现"CI 全绿但产物不可更新"：`update/tauri.json` 根本不生成，
+ * 安装版客户端永远收不到更新，且没有任何红叉提示。这类缺陷最难排查——
+ * 流水线看着正常，用户侧却一直失败。发布链路上，缺签名必须让流水线**红掉**。
  */
 export function preflight() {
   const source = keySource();
@@ -133,15 +155,32 @@ export function preflight() {
   lines.push(`签名公钥配对：${pair.reason}`);
 
   if (!source) {
-    return {
-      level: "warn",
-      lines: [
-        ...lines,
-        "  后果：不会生成 update/tauri.json，官方插件路径整体不可用",
-        "        （Windows 便携版仍可自研更新；安装版会退回自研拉起安装器）。",
-        "  修复：pnpm signer:generate（生成后把公钥同步进 tauri.conf.json）",
-      ],
-    };
+    const required = signingRequired();
+    const consequence = [
+      "  后果：不会生成 update/tauri.json，官方插件路径整体不可用",
+      "        （Windows 便携版仍可自研更新；安装版会退回自研拉起安装器）。",
+      "  修复：pnpm signer:generate（生成后把公钥同步进 tauri.conf.json）",
+    ];
+    if (required) {
+      return {
+        level: "error",
+        lines: [
+          ...lines,
+          ...consequence,
+          "  本次是发布构建（official / CI），缺签名会让产物不可更新，已中断。",
+        ],
+      };
+    }
+    return { level: "warn", lines: [...lines, ...consequence] };
+  }
+
+  // 私钥存在但无法比对本地公钥（CI 环境没有 .pub 文件）：至少提示一句，
+  // 让"公钥可能配错"这件事在日志里留痕，而不是完全静默。
+  if (!pair.compared) {
+    lines.push(
+      "  提示：无法在本次环境比对公钥（缺少本地 .pub）。",
+      "        发布前建议在本地跑一次 `node scripts/gen-signer.mjs --sync` 核对。",
+    );
   }
 
   return { level: pair.ok ? "ok" : "error", lines };

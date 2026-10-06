@@ -54,6 +54,50 @@ fn emit_event(app: &AppHandle, evt: ConnectEvent) {
     let _ = app.emit("connect-event", &evt);
 }
 
+/// 把适配器自报的字段列表规范化成前端契约（camelCase）。
+///
+/// # 为什么必须在这一层规范化
+///
+/// 适配器（尤其外部插件）可以按任意命名返回 `join_fields`：内置陶瓦用的是
+/// snake_case 的 `autofill_from_invite`，而前端契约（`typesConnect.ts`）读的是
+/// `autofillFromInvite`。不做转换时该字段恒为 `undefined`，前端只能退化为"取第一个
+/// 字段当邀请码"，一旦适配器声明多个字段就会写错位置。
+///
+/// 因此把已知的 snake_case 元数据统一改名，其余未知字段原样保留（前向兼容）。
+fn normalize_fields(value: Value) -> Value {
+    let Value::Array(items) = value else {
+        return value;
+    };
+    Value::Array(
+        items
+            .into_iter()
+            .map(|item| {
+                let Value::Object(mut map) = item else {
+                    return item;
+                };
+                for (from, to) in [
+                    ("autofill_from_invite", "autofillFromInvite"),
+                    ("max_length", "maxLength"),
+                ] {
+                    if let Some(v) = map.remove(from) {
+                        map.insert(to.to_string(), v);
+                    }
+                }
+                Value::Object(map)
+            })
+            .collect(),
+    )
+}
+
+/// 把前端传来的端口转成合法的 `u16`。
+///
+/// 客户端可以把 `port` 传成任意 u64（例如 70000）。直接 `as u16` 会静默截断成
+/// 4464，房间广播/耦合器就会用错端口且无任何报错。越界一律判为无效并回退到扫描结果。
+fn port_from_value(value: &Value) -> Option<u16> {
+    let p = value.as_u64()?;
+    (1..=65535).contains(&p).then_some(p as u16)
+}
+
 /// 从适配器返回值里提取房间成员。
 ///
 /// 适配器实现各不相同，这里只认统一约定：`players` 数组（内置陶瓦适配器已把它的
@@ -105,14 +149,16 @@ pub async fn connect_adapters(
             .await
             .ok()
             .map(|(_, v)| v);
-        let host_fields = init
-            .as_ref()
-            .and_then(|v| v.get("host_fields").cloned())
-            .unwrap_or(Value::Array(vec![]));
-        let join_fields = init
-            .as_ref()
-            .and_then(|v| v.get("join_fields").cloned())
-            .unwrap_or(Value::Array(vec![]));
+        let host_fields = normalize_fields(
+            init.as_ref()
+                .and_then(|v| v.get("host_fields").cloned())
+                .unwrap_or(Value::Array(vec![])),
+        );
+        let join_fields = normalize_fields(
+            init.as_ref()
+                .and_then(|v| v.get("join_fields").cloned())
+                .unwrap_or(Value::Array(vec![])),
+        );
         adapters.push(json!({
             "pluginId": record.manifest.id,
             "name": record.manifest.name,
@@ -197,8 +243,7 @@ pub async fn connect_start_host(
         let port = if let Some(p) = fields
             .get("game")
             .and_then(|g| g.get("port"))
-            .and_then(|p| p.as_u64())
-            .map(|p| p as u16)
+            .and_then(port_from_value)
         {
             Some(p)
         } else {
@@ -215,8 +260,7 @@ pub async fn connect_start_host(
                     .as_array()
                     .and_then(|a| a.first())
                     .and_then(|g| g.get("port"))
-                    .and_then(|p| p.as_u64())
-                    .map(|p| p as u16),
+                    .and_then(port_from_value),
                 Err(e) => {
                     eprintln!("[联机] 本地游戏扫描失败（不影响建房间）: {}", e.message);
                     None

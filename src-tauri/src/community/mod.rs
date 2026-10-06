@@ -200,7 +200,10 @@ fn cache_dir(data_dir: &Path) -> PathBuf {
 /// —— 缓存坏了，离线时就什么都看不到。
 fn write_atomic(path: &Path, content: &str) {
     let tmp = path.with_extension("tmp");
-    if std::fs::write(&tmp, content).is_ok() && std::fs::rename(&tmp, path).is_err() {
+    // 写失败也要清掉半截临时文件：原来的 `&&` 短路会在 write 失败时跳过清理，
+    // 留下 `.tmp` 残留（`persist::atomic_write` 已修过同一个问题）。
+    let written = std::fs::write(&tmp, content).and_then(|_| std::fs::rename(&tmp, path));
+    if written.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
 }

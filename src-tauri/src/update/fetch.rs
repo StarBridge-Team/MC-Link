@@ -273,6 +273,7 @@ pub(crate) async fn check_update(
                 mode,
                 auto_supported,
                 &assets_server_url(data_dir),
+                crate::runtime::is_flatpak(),
             ))
         } else {
             None

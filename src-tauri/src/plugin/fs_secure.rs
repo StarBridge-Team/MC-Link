@@ -9,43 +9,55 @@ use std::path::Path;
 
 /// 把文件的可见性/权限收紧到"仅当前用户"。
 ///
-/// 刻意做成尽力而为：失败不阻断流程（文件至少仍带隐藏属性），
-/// 因为这里失败通常意味着"系统工具不可用"，而不是权限泄露的新增风险。
-#[cfg(windows)]
-pub fn restrict_to_current_user(path: &Path) {
-    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
-    use std::os::windows::fs::OpenOptionsExt;
-    if let Ok(file) = std::fs::OpenOptions::new()
-        .write(true)
-        .attributes(FILE_ATTRIBUTE_HIDDEN)
-        .open(path)
+/// 成功返回 `Ok(())`；失败返回原因，由调用方决定是否阻断。
+///
+/// # 为什么改成返回结果
+///
+/// 此前是"尽力而为、静默吞掉"：`icacls` 失败时文件只剩隐藏属性。隐藏**不是权限**，
+/// 而密钥落点（`Setting/plugin_keys/`）的意义正是"别的进程读不到"。密钥文件
+/// 权限收紧失败必须能被上层感知，不能悄悄降级。
+pub fn restrict_to_current_user(path: &Path) -> Result<(), String> {
+    #[cfg(windows)]
     {
-        drop(file);
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        use std::os::windows::fs::OpenOptionsExt;
+        if let Ok(file) = std::fs::OpenOptions::new()
+            .write(true)
+            .attributes(FILE_ATTRIBUTE_HIDDEN)
+            .open(path)
+        {
+            drop(file);
+        }
+
+        // 隐藏属性不是权限控制：去掉继承、只保留当前用户。
+        // 走系统自带的 icacls 而不是引入依赖。
+        let user = std::env::var("USERNAME")
+            .map_err(|_| "无法读取 USERNAME，无法收紧文件权限".to_string())?;
+        let user = user.trim();
+        if user.is_empty() {
+            return Err("USERNAME 为空，无法收紧文件权限".to_string());
+        }
+        let status = std::process::Command::new("icacls")
+            .arg(path)
+            .arg("/inheritance:r")
+            .arg("/grant:r")
+            .arg(format!("{}:F", user))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_err(|e| format!("调用 icacls 失败: {}", e))?;
+        if !status.success() {
+            return Err(format!("icacls 返回失败状态: {}", status));
+        }
+        Ok(())
     }
 
-    // 隐藏属性不是权限控制：去掉继承、只保留当前用户。
-    // 走系统自带的 icacls 而不是引入依赖；失败只是降级（仍是隐藏文件）。
-    let Ok(user) = std::env::var("USERNAME") else {
-        return;
-    };
-    let user = user.trim();
-    if user.is_empty() {
-        return;
+    #[cfg(not(windows))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("设置 0600 权限失败: {}", e))
     }
-    let _ = std::process::Command::new("icacls")
-        .arg(path)
-        .arg("/inheritance:r")
-        .arg("/grant:r")
-        .arg(format!("{}:F", user))
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-}
-
-#[cfg(not(windows))]
-pub fn restrict_to_current_user(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
 }
 
 #[cfg(test)]
@@ -53,18 +65,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn restrict_is_best_effort_and_never_panics() {
-        // 不存在的路径也必须安静返回：调用点不处理错误
-        restrict_to_current_user(Path::new("E:/definitely/not/here.key"));
+    fn restrict_never_panics_and_reports_failure_for_missing_path() {
+        // 不存在的路径不应 panic；调用方据此决定是否阻断
+        let result = restrict_to_current_user(Path::new("E:/definitely/not/here.key"));
+        // Windows 上 icacls 对不存在的路径会失败（返回 Err），Unix 上 set_permissions 同样失败。
+        // 关键不变量是"不 panic 且错误可被感知"。
+        let _ = result;
 
-        // 真实文件：Unix 上能直接验证模式位；Windows 上只验证不 panic
         let tmp = std::env::temp_dir().join(format!(
             "mclink-fs-secure-{}",
             crate::plugin::crypto::random_hex(6)
         ));
         std::fs::write(&tmp, b"secret").unwrap();
-        restrict_to_current_user(&tmp);
-        assert!(tmp.exists());
+        // 真实文件应当收紧成功；Unix 上还能直接验证模式位
+        restrict_to_current_user(&tmp).expect("真实文件应能收紧权限");
+        #[cfg(not(windows))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&tmp).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "Unix 上应为 0600");
+        }
         let _ = std::fs::remove_file(&tmp);
     }
 }

@@ -7,6 +7,7 @@ mod utils;
 use commands::*;
 mod asset_server;
 mod assets;
+mod background;
 mod cache;
 mod community;
 mod config;
@@ -16,8 +17,40 @@ mod downloader;
 mod effect;
 mod legal;
 mod m3;
+
+/// 取色能力的只读探针，仅供 `examples/` 与调试使用。
+///
+/// # 为什么要有这个出口
+///
+/// 取色会对**用户真实的壁纸**解码（实测有 3840×2160 的 JPEG），而单元测试只能用手写的
+/// 小规模 PNG。两者的栈占用完全不同 —— 曾经出现"测试全过、真机上主线程爆栈"的情况，
+/// 因为测试线程的栈比主线程大。
+/// 留一个能直接喂真实文件的入口，才复现得了这类与输入规模相关的问题。
+pub mod seed_probe {
+    /// 从本地图片提取 M3 种子色（`#rrggbb`）。
+    pub fn extract_seed_from_file(path: &std::path::Path) -> Result<String, String> {
+        crate::m3::extract::extract_seed_from_file(path)
+    }
+
+    /// 只做"解码 + 缩放"，不做取色。
+    ///
+    /// 用于把问题定位到具体某一步：如果它不崩而 `extract_seed_from_file` 崩，
+    /// 那问题就在量化/打分，而不在解码或缩放。
+    pub fn decode_and_resize_only(path: &std::path::Path) -> Result<String, String> {
+        crate::m3::extract::decode_and_resize_only(path)
+    }
+
+    /// **在当前线程**直接取色（不切大栈线程）。
+    ///
+    /// 专门用于测量"需要多大栈"：调用方自己控制线程与 `stack_size`。
+    /// 生产代码不应走这个入口。
+    pub fn extract_seed_from_file_inline(path: &std::path::Path) -> Result<String, String> {
+        crate::m3::extract::extract_seed_from_file_inline(path)
+    }
+}
 mod mgr;
 mod plugin;
+mod runtime;
 mod setting_meta;
 mod setup;
 mod tray;
@@ -75,7 +108,26 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        // 单实例 + 深链热路径。
+        //
+        // # 为什么 `_args` 看起来没用却能工作
+        //
+        // 插件在**调用本回调之前**就已经把 argv 转交给了 deep-link 插件
+        // （转发逻辑由 `deep-link` feature 开关，见 Cargo.toml 的说明）——
+        // 也就是说 `mclink://` 的解析发生在这里之前，本回调只负责"把窗口叫到前面"。
+        //
+        // # 便携版注意事项
+        //
+        // 单实例的判定标识只由 `identifier`（`com.cugo.mc-link`）构成，**与 exe 路径无关**
+        // （`windows.rs:65-67` 的 `{identifier}-sim`）。因此同一台机器上**任意两份便携版
+        // 都互斥**：复制一份改个名放进另一个目录，后启动的那份会向先启动者发 WM_COPYDATA
+        // 然后 `exit(0)`。这是刻意接受的取舍——联机核心会监听端口、持有房间状态，
+        // 跑两份实例本身就是未定义行为。
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !args.is_empty() {
+                // 留痕：出问题时（"点了链接没反应"）这是唯一能看出"第二个实例确实起来了"的线索
+                eprintln!("[单实例] 已有实例在运行，已转交参数: {:?}", args);
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -85,6 +137,28 @@ pub fn run() {
         .setup(|app| {
             let data_dir = resolve_data_dir(app);
             std::fs::create_dir_all(&data_dir).ok();
+
+            // 把实际数据目录加入 asset 协议白名单。
+            //
+            // `tauri.conf.json` 里只写了 `$APPDATA/**`，而**便携版的数据目录是 exe
+            // 同目录**（见 `datadir.rs::resolve_data_dir`），不在 `$APPDATA` 之下 ——
+            // 那样收窄 scope 会让便携版的背景图/字体/图标全部加载失败。
+            //
+            // 这里在运行时补上真实目录，既保住了静态配置的收窄（非便携环境只放行
+            // 应用数据目录，不再是过去的 `**`），又让便携版照常工作。
+            // 失败不阻断启动：只是资源加载可能降级，日志足够定位。
+            //
+            // 不写 `#[cfg(feature = "protocol-asset")]`：那是 **Tauri crate 自己的 feature**
+            // （在 `Cargo.toml` 的 `tauri = { features = [...] }` 里开启），本 crate 的 cfg
+            // 看不到它，写了只会得到 "unexpected cfg condition value" 告警。
+            // 该方法本来就只在启用该 feature 时存在，而本项目始终启用。
+            {
+                use tauri::Manager;
+                let scope = app.asset_protocol_scope();
+                if let Err(e) = scope.allow_directory(&data_dir, true) {
+                    eprintln!("[资源] 加入 asset 白名单失败（{}）: {}", data_dir.display(), e);
+                }
+            }
 
             // 清理上一次自动更新留下的旧 exe 备份与下载残留；此时旧进程必然已退出
             update::cleanup_leftovers(&data_dir);
@@ -110,13 +184,18 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 am.run_open_actions(apph).await;
             });
-            // 用已保存的设置预应用窗口效果，避免启动瞬间先闪一下平台默认效果
-            let effect_name = mgr
-                .read()
-                .personalization()
-                .map(|p| p.transparent_effect)
-                .unwrap_or_else(|_| effect::get_default_effect());
-            effect::setup_window_effects(app, &effect_name);
+            // 用已保存的设置预应用窗口效果，避免启动瞬间先闪一下平台默认效果。
+            //
+            // 染色浓度与明暗必须一并传入：材质是"半透明纯色 + 染色层"，只传效果名会让
+            // 带染色的用户先看到一帧默认材质，再被前端 `applyAll()` 纠正 —— 同一种闪烁。
+            let pers = mgr.read().personalization().unwrap_or_default();
+            let dark = match pers.theme_mode.as_str() {
+                "dark" => true,
+                // 跟随系统：这里读不到系统偏好，交给前端的 `syncWindowEffect` 兜底纠正；
+                // 预应用只求"不闪"，取浅色即可（首帧本来也是浅色）。
+                _ => false,
+            };
+            effect::setup_window_effects(app, &pers.transparent_effect, pers.effect_tint, dark);
 
             // 登记 mclink:// 深链接。**是否登记由安装形态决定**（见 deep_link::should_register_scheme）：
             // 安装版由安装器/系统登记，程序再写一遍会在卸载或挪动安装目录后残留失效的协议项；
@@ -217,6 +296,8 @@ pub fn run() {
             set_window_dark_mode,
             get_background_files,
             get_background_file_url,
+            fetch_remote_background,
+            extract_background_seed,
             init_app,
             prepare_app,
             get_asset_url,

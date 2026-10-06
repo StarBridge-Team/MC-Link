@@ -1,7 +1,7 @@
 {
   "name": "mc-link",
   "private": true,
-  "version": "0.5.3",
+  "version": "0.5.4",
   "type": "module",
   "author": "棱镜Prism工作室",
   "description": "MC Link - 我的世界联机工具",
@@ -14,6 +14,7 @@
     "tauri": "node scripts/tauri-build.mjs",
     "build:release": "node scripts/tauri-build.mjs build",
     "sync:assets": "node scripts/sync-assets.mjs",
+    "flatpak:repo": "node scripts/flatpak-repo.mjs",
     "licenses": "node scripts/gen-licenses.mjs",
     "licenses:check": "node scripts/gen-licenses.mjs --check",
     "signer:generate": "node scripts/gen-signer.mjs",

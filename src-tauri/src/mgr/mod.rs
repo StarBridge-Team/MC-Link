@@ -25,6 +25,12 @@ pub struct AppMgr {
     write_lock: Arc<SyncMutex<()>>,
     pull_lock: Arc<AsyncMutex<()>>,
     update_lock: Arc<AsyncMutex<()>>,
+    /// URL 背景图/视频的本地缓存。
+    ///
+    /// **必须是单例**：它的索引是"URL → 当前世代文件"的唯一权威，同一目录下存在两个
+    /// 实例会让它们各持一份内存索引，后写的覆盖先写的（表现为缓存时有时无）。
+    /// 挂在这里，全应用只有一份。
+    background_cache: crate::background::RemoteCache,
 }
 
 impl AppMgr {
@@ -33,13 +39,20 @@ impl AppMgr {
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+        let background_cache = crate::background::RemoteCache::new(&data_dir)?;
         Ok(Self {
             data_dir,
             http,
             write_lock: Arc::new(SyncMutex::new(())),
             pull_lock: Arc::new(AsyncMutex::new(())),
             update_lock: Arc::new(AsyncMutex::new(())),
+            background_cache,
         })
+    }
+
+    /// URL 背景的下载缓存。
+    pub fn background_cache(&self) -> &crate::background::RemoteCache {
+        &self.background_cache
     }
 
     pub fn data_dir(&self) -> &PathBuf {

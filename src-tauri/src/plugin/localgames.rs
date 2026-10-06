@@ -28,17 +28,24 @@ impl LocalGamesCache {
 
     /// 覆盖式写入。只保存「最近一次」——空结果同样要覆盖，
     /// 否则游戏退出后前端拉到的仍是上一次的陈旧数据。
+    ///
+    /// 中毒时留日志：这一项本身不是安全状态（只是展示缓存），但静默吞掉会掩盖
+    /// "某线程持锁期间 panic"这个更值得查的事实。
     pub fn set(&self, games: &[LocalGameFound]) {
-        if let Ok(mut slot) = self.games.write() {
-            *slot = games.to_vec();
+        match self.games.write() {
+            Ok(mut slot) => *slot = games.to_vec(),
+            Err(_) => eprintln!("[插件] 本地游戏缓存写锁已中毒，本次结果未记录"),
         }
     }
 
     /// 读取当前结果（无结果时为空数组）。
     pub fn get(&self) -> Vec<LocalGameFound> {
-        self.games
-            .read()
-            .map(|g| g.clone())
-            .unwrap_or_default()
+        match self.games.read() {
+            Ok(g) => g.clone(),
+            Err(_) => {
+                eprintln!("[插件] 本地游戏缓存读锁已中毒，返回空结果");
+                Vec::new()
+            }
+        }
     }
 }

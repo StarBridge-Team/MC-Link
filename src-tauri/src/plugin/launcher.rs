@@ -53,8 +53,9 @@ pub fn write_session_file(
     let text =
         serde_json::to_string_pretty(&desc).map_err(|e| format!("序列化会话描述失败: {}", e))?;
     std::fs::write(&path, text).map_err(|e| format!("写入会话文件失败: {}", e))?;
-    // 尽力而为地收紧权限；Windows 上退化为隐藏属性。
-    crate::plugin::fs_secure::restrict_to_current_user(&path);
+    // 收紧权限；失败即上抛——会话文件含一次性启动令牌，不能降级成"只有隐藏属性"。
+    crate::plugin::fs_secure::restrict_to_current_user(&path)
+        .map_err(|e| format!("收紧会话文件权限失败: {}", e))?;
     Ok(path)
 }
 

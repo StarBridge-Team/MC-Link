@@ -19,6 +19,7 @@ import EmptyState from "../components/ui/EmptyState.vue";
 const { t } = useI18n();
 const router = useRouter();
 const {
+  mode,
   role,
   roomCode,
   status,
@@ -88,16 +89,50 @@ onUnmounted(() => {
 // ---- 退出房间 ----
 const leaving = ref(false);
 
+/**
+ * 退出房间。
+ *
+ * **不在这里跳转**：`stop()` 的 promise 只代表"命令已受理"，后端拆房间（停适配器、
+ * 解除耦合器广播、推 `stopped`）还在进行，此刻跳走会让界面停在旧的连接状态。
+ * 跳转交给 `App.vue` 的 `mode` 监听——它在收到真正的 `idle` 之后才回联机页。
+ *
+ * 按钮只负责"别让人连点"，并加一条兜底：若后端迟迟不回 `stopped`（例如适配器进程
+ * 已崩溃），这里兜底回联机页，避免用户被困在房间视图里无路可走。
+ */
+const LEAVE_FALLBACK = 8000;
+
+/**
+ * 兜底定时器的句柄。
+ *
+ * 必须在卸载时清掉：用户点退出后可能立刻用其它方式离开房间视图（导航、快捷键），
+ * 此时定时器仍会在 8 秒后触发 `router.push`，把已经切到别的页面的用户**强行拽回**
+ * 联机页。
+ */
+let leaveTimer: number | null = null;
+
+onUnmounted(() => {
+  if (leaveTimer !== null) {
+    window.clearTimeout(leaveTimer);
+    leaveTimer = null;
+  }
+});
+
 async function leave() {
   if (leaving.value) return;
   leaving.value = true;
   try {
     await stop();
-  } finally {
-    leaving.value = false;
-    // 退出后回到联机页：状态已由 `useConnect` 的 `stopped` 分支清理。
-    void router.push({ name: "connect" });
+  } catch {
+    // 出错也要放人走：`useConnect` 已把错误弹成吐司，这里不重复处理。
   }
+  leaveTimer = window.setTimeout(() => {
+    leaveTimer = null;
+    if (mode.value !== "idle") {
+      console.warn("[联机] 未收到 stopped 事件，兜底退出房间视图");
+      void router.push({ name: "connect" });
+    }
+    leaving.value = false;
+  }, LEAVE_FALLBACK);
 }
 </script>
 

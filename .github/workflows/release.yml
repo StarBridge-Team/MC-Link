@@ -30,6 +30,16 @@ jobs:
       publish_assets: true
     secrets: inherit
 
+  # Linux 产物（deb / AppImage / 裸二进制 / flatpak）。与 Windows 并行，
+  # 互不依赖：任一平台失败不该把另一个平台的产物扣住不挂。
+  #
+  # Flatpak 需要的 `--privileged` 容器在它自己的 job 里，见 build-linux.yml。
+  build-linux:
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      publish_assets: true
+    secrets: inherit
+
   # 把更新清单挂到 GitHub 发行版：客户端的第一优先更新源就是这里，
   # 没有这一步，客户端会一路回退到资源服务器（等于 GitHub 加速形同虚设）。
   #
@@ -37,18 +47,19 @@ jobs:
   # 构建产物与本地生成的清单其实已经就绪——只要流水线没被手动取消，
   # 就应当把它们挂上去，别让一个兜底源的故障废掉整次发布。
   publish-github:
-    needs: build
+    needs: [build, build-linux]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: 读取版本号
+      - name: 读取并校验版本号
         id: version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(node scripts/check-version.mjs --print)
+          if [ -z "$VERSION" ]; then echo "读取版本号失败"; exit 1; fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -74,14 +85,14 @@ jobs:
       # 此时能挂多少挂多少。每个文件在挂载前都会再判一次是否存在。
       - name: 下载更新清单
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: update-manifests-${{ steps.version.outputs.version }}
           path: manifests
 
       - name: 下载 Tauri 配置
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tauri-conf-${{ steps.version.outputs.version }}
           path: tauri-conf
@@ -92,10 +103,27 @@ jobs:
       # auto-release 已挂过同名产物时 --clobber 覆盖为本次构建的，内容一致。
       - name: 下载构建产物
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: mc-link-windows-${{ steps.version.outputs.version }}
           path: dist
+
+      # Linux 产物放到 dist 下的独立子目录：与 Windows 产物分开，
+      # 避免同名文件互相覆盖（两者都有 MC-Link-<ver>-... 前缀但不重名，
+      # 分开是为了让 `find dist` 的结果一眼能看出平台）。
+      - name: 下载 Linux 产物
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mc-link-linux-${{ steps.version.outputs.version }}
+          path: dist/linux
+
+      - name: 下载 Flatpak 产物
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: mc-link-flatpak-${{ steps.version.outputs.version }}
+          path: dist/flatpak
 
       # 产物文件名里有空格（"MC Link_0.4.7_x64-setup.exe"），所以不能用通配展开，
       # 用 NUL 分隔读进数组再以数组传参。清单与配置名固定；tauri.json 在未配置
@@ -122,6 +150,10 @@ jobs:
             exit 1
           fi
           printf '待挂载 %d 个文件\n' "${#UPLOAD[@]}"
+          # 逐个"先删后传"。**不要**在末尾再来一次 `--clobber` 批量上传：
+          # 上面这轮已经把 UPLOAD 全部传完了，再传一遍纯属冗余，
+          # 而 `--clobber` 内部的并发删除正是本段注释警告过的失败源
+          # （被测出"7 个只挂上 5 个"）。
           for f in "${UPLOAD[@]}"; do
             name=$(basename "$f")
             # 先删同名（不存在时 gh 返回非零，忽略）
@@ -129,9 +161,4 @@ jobs:
             echo "上传 $name"
             gh release upload "$TAG" "$f"
           done
-          mapfile -d '' ARTIFACTS < <(find dist -type f -print0)
-          if [ ${#ARTIFACTS[@]} -eq 0 ]; then
-            echo "没有找到可挂载的产物（artifact 为空？）"
-            exit 1
-          fi
-          gh release upload "$TAG" "${UPLOAD[@]}" "${ARTIFACTS[@]}" --clobber
+          echo "全部挂载完成（${#UPLOAD[@]} 个文件）"

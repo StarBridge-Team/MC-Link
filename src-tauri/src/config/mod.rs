@@ -20,15 +20,62 @@ pub struct PersonalizationSettings {
     pub animation_enabled: bool,
     pub animation_speed: f64,
     pub transparent_effect: String,
+    /// 窗口材质的染色浓度（0–100）：**越高越不透明**。
+    ///
+    /// 只对 **Acrylic** 真正生效（Windows 的 `apply_acrylic` 接受一个 color）。
+    /// **Mica 调不动**：它的实现只设 `DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_MAINWINDOW`，
+    /// 没有任何浓度/染色参数，材质浓淡完全由系统合成器决定 —— 见 `effect.rs` 的说明。
+    ///
+    /// 注：刻意不叫「强度」：那个词说不清"越高越透明"还是"越高越不透明"。
+    pub effect_tint: f64,
     pub background_type: String,
     pub background_value: String,
     pub background_fit: String,
     pub background_overlay: bool,
     pub background_overlay_opacity: f64,
+    /// 页面背景的不透明度（0–100）：**越高越遮住底下的材质**。
+    ///
+    /// 这才是"看得见多少 Mica/Acrylic"的那个旋钮：材质本身（尤其 Mica）不可调，
+    /// 想控制它露多少只能靠压在上面这层页面背景的 alpha。
+    ///
+    ///   100 → 完全遮住材质（看不到桌面）；
+    ///   0   → 完全不遮，材质/桌面完全显现；
+    ///   50  → 半透明，材质半显现。
+    pub background_opacity: f64,
+    /// 背景不透明度的深色档（`background_opacity` 是浅色档）。
+    ///
+    /// 分档的理由同遮罩：深色下界面的可读性对"背景透出多少"更敏感，
+    /// 常用值往往与浅色不同，共用一个值会逼用户在一种模式下妥协。
+    pub background_opacity_dark: f64,
+    /// 图片背景的模糊强度（px），分深浅各一份——深色下背景需要更强的柔化才压得住。
+    pub background_image_blur_light: f64,
+    pub background_image_blur_dark: f64,
+    /// 视频背景的模糊强度（px），分深浅各一份。
+    pub background_video_blur_light: f64,
+    pub background_video_blur_dark: f64,
+    /// 种子色背景的模糊强度（px），分深浅各一份。
+    ///
+    /// "种子色背景"就是 `default` 背景这一层，它有两种形态（见 [`Self::effect_tint`]）：
+    /// 有材质时透出系统材质，无材质时露出我们自建的配色背景层（调色板 surface）。
+    /// 两种形态下模糊都落在同一处，所以共用这一对字段。
+    pub seed_blur_light: f64,
+    pub seed_blur_dark: f64,
+    /// 遮罩强度在深色下的另一份取值（`background_overlay_opacity` 是浅色那份）。
+    ///
+    /// 拆开的原因同理：深色背景本来就更暗，同样的遮罩会更"糊"，通常需要更低的值。
+    pub background_overlay_opacity_dark: f64,
     pub music_mode: String,
     pub music_value: String,
     pub homepage_mode: String,
     pub homepage_value: String,
+    /// 配色种子是否取自背景图（"配色跟随背景图"）。
+    ///
+    /// 开启后 `theme_color` 退居为**回退值**：取色失败（非图片、SVG、图损坏）时仍用它。
+    /// 这是刻意设计——取色失败就"没有配色"会让界面直接失去主题色，比用回手选色更糟。
+    ///
+    /// 默认 `false`：这是新增行为，不能因为升级就改变老用户既有的配色。
+    #[serde(default)]
+    pub theme_from_background: bool,
 }
 
 impl Default for PersonalizationSettings {
@@ -43,15 +90,32 @@ impl Default for PersonalizationSettings {
             // 平台默认效果（Windows 为 mica、macOS 为 hud_window）：
             // 让"从未设置"与"后端默认"一致，避免启动瞬间先应用默认值再被用户值覆盖而闪烁
             transparent_effect: crate::effect::get_default_effect(),
+            // 0 = 不覆盖材质自身的染色（材质保持系统原样）。
+            //
+            // 不默认 100 是因为 Mica 根本不接受这个参数、Acrylic 接受：默认"不干预"
+            // 才能保证老用户升级后材质观感不变；要更实心自己往上调（Acrylic 才有反应）。
+            effect_tint: 0.0,
             background_type: "default".to_string(),
             background_value: String::new(),
             background_fit: "scale-to-fill".to_string(),
             background_overlay: false,
             background_overlay_opacity: 30.0,
+            // 100 = 页面背景完全不透明 = 完全遮住材质，与加入本项之前的行为一致。
+            background_opacity: 100.0,
+            background_opacity_dark: 100.0,
+            background_image_blur_light: 0.0,
+            background_image_blur_dark: 0.0,
+            background_video_blur_light: 0.0,
+            background_video_blur_dark: 0.0,
+            seed_blur_light: 0.0,
+            seed_blur_dark: 0.0,
+            background_overlay_opacity_dark: 30.0,
             music_mode: "none".to_string(),
             music_value: String::new(),
             homepage_mode: "default".to_string(),
             homepage_value: String::new(),
+            // 保持与加入本项之前一致：默认跟随手选的 `theme_color`。
+            theme_from_background: false,
         }
     }
 }

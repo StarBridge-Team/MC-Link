@@ -73,7 +73,7 @@ async fn local_state_detects_missing_and_size_mismatch() {
     let entry = AssetEntry {
         path: "a.css".into(),
         size: Some(2),
-        sha256: None,
+        sha256: Some(hex::encode(Sha256::digest(b"hello"))),
     };
     assert!(matches!(
         local_state(&dir, &entry).await,
@@ -95,6 +95,32 @@ async fn local_state_detects_missing_and_size_mismatch() {
         local_state(&dir, &entry_ok).await,
         LocalState::Ready
     ));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 回归：清单**没有** sha256 时必须判为未就绪。
+///
+/// 原逻辑是"文件存在 + 大小对就算就绪"，于是被劫持的资源服务器只要下发一份
+/// 不带 sha256 的清单，就能让已被替换过的本地文件继续被判"就绪"并注入前端。
+#[tokio::test]
+async fn local_state_without_sha256_is_not_ready() {
+    let dir = std::env::temp_dir().join(format!(
+        "mclink-assets-nohash-{}",
+        crate::plugin::crypto::random_hex(6)
+    ));
+    std::fs::create_dir_all(dir.join("Assets")).unwrap();
+    std::fs::write(dir.join("Assets").join("a.css"), b"hello").unwrap();
+
+    let entry = AssetEntry {
+        path: "a.css".into(),
+        size: Some(5),
+        sha256: None,
+    };
+    assert!(
+        matches!(local_state(&dir, &entry).await, LocalState::Mismatch(_)),
+        "缺 sha256 的文件不能算就绪"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

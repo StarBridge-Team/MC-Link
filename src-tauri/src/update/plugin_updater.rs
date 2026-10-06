@@ -49,10 +49,15 @@ pub(crate) fn platform_supported() -> bool {
 
 /// 是否应当**优先**走官方插件。
 ///
-/// 便携版必须用自研路径：官方插件只会把 NSIS/AppImage 装回去，
-/// 对"exe 同目录即全部"的便携形态无能为力。
+/// - **便携版**必须用自研路径：官方插件只会把 NSIS/AppImage 装回去，
+///   对"exe 同目录即全部"的便携形态无能为力；
+/// - **Flatpak** 一律不走插件：`/app` 只读，插件写不进去，更新只能由
+///   用户执行 `flatpak update`（见 `crate::runtime`）。
 pub(crate) fn preferred() -> bool {
     if !platform_supported() {
+        return false;
+    }
+    if crate::runtime::is_flatpak() {
         return false;
     }
     !(cfg!(windows) && crate::datadir::install_mode() == crate::datadir::InstallMode::Portable)

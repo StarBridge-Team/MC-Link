@@ -26,10 +26,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
@@ -37,15 +37,15 @@ jobs:
       # 两处都声明会让 action-setup 直接报「Multiple versions of pnpm specified」而失败。
       # 省略 version 时它会读 packageManager —— 顺带保证 CI 用的版本与 lockfile 一致。
       - name: 安装 pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
       - name: 安装 Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           components: rustfmt, clippy
 
       - name: 缓存 Rust 构建产物
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
 
@@ -82,6 +82,21 @@ jobs:
 
       - name: 架构守卫
         run: node scripts/check-arch.mjs
+
+      # 版本号三处（package.json / tauri.conf.json / Cargo.toml）必须一致。
+      # 不一致不会让构建失败，只会让产物名、安装记录与客户端版本比较对不上，
+      # 是发布链路里"绿 CI + 故障"的典型来源，所以在这里硬拦。
+      - name: 版本号一致性
+        run: node scripts/check-version.mjs
+
+      # 发布构建必须能签名：缺密钥会让 update/tauri.json 不生成 → 安装版永远收不到更新，
+      # 而流水线是绿的。这里用与发布相同的判据提前暴露（本地开发构建不受影响）。
+      - name: 更新签名前置检查
+        run: node scripts/check-signing-ready.mjs
+        env:
+          MC_LINK_BUILD_CHANNEL: official
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # 第三方许可声明检查暂时关闭：项目初期依赖仍在快速变动，
       # 维护许可清单的收益低于成本。待依赖稳定后重新启用：

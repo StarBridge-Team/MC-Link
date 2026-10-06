@@ -30,7 +30,7 @@ const { t } = useI18n();
 const settings = useSettings();
 const setup = useSetup();
 const windowCtl = useWindowControls();
-const { roomCode } = useConnect();
+const { roomCode, mode, startListening } = useConnect();
 
 // m3e-theme 的明暗方案：system 映射到 auto（跟随系统），light/dark 直传。
 const scheme = computed<"light" | "dark" | "auto">(() => {
@@ -147,8 +147,26 @@ function goBack() {
   router.back();
 }
 
+// ---- 会话 → 房间视图的流转 ----
+//
+// 放在外壳而不是 `ConnectView`：进入房间视图时 `ConnectView` 已被卸载，它里面的
+// `watch` 不会执行。这里与订阅同层，才覆盖得了整条会话（含退出）。
+watch(mode, (next, prev) => {
+  if (next === "connected" && prev !== "connected") {
+    void router.push({ name: "room" });
+  } else if (next === "idle" && prev === "connected" && route.name === "room") {
+    // 房间结束（用户退出、对端断开、出错回退）→ 回到联机页。
+    void router.push({ name: "connect" });
+  }
+});
+
 // ---- 启动 ----
 onMounted(async () => {
+  // 联机事件订阅挂在外壳上，与窗口同生命周期。
+  // 页面级订阅会在离开联机页时断开，导致房间视图期间的 `stopped` 事件丢失、
+  // 退出后状态卡在 `connected`（详见 `useConnect.startListening` 的注释）。
+  void startListening();
+
   settings.bindSystemTheme(() => void settings.applyAll());
 
   await settings.load();
@@ -252,11 +270,33 @@ onMounted(async () => {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  /* 未设置 --app-bg 时回落到调色板 surface：`.shell` 在 m3e-theme 作用域内，
-   * `--surface` 已别名到 `--md-sys-color-surface`，因此会跟随配色与暗色。 */
-  background: var(--app-bg, var(--surface));
+  /* 背景 = 「当前底色」按「背景不透明度」淡出。
+   *
+   *   --app-bg       `applyBackground` **只在 solid 时**写入（用户选的颜色）；
+   *   --surface      其余情况回落到调色板 surface。`.shell` 在 m3e-theme 作用域内，
+   *                  `--surface` 已别名到 `--md-sys-color-surface`，因此跟随配色与暗色；
+   *   --app-opacity  0–1，「背景不透明度」。这是**控制看得见多少窗口材质**的旋钮。
+   *
+   * 两点别动：
+   * 1. **不能把 `--app-bg` 写成 `transparent`**（早先在选 Mica 时这么写过）：
+   *    `transparent` 混任何比例仍是 `transparent`，alpha 会被吃掉 → 滑块没反应。
+   *    必须回落到 `--surface` 这个真实颜色，alpha 才有东西可调。
+   * 2. **不能给 `--app-bg` 设默认值**：`var()` 的 fallback 只在变量"无效"时才启用，
+   *    一个具体默认值会把 `--surface` 那一级直接截断。tokens.css 有同样的告诫。 */
+  background: color-mix(
+    in srgb,
+    var(--app-bg, var(--surface)) calc(var(--app-opacity) * 100%),
+    transparent
+  );
+  /* 种子色（材质）背景的模糊：backdrop-filter 只能作用于元素自身，
+   * 且要求它的背后没有不透明父级 —— `.shell` 正是满足这两条的层级。 */
+  backdrop-filter: blur(var(--app-material-blur));
+  -webkit-backdrop-filter: blur(var(--app-material-blur));
 }
 
+/* 两个背景层都是"糊自己内容的载体"：`.shell__bg` 用 background-image 画图，
+ * 对它自己加 filter 就能糊到图（backdrop-filter 反而糊不到），
+ * 所以这里用 filter 而不是 backdrop-filter。 */
 .shell__bg {
   position: absolute;
   inset: 0;
@@ -266,6 +306,7 @@ onMounted(async () => {
   background-position: center;
   background-repeat: no-repeat;
   pointer-events: none;
+  filter: blur(var(--app-media-blur));
 }
 
 .shell__video {
@@ -277,6 +318,9 @@ onMounted(async () => {
   object-fit: cover;
   pointer-events: none;
   display: none;
+  filter: blur(var(--app-media-blur));
+  /* 模糊会把边缘糊出一圈透明，缩放一点点把露出来的底色盖回去。 */
+  transform: scale(1.04);
 }
 
 .shell__scrim {
