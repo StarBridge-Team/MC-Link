@@ -69,6 +69,32 @@ function run(cmd, cmdArgs) {
 }
 
 /**
+ * 把 ASCII-armored 的 PGP 公钥转成 `.flatpakrepo` 要求的**单行 base64**。
+ *
+ * `flatpakrepo(5)` 对 `GPGKey` 的说明是 "The base64-encoded gpg key for the remote"，
+ * 官方示例就是一长串单行 base64（即 armor 的正文去掉头尾与换行）。
+ * `.flatpakrepo` 是 ini 格式、值不能跨行，所以必须压成一行。
+ *
+ * 输入不是 armor 形态（没找到 BEGIN 标记）时返回空串，由调用方决定怎么告警 ——
+ * 静默写入一个格式不对的值会让用户在 `remote-add` 时才失败。
+ */
+function armoredToSingleLineBase64(armored) {
+  if (!armored) return "";
+  const m = armored.match(
+    /-----BEGIN PGP PUBLIC KEY BLOCK-----([\s\S]*?)-----END PGP PUBLIC KEY BLOCK-----/,
+  );
+  const body = m ? m[1] : armored;
+  // 去掉所有空白：armor 正文本来就是 base64，换行只是排版
+  const oneLine = body.replace(/\s+/g, "");
+  if (!oneLine) return "";
+  // 粗校验：base64 字符集 + 长度是 4 的倍数（不满足说明输入不是公钥）
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(oneLine) || oneLine.length % 4 !== 0) {
+    return "";
+  }
+  return oneLine;
+}
+
+/**
  * 找到要导入的 bundle。
  *
  * 优先用显式 `--bundle`；否则在 `build-aux/flatpak/` 与 `assets-server/Assets/flatpak/`
@@ -126,9 +152,9 @@ function main() {
   }
 
   if (bundle) {
-    // 先把 bundle 拷进 incoming：`build-update-repo`/`build-import-bundle` 之后
-    // 我们仍需要保留原始 bundle 供用户直接 `flatpak install`。
-    mkdirSync(INCOMING_DIR, { recursive: true });
+    // 直接把 bundle 导入仓库。原始 bundle 由调用方保管
+    // （CI 里它已在 artifact 与 Assets/update/ 下各留了一份，供用户
+    //  `flatpak install <file>`），这里不搬家。
     console.log(`[flatpak-repo] 导入 bundle: ${bundle}`);
     const importArgs = ["build-import-bundle", REPO_DIR, bundle];
     if (gpgKey) importArgs.push(`--gpg-sign=${gpgKey}`);
@@ -148,8 +174,24 @@ function main() {
   const updateArgs = ["build-update-repo", REPO_DIR];
   if (gpgKey) {
     updateArgs.push(`--gpg-sign=${gpgKey}`);
-    // 让 Flatpak 客户端能取到用于校验的 GPG 公钥
-    updateArgs.push(`--gpg-import=${gpgKey}`);
+    // `--gpg-import` 收的是**公钥文件路径**，不是 key id
+    // （见 flatpak 命令参考：build-update-repo 支持 --gpg-import=FILE。
+    //  同一个"提供公钥"的功能在各子命令里选项名还不一样，
+    //  build-bundle 是 --gpg-keys、install 是 --gpg-file，不能混用）。
+    // 没有公钥文件就跳过这一步：只签名、不导入公钥时客户端仍可通过
+    // `.flatpakrepo` 里的 GPGKey 字段拿到公钥（见下方生成逻辑）。
+    const pubPath = (process.env.FLATPAK_GPG_PUBLIC_KEY_FILE || "").trim();
+    if (pubPath) {
+      if (!existsSync(pubPath)) {
+        throw new Error(`FLATPAK_GPG_PUBLIC_KEY_FILE 指向的文件不存在: ${pubPath}`);
+      }
+      updateArgs.push(`--gpg-import=${pubPath}`);
+    } else {
+      console.warn(
+        "[flatpak-repo] 未提供 FLATPAK_GPG_PUBLIC_KEY_FILE：跳过向仓库导入公钥" +
+          "（仍会签名；客户端靠 .flatpakrepo 的 GPGKey 取公钥）。",
+      );
+    }
   }
   run("flatpak", updateArgs);
 
@@ -169,17 +211,24 @@ function main() {
     `Description=MC Link 的 Flatpak 更新源`,
   ];
   if (gpgKey) {
-    // 公钥正文由发布者导出后填在这里；这里只标注 key id，CI 里若提供
-    // FLATPAK_GPG_PUBLIC_KEY（ASCII armor 多行）则直接内联。
-    const pub = (process.env.FLATPAK_GPG_PUBLIC_KEY || "").trim();
-    if (pub) {
-      lines.push(`GPGKey=${pub.split("\n").join("\\n")}`);
+    // `GPGKey` 要的是**去掉 armor 头尾、合并成单行的 base64**（见 flatpakrepo(5)：
+    // "The base64-encoded gpg key for the remote"）。
+    // 直接内联 `-----BEGIN PGP PUBLIC KEY BLOCK-----` 那一段是错的 —— 它是多行，
+    // 而 .flatpakrepo 是 ini 格式，值不能跨行。
+    const armored = (process.env.FLATPAK_GPG_PUBLIC_KEY || "").trim();
+    const b64 = armoredToSingleLineBase64(armored);
+    if (b64) {
+      lines.push(`GPGKey=${b64}`);
     } else {
-      lines.push(`# 注意：未提供 FLATPAK_GPG_PUBLIC_KEY，客户端无法自动导入公钥。`);
-      lines.push(`#      请把 GPG 公钥（ASCII armor）填到下面的 GPGKey=`);
-      lines.push(`GPGKey=`);
+      console.warn(
+        "[flatpak-repo] 未提供可用的 FLATPAK_GPG_PUBLIC_KEY（需 ASCII armor 公钥）：\n" +
+          "  生成的 .flatpakrepo 将没有 GPGKey，用户导入 remote 时会因无法校验而失败。\n" +
+          "  导出：gpg --armor --export <keyid> > pub.asc",
+      );
     }
-    lines.push(`DeployCollectionID=${APP_ID}`);
+    // `DeployCollectionID` 已弃用，用 `DeploySideloadCollectionID`
+    // （Flatpak 1.12.8+ 才认后者；旧客户端忽略 collection id 仍可工作）。
+    lines.push(`DeploySideloadCollectionID=${APP_ID}`);
   } else {
     lines.push(`# 未签名仓库：客户端需要 --no-gpg-verify 才能导入（不推荐）。`);
   }
