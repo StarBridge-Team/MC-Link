@@ -96,8 +96,6 @@ winreg = "0.52"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
-    # 窗口级显隐动画：`AnimateWindow` 与 `AW_*` 常量。
-    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

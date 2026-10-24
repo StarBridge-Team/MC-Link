@@ -90,14 +90,17 @@ function closeWindow() {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  /* 与主窗口同一套底色/材质变量（由 useSettings.applyAll 写入 root）。 */
+  /* 与主窗口同一套底色/材质变量（由 useSettings.applyAll 写入 root）。
+   *
+   * 两个变量都给兜底值：`var(--app-opacity)` 缺失时 `calc()` 整条声明会失效，
+   * 结果就是「透明窗口 + 什么都没有」——看起来像窗口没加载。兜底成 1 至少是实心色。 */
   background: color-mix(
     in srgb,
-    var(--app-bg, var(--surface)) calc(var(--app-opacity) * 100%),
+    var(--app-bg, var(--surface)) calc(var(--app-opacity, 1) * 100%),
     transparent
   );
-  backdrop-filter: blur(var(--app-material-blur));
-  -webkit-backdrop-filter: blur(var(--app-material-blur));
+  backdrop-filter: blur(var(--app-material-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--app-material-blur, 0px));
 }
 
 .room-window__bar {

@@ -1,65 +1,36 @@
-//! 窗口级显隐动画：**交给系统渲染**。
+//! 窗口级显隐。
 //!
-//! # 为什么不用 CSS
+//! # 结论：不做窗口动画（至少不用 `AnimateWindow`）
 //!
-//! CSS 方案要求"先播退场动画，再 `hide()`"：于是必须有前端 ack + 看门狗兜底，
-//! 且动画期间窗口仍在吃点击（表现为"要点两次才关得掉"）。系统动画由合成器完成，
-//! 不需要前后端握手，也不改变窗口形态（无边框 / 透明 / 材质都保持原样）。
+//! 曾经在这里用 `AnimateWindow(AW_BLEND)` 做系统渲染的淡入淡出，**已移除**。实测后果：
 //!
-//! # 失败必须静默降级
+//! - `AnimateWindow` 是**同步阻塞**的，而 Tauri 的同步命令跑在主线程（窗口消息泵所在线程）。
+//!   在消息处理中调用它会把整个消息泵卡住：主窗口无法最小化/关闭、托盘点击无响应。
+//! - 它还会让窗口内容不再合成：房间窗口与托盘面板显示为一片透明/空白（只有材质）。
+//! - 透明窗口在 Windows 上是 layered window，`AW_BLEND` 对它本就不保证成功。
 //!
-//! Windows 的透明窗口可能是 layered window，`AnimateWindow` 在这种窗口上不保证成功。
-//! 返回 0 时**直接退回瞬时显隐**：动画是锦上添花，绝不能让它挡住"窗口能不能打开"。
-//! macOS 与 Linux 目前是 no-op——macOS 需要 `NSWindow.animationBehavior`（objc2），
-//! Linux 由合成器自带，两者都不必也不能在 Rust 侧硬做。
+//! 换句话说：**没有既"系统渲染"又不阻塞消息泵、还能作用于透明 WebView 窗口的公开 API**。
+//! 想恢复动画，只有三条路，都需要重新评估：
+//!
+//! 1. 窗口内用 CSS 过渡（最稳，但用户明确不要）；
+//! 2. DWM 的过渡效果（`DWMWA_TRANSITIONS_FORCEDISABLED` 只能关不能定制）；
+//! 3. 自绘分层窗口（把 WebView 内容抓帧后自己合成）——成本远超收益。
+//!
+//! 因此这里保留 `show` / `hide` 两个入口（调用方不必知道实现），内部只做瞬时显隐。
+//! 将来要接动画，改这两个函数即可，调用点无需改动。
 
 use tauri::WebviewWindow;
 
-/// 动画时长。与 `--motion-medium` 同量级，足够被感知又不拖慢操作。
-const DURATION_MS: u32 = 140;
-
-/// 显示窗口（带动画）。
+/// 显示窗口。
+///
+/// 先 `show` 再 `set_focus`：反过来的话，某些平台上 `set_focus` 会作用在仍隐藏的窗口上，
+/// 表现为"窗口出现了但没有焦点"。
 pub fn show(window: &WebviewWindow) {
-    if platform_animate(window, true) {
-        return;
-    }
     let _ = window.show();
     let _ = window.set_focus();
 }
 
-/// 隐藏窗口（带动画）。
+/// 隐藏窗口。
 pub fn hide(window: &WebviewWindow) {
-    if platform_animate(window, false) {
-        return;
-    }
     let _ = window.hide();
-}
-
-#[cfg(windows)]
-fn platform_animate(window: &WebviewWindow, showing: bool) -> bool {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        AnimateWindow, AW_ACTIVATE, AW_BLEND, AW_HIDE,
-    };
-
-    let Ok(handle) = window.window_handle() else {
-        return false;
-    };
-    let RawWindowHandle::Win32(win32) = handle.as_raw() else {
-        return false;
-    };
-
-    let flags = if showing {
-        AW_BLEND | AW_ACTIVATE
-    } else {
-        AW_BLEND | AW_HIDE
-    };
-    // 同步阻塞约 DURATION_MS：调用方都是命令线程/事件回调，不在渲染线程上。
-    let ok = unsafe { AnimateWindow(win32.hwnd.get() as _, DURATION_MS, flags) };
-    ok != 0
-}
-
-#[cfg(not(windows))]
-fn platform_animate(_window: &WebviewWindow, _showing: bool) -> bool {
-    false
 }
