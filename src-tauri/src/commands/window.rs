@@ -142,10 +142,14 @@ pub(crate) fn app_show_connect(app: tauri::AppHandle, process: Option<String>) {
 
 /// 打开（或唤出）某个会话的房间窗口。
 ///
-/// 前端在 `room_start_host` / `room_join` 成功后立刻调用它，因此用户看到的是
-/// "房间窗口里正在创建房间"，而不是主窗口里转一圈再跳走。
+/// # 为什么必须是 `async fn`
+///
+/// `WebviewWindowBuilder::build()` 内部要 `run_on_main_thread(...)` 并**阻塞等待**它执行完。
+/// 同步命令本身就跑在主线程上，于是变成"主线程等主线程"——直接死锁：
+/// 房间窗口永远建不完，主窗口也跟着失去响应（最小化/关闭/托盘全部无反应）。
+/// 异步命令跑在运行时的线程池里，这条等待才有意义。
 #[tauri::command]
-pub(crate) fn room_window_open(
+pub(crate) async fn room_window_open(
     app: tauri::AppHandle,
     session_id: String,
     room_code: String,
@@ -154,7 +158,7 @@ pub(crate) fn room_window_open(
 }
 
 #[tauri::command]
-pub(crate) fn room_window_focus(
+pub(crate) async fn room_window_focus(
     app: tauri::AppHandle,
     session_id: String,
 ) -> Result<(), String> {
@@ -163,7 +167,7 @@ pub(crate) fn room_window_focus(
 
 /// 关闭房间窗口但**不断开**链路：房间还在跑，只是不看了。
 #[tauri::command]
-pub(crate) fn room_window_close(app: tauri::AppHandle, session_id: String) {
+pub(crate) async fn room_window_close(app: tauri::AppHandle, session_id: String) {
     crate::window::factory::close_room_window(&app, &session_id);
 }
 

@@ -104,19 +104,22 @@ core/       基础设施：events / ids / error / http / lock / cache / persist
 | 外部小组件（独立透明窗口） | Rust：创建/尺寸/位置/显隐动画 | 已落地（托盘面板为第一个实例） |
 | 悬浮组件（窗口内 DOM 浮层） | 前端：拖拽、层级、焦点窗口过滤 | **未做**：等有真实组件要挂时再做，避免先造空壳 |
 
-### 窗口级动画：系统渲染，不用 CSS
+### 窗口级动画：**不做**（`AnimateWindow` 已被证伪）
 
-统一走 `window/animation.rs` 的 `SystemAnimator`：
+`window/animation.rs` 只保留 `show` / `hide` 两个瞬时入口，不带动画。
 
-| 平台 | 实现 | 失败处理 |
-|---|---|---|
-| Windows | `AnimateWindow(hwnd, ms, AW_BLEND \| AW_ACTIVATE / AW_HIDE)` | 返回 FALSE 即静默降级为瞬时显隐 |
-| macOS | `NSWindow.setAnimationBehavior` + `orderFront:` / `orderOut:` | 同上 |
-| Linux | no-op，交给合成器 | — |
+曾经的方案是 Windows `AnimateWindow(AW_BLEND)`，实测被移除：
+
+- 它是**同步阻塞**的，而 Tauri 的同步命令跑在主线程（窗口消息泵所在线程）。
+  在消息处理中调用会把消息泵卡死：主窗口无法最小化/关闭、托盘点击无响应。
+- 透明窗口在 Windows 上是 layered window，`AW_BLEND` 对它本就不保证成功；
+  实测房间窗口与托盘面板变成一片透明/空白（只剩材质）。
+
+结论：**没有既"系统渲染"又不阻塞消息泵、还能作用于透明 WebView 窗口的公开 API**。
+要恢复动画，只有三条路，都需要重新评估：窗口内 CSS 过渡（用户明确不要）、
+DWM 过渡（只能关不能定制）、自绘分层窗口（成本远超收益）。
 
 - **不得改变窗口形态**（不加装饰、不改透明、不改材质）。
-- 隐藏动画开始前 `set_ignore_cursor_events(true)`，结束后复位，否则动画期间吃掉"点外面"。
-- 同步移除 `App.vue` 的 `.win-enter-active` / `.shell.is-exiting` 与 `useWindowControls.isExiting`。
 - **DOM 内部**过渡（页面切换、悬浮组件进出场）仍用 CSS。
 
 ### 小组件位置持久化
