@@ -15,6 +15,7 @@ import "../styles/base.css";
 import WidgetApp from "../app/WidgetApp.vue";
 import { i18n, initI18n } from "../i18n";
 import { installIpcBridge } from "../ipc/bridge";
+import { bootstrapAssets } from "../lib/resourceCache";
 import { pinia } from "../stores";
 
 const app = createApp(WidgetApp);
@@ -23,4 +24,7 @@ app.use(i18n);
 
 installIpcBridge();
 
-Promise.allSettled([initI18n()]).finally(() => app.mount("#app"));
+// 字体与图标字体由 `bootstrapAssets` 注入（Poppins / Material Symbols 都在资源服务器上，
+// 本地只缓存副本）。漏了这一步的窗口会表现为：图标变成 `open_in_new` 这样的文字、
+// 正文字体回落到系统默认——正是"托盘面板字体图标都没工作"的样子。
+Promise.allSettled([initI18n(), bootstrapAssets()]).finally(() => app.mount("#app"));

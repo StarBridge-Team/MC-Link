@@ -38,6 +38,21 @@ export async function exitApp() {
   return invoke<string>("exit_app");
 }
 
+/**
+ * 关闭**当前窗口**（房间窗口的自绘关闭按钮）。
+ *
+ * 不走 `@tauri-apps/api/window` 的 `close()`：那需要给每个窗口配 capability，
+ * 漏配时按钮会**静默失效**（点了没反应，控制台也没明显报错）。
+ */
+export async function closeSelfWindow() {
+  return invoke<void>("close_self_window");
+}
+
+/** 隐藏**当前窗口**（小组件面板收起）。 */
+export async function hideSelfWindow() {
+  return invoke<void>("hide_self_window");
+}
+
 /** 显示并聚焦主窗口（托盘菜单与深链接都会用到）。 */
 export async function showMainWindow() {
   return invoke<void>("show_main_window");

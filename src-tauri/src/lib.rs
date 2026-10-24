@@ -311,6 +311,8 @@ pub fn run() {
             exit_app,
             show_window,
             show_main_window,
+            close_self_window,
+            hide_self_window,
             resize_window,
             get_ip_info,
             download_adapter,

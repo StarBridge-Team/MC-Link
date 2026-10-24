@@ -123,6 +123,21 @@ pub(crate) fn set_window_effect(
     Ok(())
 }
 
+/// 关闭**调用方窗口**。
+///
+/// 房间窗口的自绘关闭按钮用它。**不要**复用 `close_window`：那个命令会先停适配器，
+/// 语义是"关主窗口 = 结束联机"，在房间窗口上调用会把正在跑的房间一起掐掉。
+#[tauri::command]
+pub(crate) fn close_self_window(window: tauri::WebviewWindow) {
+    let _ = window.close();
+}
+
+/// 隐藏**调用方窗口**（小组件面板收起用）。
+#[tauri::command]
+pub(crate) fn hide_self_window(window: tauri::WebviewWindow) {
+    let _ = window.hide();
+}
+
 /// 打开主窗口并请求它落到「联机」页（托盘面板的「最近游戏」用它）。
 ///
 /// 用事件而不是直接切路由：托盘面板是独立窗口，它无权驱动主窗口的 store。

@@ -12,8 +12,8 @@ import { useRoomsStore } from "../stores/rooms";
 import type { RoomSnapshot } from "../ipc/contracts/room";
 import { listLocalGames } from "../lib/api/connect";
 import type { LocalGameFound } from "../lib/api/types";
-import { appShowConnect, hideCurrentWidget } from "../lib/api/widget";
-import { exitApp, showMainWindow } from "../lib/api/window";
+import { appShowConnect } from "../lib/api/widget";
+import { exitApp, hideSelfWindow, showMainWindow } from "../lib/api/window";
 import { useThemeBinding } from "../ui/themeBinding";
 
 const { t } = useI18n();
@@ -38,15 +38,15 @@ onMounted(async () => {
 });
 
 function openMain() {
-  void showMainWindow().finally(hideCurrentWidget);
+  void showMainWindow().finally(() => void hideSelfWindow());
 }
 
 function openConnect(process?: string) {
-  void appShowConnect(process).finally(hideCurrentWidget);
+  void appShowConnect(process).finally(() => void hideSelfWindow());
 }
 
 function focusRoom(room: RoomSnapshot) {
-  void roomsStore.focus(room.sessionId).finally(hideCurrentWidget);
+  void roomsStore.focus(room.sessionId).finally(() => void hideSelfWindow());
 }
 
 function quit() {

@@ -57,6 +57,13 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
     `run_on_main_thread` 并**阻塞等待**；同步命令本身就在主线程上，于是"主线程等主线程"
     → 死锁（窗口建不出来、整个应用失去响应）。同理，任何需要等待主线程的操作
     （窗口创建、阻塞式系统调用）都不得写在同步命令里。
+12. **新窗口要么进 capability，要么只用自定义命令**。`plugin:*` 类调用
+    （`getCurrentWindow().close()` / `startDragging()` / `listen()`）按**窗口 label** 校验 ACL，
+    不在 capability 里的窗口调用会**静默失败**——不报错、也不生效，表现为"按钮点了没反应"
+    "标题栏拖不动""列表永远是空的"。房间窗口与小组件窗口的 ACL 在
+    `src-tauri/capabilities/extra-windows.json`；拖动与关闭改用自定义命令
+    （`drag_window` / `close_self_window` / `hide_self_window`），不依赖 ACL。
+    自定义命令不受 ACL 限制（见 `project_memory.md`）。
 
 ## 4. 命名规范
 

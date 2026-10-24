@@ -46,6 +46,9 @@ async function install(): Promise<void> {
     // 部分成功时先退订，避免重试后同一条事件被处理两次。
     for (const off of registered) off();
     console.warn("[ipc] 事件订阅失败，2 秒后重试", e);
+    // **即使订阅失败也要拉一次全量**：订阅与快照是两条独立路径，
+    // 事件不可用时界面至少还能显示"此刻有哪些房间"，而不是一个空列表。
+    void store.refresh().catch(() => undefined);
     if (retryTimer === null) {
       retryTimer = setTimeout(() => {
         retryTimer = null;

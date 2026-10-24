@@ -7,9 +7,12 @@
  * 这样窗口被拖到别的屏幕、刷新、甚至被系统恢复，都不会丢上下文。
  */
 import { computed, onMounted, ref } from "vue";
+// `getCurrentWindow()` 是纯 JS 读取注入的窗口元数据（label），不走 IPC，因此不受
+// capability 限制；受限制的是 `close()` / `startDragging()` 那类插件命令。
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useI18n } from "vue-i18n";
 
+import { closeSelfWindow, dragWindow } from "../lib/api/window";
 import RoomView from "../views/RoomView.vue";
 import { useRoomsStore } from "../stores/rooms";
 import { useThemeBinding } from "../ui/themeBinding";
@@ -50,12 +53,18 @@ onMounted(async () => {
   }
 });
 
+/**
+ * 自绘标题栏拖动：调后端 `drag_window`，不用 `data-tauri-drag-region`。
+ *
+ * 那个属性背后是 `plugin:window|start_dragging`，需要给房间窗口单独配 capability；
+ * 漏配时没有任何报错，表现就是"标题栏拖不动"。自己的命令不受 ACL 限制。
+ */
+function startDrag() {
+  void dragWindow().catch(() => undefined);
+}
+
 function closeWindow() {
-  try {
-    void getCurrentWindow().close();
-  } catch {
-    /* 非 Tauri 环境忽略 */
-  }
+  void closeSelfWindow().catch(() => undefined);
 }
 </script>
 
@@ -69,9 +78,11 @@ function closeWindow() {
     motion="standard"
   >
     <div class="room-window">
-      <!-- 拖拽区：只给标题这一条，别加在容器上，否则里面的按钮全失效 -->
-      <header class="room-window__bar" data-tauri-drag-region>
-        <span class="room-window__title" data-tauri-drag-region>{{ title }}</span>
+      <!-- 拖拽区只包标题，按钮在它外面，避免点关闭时同时触发拖动 -->
+      <header class="room-window__bar">
+        <div class="room-window__drag" @pointerdown="startDrag">
+          <span class="room-window__title">{{ title }}</span>
+        </div>
         <m3e-button variant="text" class="room-window__close" @click="closeWindow">
           <m3e-icon slot="icon" name="close" />
         </m3e-button>
@@ -111,6 +122,16 @@ function closeWindow() {
   height: 40px;
   padding: 0 var(--sp-2) 0 var(--sp-4);
   user-select: none;
+}
+
+.room-window__drag {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  /* 拖动区给个默认光标，避免看起来像可点击的文字 */
+  cursor: default;
 }
 
 .room-window__title {
