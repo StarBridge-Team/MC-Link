@@ -9,4 +9,6 @@ export const ROOM_STATE = "mclink://room/state";
 export const ROOM_PROGRESS = "mclink://room/progress";
 export const ROOM_LOG = "mclink://room/log";
 export const APP_SETTINGS = "mclink://app/settings";
+/** 跨窗口意图（托盘面板 → 主窗口），负载 `{ action, process? }`。 */
+export const APP_INTENT = "mclink://app/intent";
 export const WINDOW = "mclink://window";

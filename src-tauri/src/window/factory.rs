@@ -51,6 +51,9 @@ pub fn open_room_window(
         .decorations(false)
         .transparent(true)
         .resizable(true)
+        // 先不显示：由 `animation::show` 决定用系统动画还是瞬时显示，
+        // 否则会先闪一帧无动画的窗口。
+        .visible(false)
         .center()
         .build()
         .map_err(|e| format!("创建房间窗口失败: {}", e))?;
@@ -63,6 +66,7 @@ pub fn open_room_window(
         crate::effect::apply_effect(&window, &pers.transparent_effect, pers.effect_tint, dark);
     }
 
+    crate::window::animation::show(&window);
     Ok(label)
 }
 

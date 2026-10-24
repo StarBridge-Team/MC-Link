@@ -2765,6 +2765,7 @@ dependencies = [
  "image",
  "local-ip-address",
  "material-colors",
+ "md-5",
  "minisign-verify 0.3.0",
  "rand 0.8.6",
  "rand_core 0.6.4",
@@ -2793,6 +2794,16 @@ dependencies = [
  "windows-sys 0.61.2",
  "winreg 0.52.0",
  "zeroize",
+]
+
+[[package]]
+name = "md-5"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
+dependencies = [
+ "cfg-if",
+ "digest",
 ]
 
 [[package]]

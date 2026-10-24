@@ -236,12 +236,6 @@ export interface TerracottaState {
 
 // ===== 窗口 / 托盘 =====
 
-/** `tray-resize` 事件负载。 */
-export interface TrayResizePayload {
-  width: number;
-  height: number;
-}
-
 /** `deep-link` 事件负载（`mclink://<action>/<param>/...`）。 */
 export interface DeepLinkPayload {
   action: string;

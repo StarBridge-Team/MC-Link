@@ -17,11 +17,12 @@
 //! 直连可达就优先（首选源能直连就不绕第三方），其余按延迟升序。
 
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::asset_server::{assets_server_url, join};
 use crate::build_channel::BuildChannel;
 use crate::datadir::install_mode;
+use crate::domain::proxy::ordered_channels;
 
 use super::install::is_auto_install_supported;
 use super::model::{
@@ -31,9 +32,6 @@ use super::model::{
 /// 单次清单拉取超时（每一级各自计时）。
 const MANIFEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// 代理探测（HEAD）超时。
-const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
-
 /// GitHub 仓库（`owner/repo`），用于拼发行版资源直链。
 const GITHUB_REPO: &str = "StarBridge-Team/MC-Link";
 
@@ -42,17 +40,6 @@ const GITHUB_MANIFEST_FILE: &str = "latest.json";
 
 /// 资源服务器上的兜底清单路径。
 const ASSETS_SERVER_MANIFEST: &str = "update/latest.json";
-
-/// 前缀型 GitHub 代理候选。全部并发探测，取**延迟最小**的那个。
-///
-/// 之所以放多个：单一代理随时可能失效或被限流，而用户无从察觉"更新检查失败"
-/// 是因为某个第三方站点挂了。多候选 + 延迟择优能把这类故障自动绕开。
-const GH_PROXIES: &[&str] = &[
-    "https://gh-proxy.com",
-    "https://ghproxy.net",
-    "https://ghfast.top",
-    "https://ghproxy.homeboyc.cn",
-];
 
 /// GitHub 发行版清单的原始（直连）地址。
 fn github_manifest_url() -> String {
@@ -71,11 +58,6 @@ pub(crate) fn github_release_url(version: &str, file: &str) -> String {
         "https://github.com/{}/releases/download/v{}/{}",
         GITHUB_REPO, version, file
     )
-}
-
-/// 把原始地址套上前缀型代理。
-fn proxied_url(proxy: &str, origin: &str) -> String {
-    format!("{}/{}", proxy.trim_end_matches('/'), origin)
 }
 
 /// 资源服务器上的兜底清单地址。
@@ -106,65 +88,6 @@ async fn fetch_from(url: &str, client: &reqwest::Client) -> Result<UpdateManifes
 
     ensure_supported(&manifest)?;
     Ok(manifest)
-}
-
-/// 探测一个地址是否可达；可达时返回耗时（HEAD 请求）。
-async fn probe(client: &reqwest::Client, url: &str) -> Option<Duration> {
-    let started = Instant::now();
-    client
-        .head(url)
-        .timeout(PROBE_TIMEOUT)
-        .send()
-        .await
-        .map(|r| r.status().is_success() || r.status().is_redirection())
-        .unwrap_or(false)
-        .then(|| started.elapsed())
-}
-
-/// 并发探测 GitHub 直连与所有代理，产出**有序**候选地址：
-///
-/// - 直连可达就排第一——即便它不是延迟最低的：GitHub 发行版是首选源，
-///   能直连就不该绕第三方；
-/// - 代理按探测延迟升序（多个优选节点先试延迟最小的那个）；
-/// - 全部不可达时返回空列表，由调用方走自己的兜底。
-///
-/// 探测目标与后续下载目标是同一个 URL，耗时可以直接当作下载速度的近似。
-/// 404 也判为不可达：文件都没挂上去的渠道不该参与择优。
-async fn ordered_channels(client: &reqwest::Client, origin: &str) -> Vec<String> {
-    let direct_url = origin.to_string();
-    let mut tasks = Vec::with_capacity(GH_PROXIES.len());
-
-    for &proxy in GH_PROXIES {
-        let url = proxied_url(proxy, origin);
-        let client = client.clone();
-        tasks.push(tokio::spawn(async move {
-            probe(&client, &url).await.map(|elapsed| (elapsed, url))
-        }));
-    }
-
-    // 直连与代理并发探测：不额外串行一个探测超时
-    let direct_client = client.clone();
-    let probe_direct = tokio::spawn(async move {
-        probe(&direct_client, &direct_url)
-            .await
-            .map(|_| direct_url.clone())
-    });
-
-    let mut proxies: Vec<(Duration, String)> = Vec::new();
-    for task in tasks {
-        // 探测任务自身带超时；panic（JoinErr）视作不可达
-        if let Ok(Some(item)) = task.await {
-            proxies.push(item);
-        }
-    }
-    proxies.sort_by_key(|(elapsed, _)| *elapsed);
-
-    let mut out = Vec::with_capacity(proxies.len() + 1);
-    if let Ok(Some(url)) = probe_direct.await {
-        out.push(url);
-    }
-    out.extend(proxies.into_iter().map(|(_, url)| url));
-    out
 }
 
 /// 更新包的候选下载地址（GitHub 直连 + 代理择优，按可用性排序）。
@@ -293,20 +216,6 @@ mod tests {
             github_release_url("0.5.1", "MC-Link-0.5.1-windows-x86_64-portable.exe"),
             "https://github.com/StarBridge-Team/MC-Link/releases/download/v0.5.1/\
              MC-Link-0.5.1-windows-x86_64-portable.exe"
-        );
-    }
-
-    /// 前缀型代理就是"原始链接直接拼在前缀之后"，多斜杠要收敛掉。
-    #[test]
-    fn proxy_is_pure_prefix() {
-        let origin = "https://github.com/o/r/releases/download/v1/a.exe";
-        assert_eq!(
-            proxied_url("https://gh-proxy.com/", origin),
-            format!("https://gh-proxy.com/{}", origin)
-        );
-        assert_eq!(
-            proxied_url("https://ghproxy.net", origin),
-            format!("https://ghproxy.net/{}", origin)
         );
     }
 

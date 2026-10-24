@@ -99,12 +99,16 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 
 0.6.x 按批次推进，**完成到哪一步以 `docs/ARCHITECTURE.md` 第 8 节为准**，不要按本节的记忆做假设。
 
-- **B0–B4 已完成**：`core/` + `bridge/`、`domain/room` 多会话、房间窗口（`room.html`）、
-  Pinia（`stores/rooms.ts`）+ 唯一事件桥（`ipc/bridge.ts`）
+- **B0–B6 已完成**：
+  - B0–B4：`core/` + `bridge/`、`domain/room` 多会话、房间窗口（`room.html`）、
+    Pinia（`stores/rooms.ts`）+ 唯一事件桥（`ipc/bridge.ts`）
+  - B5：离线账号（`domain/account`，UUID 与 Java 离线模式同值）、代理池（`domain/proxy`，
+    内置 3 + 远端按天缓存，已接进更新链路）
+  - B6：托盘面板改为 Vue 入口（`widget.html`）+ 预建常驻 + 位置夹取 + 系统窗口动画
+    （`window/animation.rs`，Windows `AnimateWindow`，失败退化为瞬时显隐）
 - 会话命令为 `room_prepare / room_start_host / room_join / room_leave / room_snapshot /
   room_refresh / room_list`；`connect_*` 只剩扫描与缓存查询
-- **待做**：账号 UUID、代理池、OOBE 加固（B5）；组件系统与托盘、系统窗口动画（B6）；
-  设置级联、HMCL 主题、插件市场 6 类（B7）
+- **待做**：设置级联、HMCL 主题、插件市场 6 类（B7）；窗口内**悬浮组件**（等有真实组件再做）
 - 已就绪、可直接复用：插件系统后端（8 命令 + 回环网关 + 权限）、自动更新全链路、
   OOBE 后端与界面、i18n 基础设施（现有 `zh-CN` / `en-US`，0.6.x 要补 `zh-TW`）、
   `@m3e/web` 前端外壳

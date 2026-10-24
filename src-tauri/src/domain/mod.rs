@@ -7,4 +7,6 @@
 //! - 状态推进集中在 `registry` 的 `update` 里，`rev` 与状态同锁推进；
 //! - 发事件只经 [`crate::core::events::EventSink`]。
 
+pub mod account;
+pub mod proxy;
 pub mod room;

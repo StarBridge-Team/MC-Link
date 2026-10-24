@@ -8,6 +8,8 @@
 //!   monitor / work_area / scale_factor。
 //! - 房间窗口**关闭即只关窗口**，不断链路；断开必须走显式的 `room_leave`。
 //!
-//! 窗口级显隐动画（系统渲染）在 B6 批次加入，见 `docs/ARCHITECTURE.md`。
+//! 窗口级显隐动画统一走 [`animation`]：由系统渲染，不写 CSS。
 
+pub mod animation;
 pub mod factory;
+pub mod widget;

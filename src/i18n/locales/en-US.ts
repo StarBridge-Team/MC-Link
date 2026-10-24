@@ -148,6 +148,11 @@ export default {
     },
   },
 
+  widget: {
+    open: "Open MC Link",
+    exit: "Quit application",
+  },
+
   rooms: {
     empty: "No active rooms",
     emptyHint: "Rooms you host or join from the Connect page show up here.",
@@ -298,6 +303,7 @@ export default {
     playerTitle: "Player",
     playerName: "Player name",
     playerNamePlaceholder: "Shown to others when connecting",
+    offlineUuid: "Offline UUID",
     sectionsTitle: "More settings",
     sectionsDesc: "These sections are delivered by the asset server and update with releases",
     sectionsEmpty: "No extra settings sections",

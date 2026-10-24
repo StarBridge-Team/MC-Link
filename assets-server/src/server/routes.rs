@@ -169,6 +169,20 @@ pub(super) fn route(req: &mut Request, cfg: &Arc<AssetsConfig>) -> Resp {
             serve_file(&cfg.assets_dir().join("legal"), &safe, &ctx)
         }
 
+        // GitHub 代理列表（客户端按天缓存）。
+        //
+        // 文件是**运维投放**的（`Assets/proxy/list.json`，格式 `{"proxies":[...]}`），
+        // 不进 git：代理节点随时会失效，跟着代码发布只会让所有人一起用死节点。
+        // 文件缺失时这里 404，客户端回落到内置的 3 个源——不会因此更新不了。
+        p if p.starts_with("/proxy/") => {
+            let rel = p.trim_start_matches("/proxy/");
+            let safe = sanitize(rel);
+            if safe.is_empty() {
+                return bad_request("无效的文件名");
+            }
+            serve_file(&cfg.assets_dir().join("proxy"), &safe, &ctx)
+        }
+
         _ => not_found(),
     }
 }

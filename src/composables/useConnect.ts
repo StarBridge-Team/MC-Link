@@ -5,8 +5,8 @@ import { scanLocalGames as scanLocalGamesApi } from "../lib/api/connect";
 import { listGames } from "../lib/api/plugin";
 import { roomPrepare } from "../lib/api/room";
 import type { ConnectAdapter, GameInfo, JoinField, LocalGame } from "../lib/api/types";
-import { KEYS, local } from "../lib/persist";
 import { extractInviteCode } from "../lib/shareLink";
+import { useAccountStore } from "../stores/account";
 import { useRoomsStore } from "../stores/rooms";
 import { useSetup } from "./useSetup";
 import { showError } from "./useToast";
@@ -36,6 +36,7 @@ const gameQuery = ref("");
 
 const setup = useSetup();
 const rooms = useRoomsStore();
+const account = useAccountStore();
 const gameId = computed(() => setup.state.value?.game || "minecraft-java");
 
 const canJoin = computed(() =>
@@ -54,8 +55,9 @@ function syncFormFields() {
   form.value = next;
 }
 
+/** 展示名来自后端账号（`Setting/account.yml`），不再读 localStorage。 */
 function playerName(): string {
-  return local.getString(KEYS.playerName) || "Player";
+  return account.displayName();
 }
 
 async function loadAdapters() {
@@ -171,6 +173,9 @@ const formFields = computed<JoinField[]>(() => {
 // ---------------------------------------------------------------- 动作
 
 async function mount() {
+  // 账号要在建房之前就绪：`player_name` 是适配器建链时就要用的参数，
+  // 晚一步就会以 "Player" 的身份进房间。
+  await account.load();
   await loadGames();
   await loadAdapters();
   await scanLocalGames();

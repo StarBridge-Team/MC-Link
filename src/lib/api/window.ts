@@ -43,11 +43,5 @@ export async function showMainWindow() {
   return invoke<void>("show_main_window");
 }
 
-/**
- * 把托盘菜单窗口的高度同步为实际内容高度。
- *
- * 注意后端**只 emit `tray-resize`，不直接改窗口尺寸**——真正的 resize 由托盘页自己处理。
- */
-export async function setTraySize(width: number, height: number) {
-  return invoke<void>("set_tray_size", { width, height });
-}
+// `setTraySize` 已删除：托盘面板的尺寸由后端按行数计算（`window::widget::panel_height`），
+// 前端不再参与，`tray-resize` 事件也随之取消。

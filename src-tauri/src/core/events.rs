@@ -24,6 +24,11 @@ pub mod topic {
     pub const ROOM_LOG: &str = "mclink://room/log";
     /// 设置变更：`{ rev, patch }`。
     pub const APP_SETTINGS: &str = "mclink://app/settings";
+    /// 跨窗口的用户意图：`{ action, process? }`。
+    ///
+    /// 托盘面板要"打开主窗口并落到联机页"，但它不能直接驱动主窗口的 store，
+    /// 于是发一条意图，由主窗口自己决定怎么消费。
+    pub const APP_INTENT: &str = "mclink://app/intent";
     /// 窗口定向意图：`{ action }`。只发给目标窗口，不广播。
     pub const WINDOW: &str = "mclink://window";
 }

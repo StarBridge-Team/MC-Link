@@ -15,8 +15,9 @@
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+import { useIntentStore, type AppIntent } from "../stores/intent";
 import { useRoomsStore } from "../stores/rooms";
-import { ROOM_PROGRESS, ROOM_STATE } from "./events";
+import { APP_INTENT, ROOM_PROGRESS, ROOM_STATE } from "./events";
 import type { RoomProgressEvent, RoomStateEvent } from "./contracts/room";
 
 let installed = false;
@@ -33,6 +34,10 @@ async function install(): Promise<void> {
     );
     registered.push(
       await listen<RoomProgressEvent>(ROOM_PROGRESS, (e) => store.applyProgress(e.payload)),
+    );
+    // 跨窗口意图：由消费方（App.vue / ConnectView）决定怎么落地，桥只负责收。
+    registered.push(
+      await listen<AppIntent>(APP_INTENT, (e) => useIntentStore().push(e.payload)),
     );
     unlisten = registered;
     installed = true;

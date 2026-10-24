@@ -1,3 +1,4 @@
+pub(crate) mod account;
 pub(crate) mod adapter;
 pub(crate) mod app;
 pub(crate) mod clipboard;
@@ -7,6 +8,7 @@ pub(crate) mod room;
 pub(crate) mod setup;
 pub(crate) mod window;
 
+pub(crate) use account::*;
 pub(crate) use adapter::*;
 pub(crate) use app::*;
 pub(crate) use clipboard::*;

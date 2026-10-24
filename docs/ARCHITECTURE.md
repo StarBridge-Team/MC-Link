@@ -92,7 +92,17 @@ core/       基础设施：events / ids / error / http / lock / cache / persist
 - 房间窗口形态**与主窗口一致**：`decorations(false)` + `transparent(true)` + 现有材质。
   关闭房间窗口 = 只关窗口，不断链路；主窗口隐藏时房间窗口保持可见。
 - 小组件窗口**预建常驻**（`visible(false)`），只 `show()/hide()`，绝不每次新建。
-  冷建 WebView 在 Windows 上是 200–600ms，必然闪。
+  冷建 WebView 在 Windows 上是 200–600ms，必然闪。托盘面板即按此实现
+  （`window::widget`：位置由托盘图标的 `rect` 推算并夹进工作区，尺寸按行数计算）。
+- **非主窗口不铺背景**：房间窗口与小组件只用「材质 + 纯色」，不加载背景图/视频。
+  这是刻意的取舍——多窗口同步背景需要每个窗口各跑一遍取色与缓存，收益不抵成本。
+
+### 组件系统的两半
+
+| 形态 | 谁协调 | 状态 |
+|---|---|---|
+| 外部小组件（独立透明窗口） | Rust：创建/尺寸/位置/显隐动画 | 已落地（托盘面板为第一个实例） |
+| 悬浮组件（窗口内 DOM 浮层） | 前端：拖拽、层级、焦点窗口过滤 | **未做**：等有真实组件要挂时再做，避免先造空壳 |
 
 ### 窗口级动画：系统渲染，不用 CSS
 
@@ -129,15 +139,15 @@ src-tauri/src/
 ├─ bootstrap/              # 启动期一次性动作（setup / deep_link / effects / single_instance）
 ├─ core/                   # error / events / ids / http / lock / data_dir / cache / persist
 ├─ domain/
-│  ├─ account/             # 离线账号 + UUID
+│  ├─ account/             # model / service / uuid（离线 UUID，Java 同算法）
 │  ├─ room/                # model / registry（状态机 + 多会话表）★ 多房间核心
 │  ├─ game/                # 扫描结果缓存
 │  ├─ settings/            # model / store / remote_meta
 │  ├─ update/
-│  ├─ proxy/               # pool / probe / policy  ★ 代理池
+│  ├─ proxy/               # pool / probe ★ 代理池（内置 3 + 远端按天缓存）
 │  └─ asset/
 ├─ plugin/                 # 保留，PluginKind 扩到 6 类
-├─ window/                 # registry / factory / geometry / animation  ★ 全局窗口管理器
+├─ window/                 # factory / widget / animation  ★ 全局窗口管理器
 ├─ mgr/                    # room（编排：调插件）/ account / settings / update / window
 ├─ commands/               # 按域拆分，一文件一域
 └─ bridge/events.rs        # EventSink 的 Tauri 实现（唯一 emit 出口）
@@ -184,8 +194,8 @@ src/
 | B2 | `domain/room` + 用例命令（单房间跑通） | 旧 `connect_*` 会话命令全部删除 | 完成 |
 | B3 | 房间窗口 + 多房间 | 同开 2 个房间，关主窗口链路不断 | 完成 |
 | B4 | Pinia + `bridge.ts` | `mclink://room` 只出现在 `src/ipc/**` | 完成 |
-| B5 | 账号 UUID / 代理池 / OOBE 加固 | 单测 + 断网演练 | 待做 |
-| B6 | 组件系统分离 + 托盘重构 + 系统窗口动画 | 动画降级路径可复现 | 待做 |
+| B5 | 账号 UUID / 代理池 / OOBE 加固 | 单测 + 断网演练 | 完成（UUID 有 Java 同值测试；代理池接进更新链路） |
+| B6 | 托盘重构 + 系统窗口动画 | 动画降级路径可复现 | 完成（**窗口内悬浮组件未做**，见下） |
 | B7 | 设置级联 + HMCL 主题 + 插件市场 6 类 | — | 待做 |
 
 每批次独立可回滚，结束时 build 绿 + 该批次验收命令通过。

@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { listen } from "@tauri-apps/api/event";
 import { useConnect } from "../composables/useConnect";
 import type { LocalGame } from "../lib/api/types";
+import { useIntentStore } from "../stores/intent";
 import HostPanel from "./connect/HostPanel.vue";
 import MemberPanel from "./connect/MemberPanel.vue";
 import StartDialog from "./connect/StartDialog.vue";
@@ -20,6 +21,7 @@ const {
   inviteValue,
   filteredLocalGames,
   requestedTab,
+  requestEntry,
   activeStartProcess,
   clearStartRequest,
   mount,
@@ -43,6 +45,24 @@ const TAB_ORDER = ["host", "member"] as const;
 type ConnectTab = (typeof TAB_ORDER)[number];
 
 const tab = ref<ConnectTab>("host");
+
+/**
+ * 托盘面板的「最近游戏」：后端发来一条 `connect` 意图，这里落到房主页并预选进程。
+ *
+ * 用 `watch` 而不是只在挂载时取一次：用户可能本来就停在联机页，
+ * 那时组件不会重新挂载，只有 watch 能收到。
+ */
+const intent = useIntentStore();
+watch(
+  () => intent.pending,
+  (value) => {
+    if (!value || value.action !== "connect") return;
+    intent.take();
+    tab.value = "host";
+    requestEntry("host", value.process ?? undefined);
+  },
+  { immediate: true },
+);
 
 /**
  * 面板切换方向：按 Tab 在 NavBar 上的左右先后决定往哪边翻。

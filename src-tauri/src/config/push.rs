@@ -24,6 +24,12 @@ pub(crate) fn save_setting(
     section: String,
     content: String,
 ) -> Result<(), String> {
+    // `account.yml` 由 `domain::account` 独占：玩家名与离线 UUID 必须由同一处生成。
+    // 经整段改写会写出"名字变了、UUID 没变"的身份错位，而它只在联机时表现为
+    // "对方认不出你"，极难回溯到这里。
+    if section.eq_ignore_ascii_case("account") {
+        return Err("account.yml 由账号服务独占，请使用 account_register".to_string());
+    }
     mgr.write().setting(&section, &content)
 }
 

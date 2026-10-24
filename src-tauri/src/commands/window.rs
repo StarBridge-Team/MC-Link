@@ -68,18 +68,6 @@ pub(crate) fn show_main_window(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub(crate) fn set_tray_size(window: tauri::Window, width: f64, height: f64) {
-    // 尺寸来自前端，与 `resize_window` 同样必须限幅：NaN / Infinity / 负数传到前端
-    // 后若被用于 `setSize` 或 CSS，会让托盘窗口变成不可用状态。
-    let valid = |v: f64| v.is_finite() && (1.0..=10_000.0).contains(&v);
-    if !valid(width) || !valid(height) {
-        eprintln!("[托盘] 忽略非法尺寸 {}x{}", width, height);
-        return;
-    }
-    let _ = window.emit("tray-resize", serde_json::json!({"width": width, "height": height}));
-}
-
-#[tauri::command]
 pub(crate) fn resize_window(
     window: tauri::Window,
     width: f64,
@@ -133,6 +121,23 @@ pub(crate) fn set_window_effect(
 ) -> Result<(), String> {
     crate::effect::apply_effect(&window, &effect, tint, dark);
     Ok(())
+}
+
+/// 打开主窗口并请求它落到「联机」页（托盘面板的「最近游戏」用它）。
+///
+/// 用事件而不是直接切路由：托盘面板是独立窗口，它无权驱动主窗口的 store。
+/// 发一条意图，由主窗口自己决定怎么消费（见 `src/ipc/bridge.ts`）。
+#[tauri::command]
+pub(crate) fn app_show_connect(app: tauri::AppHandle, process: Option<String>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    let _ = app.emit(
+        crate::core::events::topic::APP_INTENT,
+        serde_json::json!({ "action": "connect", "process": process }),
+    );
 }
 
 /// 打开（或唤出）某个会话的房间窗口。

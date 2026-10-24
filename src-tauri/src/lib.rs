@@ -170,11 +170,27 @@ pub fn run() {
             let mgr = Arc::new(AppMgr::new(data_dir.clone())?);
             app.manage(mgr.clone());
 
+            // 离线账号：`Setting/account.yml` 的唯一读写方。
+            app.manage(domain::account::AccountService::new(data_dir.clone()));
+
+            // 代理池：启动时刷新一次（命中当天缓存则不发请求）。
+            // 失败不影响启动——没有远端列表时内置 3 个源照常可用。
+            {
+                let mgr = mgr.clone();
+                tauri::async_runtime::spawn(async move {
+                    domain::proxy::pool::refresh(mgr.data_dir(), mgr.http()).await;
+                });
+            }
+
             if let Err(e) = config::check::check_config_version(&data_dir) {
                 eprintln!("[配置检查] {}", e);
             }
 
             tray::setup_tray(app.handle())?;
+            // 托盘面板预建常驻：右键时只 show/hide，不冷建 WebView。
+            if let Err(e) = window::widget::ensure_tray_panel(app.handle()) {
+                eprintln!("[托盘] 面板初始化失败（右键菜单将不可用）: {}", e);
+            }
             if let Err(e) = init_plugin_subsystem(app, &data_dir) {
                 eprintln!("[插件] 子系统初始化失败: {}", e);
             }
@@ -295,7 +311,6 @@ pub fn run() {
             exit_app,
             show_window,
             show_main_window,
-            set_tray_size,
             resize_window,
             get_ip_info,
             download_adapter,
@@ -306,6 +321,8 @@ pub fn run() {
             start_terracotta_guest,
             get_app_version,
             get_tauri_version,
+            account_get,
+            account_register,
             get_setting,
             save_setting,
             get_personalization,
@@ -358,6 +375,7 @@ pub fn run() {
             room_window_open,
             room_window_focus,
             room_window_close,
+            app_show_connect,
             connect_scan,
             connect_local_games,
             run_open_actions,

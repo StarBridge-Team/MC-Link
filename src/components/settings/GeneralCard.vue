@@ -5,7 +5,8 @@ import SettingCard from "../ui/SettingCard.vue";
 import { showError, showSuccess } from "../../composables/useToast";
 import { useDisplayNames } from "../../composables/useDisplayNames";
 import { useSetup } from "../../composables/useSetup";
-import { KEYS, local } from "../../lib/persist";
+import { errorMessage } from "../../ipc/client";
+import { useAccountStore } from "../../stores/account";
 
 /**
  * 个性化 · 语言与地区 / 玩家名。
@@ -22,7 +23,12 @@ const language = ref("");
 const region = ref("");
 const savingLocale = ref(false);
 
-const playerName = ref(local.getString(KEYS.playerName));
+/**
+ * 玩家名现在由**后端账号服务**持有（`Setting/account.yml` + 离线 UUID）。
+ * 这里只负责编辑与提交，不再直接写 localStorage。
+ */
+const account = useAccountStore();
+const playerName = ref("");
 
 const languageOptions = computed(() =>
   (setup.state.value?.supported_languages ?? []).map((code) => ({
@@ -44,6 +50,9 @@ onMounted(async () => {
   const state = setup.state.value;
   language.value = state?.language || state?.detected_language || "";
   region.value = state?.region || state?.detected_region || "";
+
+  // `load()` 内含一次性迁移：老版本只把玩家名存在 localStorage，这里注册进后端。
+  playerName.value = (await account.load())?.name ?? "";
 });
 
 /** 语言与地区必须一起提交：命令的签名就是 `(language, region)`。 */
@@ -60,9 +69,14 @@ async function persistLocale() {
   }
 }
 
-function savePlayerName() {
-  local.setString(KEYS.playerName, playerName.value.trim());
-  showSuccess(t("common.saved"));
+async function savePlayerName() {
+  try {
+    // 改名会换 UUID（离线模式的身份就是名字的哈希），因此只在用户点保存时提交。
+    await account.register(playerName.value);
+    showSuccess(t("common.saved"));
+  } catch (e) {
+    showError(`${t("common.saveFailed")}: ${errorMessage(e)}`);
+  }
 }
 
 // m3e-select 的选中值经 `change` 事件回传，值本身仍是字符串代码。
@@ -116,6 +130,10 @@ function onRegionChange(e: Event) {
       </m3e-form-field>
       <m3e-button variant="filled" @click="savePlayerName">{{ t("common.save") }}</m3e-button>
     </div>
+    <!-- 离线模式的身份就是 UUID：显示出来便于排查"对方认不出我"这类问题 -->
+    <p v-if="account.account?.uuid" class="player__uuid">
+      {{ t("general.offlineUuid") }} · <span class="mono">{{ account.account.uuid }}</span>
+    </p>
   </SettingCard>
 </template>
 
@@ -144,5 +162,16 @@ function onRegionChange(e: Event) {
 .player__input {
   flex: 1;
   min-width: 0;
+}
+
+.player__uuid {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 </style>

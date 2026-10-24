@@ -46,40 +46,15 @@ pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Erro
                     button: MouseButton::Right,
                     button_state: MouseButtonState::Up,
                     position,
+                    rect,
                     ..
                 } => {
-                    if let Some(existing) = app_handle.get_webview_window("tray-menu") {
-                        let _ = existing.close();
-                    }
-
-                    // 位置直接取事件自带的 `position`（本次点击的光标物理坐标，
-                    // 跨平台由 Tauri 提供）——不再自己查全局光标位置。
-                    let (x, y) = (position.x, position.y);
-
-                    if let Ok(window) = tauri::WebviewWindowBuilder::new(
-                        app_handle,
-                        "tray-menu",
-                        tauri::WebviewUrl::App("tray-menu.html".into()),
-                    )
-                    .position(x, y)
-                    .inner_size(180.0, 125.0)
-                        .resizable(false)
-                        .decorations(false)
-                        .always_on_top(true)
-                        .skip_taskbar(true)
-                        .transparent(true)
-                        .build()
+                    // 位置与尺寸由事件自带的 `position` / `rect` 决定，不自己查光标。
+                    // 面板是**预建常驻**的（见 `window::widget`），这里只负责摆放与显隐。
+                    if let Err(e) =
+                        crate::window::widget::show_tray_panel(app_handle, position, rect)
                     {
-                        // 材质交给官方 API（见 effect::apply_tray_menu_effect），
-                        // 这里不再自己写 DwmSetWindowAttribute
-                        crate::effect::apply_tray_menu_effect(&window);
-                        let w = window.clone();
-                        window.on_window_event(move |event| {
-                            if let tauri::WindowEvent::Focused(false) = event {
-                                let _ = w.close();
-                            }
-                        });
-                        let _ = window.set_focus();
+                        eprintln!("[托盘] 显示面板失败: {}", e);
                     }
                 }
                 _ => {}

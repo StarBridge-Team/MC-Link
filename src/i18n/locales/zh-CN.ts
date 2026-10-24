@@ -152,6 +152,11 @@ export default {
     },
   },
 
+  widget: {
+    open: "打开 MC Link",
+    exit: "退出主程序",
+  },
+
   rooms: {
     empty: "还没有进行中的房间",
     emptyHint: "在「联机」页建房或加入后，房间会出现在这里。",
@@ -301,6 +306,7 @@ export default {
     playerTitle: "玩家",
     playerName: "玩家名",
     playerNamePlaceholder: "用于联机时展示的名字",
+    offlineUuid: "离线 UUID",
     sectionsTitle: "更多设置",
     sectionsDesc: "以下分区由资源服务器下发，字段随版本更新",
     sectionsEmpty: "没有额外的设置分区",

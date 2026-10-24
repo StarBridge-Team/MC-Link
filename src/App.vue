@@ -10,6 +10,7 @@ import { useSetup } from "./composables/useSetup";
 import { useWindowControls } from "./composables/useWindowControls";
 import { adapterStartupInit } from "./lib/api/adapter";
 import { DEFAULT_SETTING_TAB, SETTING_TABS, isSettingTab } from "./router";
+import { useIntentStore } from "./stores/intent";
 import { useThemeBinding } from "./ui/themeBinding";
 
 /**
@@ -108,6 +109,17 @@ function syncCanGoBack() {
 }
 
 watch(() => route.fullPath, syncCanGoBack, { immediate: true });
+
+// 托盘面板的意图只负责"把人送到联机页"，具体落到哪个 Tab 由 `ConnectView` 消费。
+const intent = useIntentStore();
+watch(
+  () => intent.pending,
+  (value) => {
+    if (value?.action === "connect" && route.name !== "connect") {
+      void router.push({ name: "connect" });
+    }
+  },
+);
 
 function goBack() {
   if (!canGoBack.value) return;
