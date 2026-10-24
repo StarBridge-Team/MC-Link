@@ -218,7 +218,19 @@ impl RoomMgr {
         let registry = self.registry.clone();
         let plugins = self.plugins.clone();
         let session_id = snapshot.session_id.clone();
-        tokio::spawn(async move {
+
+        // 必须显式取运行时句柄再 spawn。
+        //
+        // `tokio::spawn` 要求**当前线程**处于 Tokio 运行时上下文里；而 Tauri 的**同步**命令
+        // 跑在主线程（WebView2 的 IPC 回调栈上），那里没有 reactor。之前在这里直接
+        // `tokio::spawn` 的结果是：panic → 该栈帧在 COM 回调里不可 unwind → 进程直接 abort
+        // （STATUS_STACK_BUFFER_OVERRUN），用户看到的是"点开始联机，软件消失"。
+        //
+        // 用 `try_current` 而不是 `spawn`：将来若有人从同步上下文调进来，
+        // 这里返回一个明确的错误，而不是把进程带走。
+        let handle = tokio::runtime::Handle::try_current()
+            .map_err(|_| AppError::internal("房间启动缺少 Tokio 运行时上下文（命令必须是 async）"))?;
+        handle.spawn(async move {
             run_link(
                 plugins,
                 registry,

@@ -25,26 +25,32 @@ pub(crate) async fn room_prepare(
 }
 
 /// 以房主身份建房。立即返回 `sessionId` 与首个快照，后续进度走事件。
+///
+/// **必须是 `async fn`**：内部要 `spawn` 后台建链任务，而 `tokio::spawn` 需要当前线程
+/// 处于 Tokio 运行时上下文。同步命令跑在主线程（WebView2 的 COM 回调栈）里，没有 reactor，
+/// 在那里 spawn 会 panic，并且该栈帧不可 unwind，直接把进程 abort。
 #[tauri::command]
-pub(crate) fn room_start_host(
+pub(crate) async fn room_start_host(
     room: tauri::State<'_, Arc<RoomMgr>>,
     adapter_id: String,
     game_id: Option<String>,
     fields: Value,
     player_name: String,
 ) -> AppResult<RoomSnapshot> {
+    let room = (*room).clone();
     room.start_host(adapter_id, game_id, fields, player_name)
 }
 
-/// 以成员身份加入房间。
+/// 以成员身份加入房间。同上，必须是 `async fn`。
 #[tauri::command]
-pub(crate) fn room_join(
+pub(crate) async fn room_join(
     room: tauri::State<'_, Arc<RoomMgr>>,
     adapter_id: String,
     game_id: Option<String>,
     fields: Value,
     player_name: String,
 ) -> AppResult<RoomSnapshot> {
+    let room = (*room).clone();
     room.join(adapter_id, game_id, fields, player_name)
 }
 
