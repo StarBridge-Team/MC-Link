@@ -31,6 +31,7 @@ export default defineConfig(async () => ({
       input: {
         main: path.resolve(__dirname, "index.html"),
         room: path.resolve(__dirname, "room.html"),
+        widget: path.resolve(__dirname, "widget.html"),
       },
     },
   },
