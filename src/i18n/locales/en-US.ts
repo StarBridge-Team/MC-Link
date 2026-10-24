@@ -39,6 +39,7 @@ export default {
   nav: {
     home: "Home",
     connect: "Connect",
+    rooms: "Rooms",
     game: "Games",
     setting: "Settings",
     back: "Go back",
@@ -124,16 +125,36 @@ export default {
   },
   // Room view (shown once a session is established)
   room: {
-    noRoom: "Not in a room",
+    title: "Room",
+    missing: "No session for this room",
+    noRoom: "Waiting for room code…",
     phaseUnknown: "Unknown state",
     game: "Game",
     adapter: "Adapter",
     localPort: "Local port",
+    members: "Members",
     noMembers: "No members yet",
     noMembersHint: "Waiting for others to join; they appear here automatically.",
     unknownPlayer: "Unknown player",
     you: "You",
     leave: "Leave room",
+    copyInvite: "Copy invite link",
+    phase: {
+      starting: "Preparing",
+      linking: "Connecting",
+      online: "Ready",
+      stopping: "Disconnecting",
+      closed: "Closed",
+    },
+  },
+
+  rooms: {
+    empty: "No active rooms",
+    emptyHint: "Rooms you host or join from the Connect page show up here.",
+    focus: "Open window",
+    disconnect: "Disconnect",
+    members: "Members",
+    noCode: "Waiting for room code…",
   },
 
   setting: {

@@ -24,6 +24,17 @@ export default defineConfig(async () => ({
     },
   },
 
+  // 多页入口：主窗口与房间窗口各自一份 HTML。
+  // 房间窗口不加载导航壳与主路由，冷启动更快；共用同一份 chunk 与组件库注册。
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        room: path.resolve(__dirname, "room.html"),
+      },
+    },
+  },
+
   clearScreen: false,
 
   assetsInclude: ["**/*.woff", "**/*.woff2"],

@@ -6,13 +6,11 @@ import AppTitleBar from "./components/layout/AppTitleBar.vue";
 import NavList, { type NavListItem } from "./components/layout/NavList.vue";
 import NavRail, { type NavItem } from "./components/layout/NavRail.vue";
 import OobeOverlay from "./components/oobe/OobeOverlay.vue";
-import { useColorScheme } from "./composables/useColorScheme";
-import { useConnect } from "./composables/useConnect";
-import { useSettings } from "./composables/useSettings";
 import { useSetup } from "./composables/useSetup";
 import { useWindowControls } from "./composables/useWindowControls";
 import { adapterStartupInit } from "./lib/api/adapter";
 import { DEFAULT_SETTING_TAB, SETTING_TABS, isSettingTab } from "./router";
+import { useThemeBinding } from "./ui/themeBinding";
 
 /**
  * 应用外壳：标题栏 + 导航 + 路由出口 + 背景层 + 引导浮层。
@@ -27,42 +25,11 @@ const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
 
-const settings = useSettings();
+// 主题绑定与房间窗口共用一份实现（见 `ui/themeBinding.ts`）：
+// 两个窗口各写一遍，配色迟早会不一致。
+const { settings, colorScheme, themeEl, scheme, color, variant, contrast } = useThemeBinding();
 const setup = useSetup();
 const windowCtl = useWindowControls();
-const { roomCode, mode, startListening } = useConnect();
-
-// m3e-theme 的明暗方案：system 映射到 auto（跟随系统），light/dark 直传。
-const scheme = computed<"light" | "dark" | "auto">(() => {
-  const m = settings.state.theme_mode;
-  return m === "system" ? "auto" : (m as "light" | "dark");
-});
-
-/**
- * 动态配色走后端（`useColorScheme`），`<m3e-theme>` 只保留它独有的能力（动效变量等）。
- *
- * 后端一旦生效，就把它的三个入参**钉死**：只要它们还跟着用户设置走，`<m3e-theme>`
- * 每次变化都会自己重算调色板、重写整张 CSS 变量样式表，并强制一次同步回流 ——
- * 那正是"改配色很卡"的来源。钉死之后颜色由后端给出的变量决定（内联写在它身上，
- * 优先于它自己算的值，所以它算出来什么都不影响）。
- *
- * 后端不可用（浏览器预览、命令失败）时 `active` 为假，这三个值恢复成真实设置，
- * 重新交给 m3e 自己算 —— 慢一点，但颜色是对的。
- */
-const colorScheme = useColorScheme();
-const themeEl = ref<HTMLElement | null>(null);
-
-const PINNED_THEME = { color: "#0066cc", variant: "tonal-spot", contrast: "standard" } as const;
-
-const themeColor = computed(() =>
-  colorScheme.active.value ? PINNED_THEME.color : settings.state.theme_color,
-);
-const themeVariant = computed(() =>
-  colorScheme.active.value ? PINNED_THEME.variant : settings.state.theme_variant,
-);
-const themeContrast = computed(() =>
-  colorScheme.active.value ? PINNED_THEME.contrast : settings.state.theme_contrast,
-);
 
 /** 把引导状态收敛成一个 ref，模板里不必写 `setup.needsOobe.value`。 */
 const needsOobe = computed(() => setup.needsOobe.value);
@@ -72,9 +39,8 @@ const pageTitle = computed(() => {
   switch (route.name) {
     case "connect":
       return t("nav.connect");
-    case "room":
-      // 房间视图不以导航命名：标题直接用房间码更贴合它"在做一件事"的定位。
-      return roomCode.value || t("nav.connect");
+    case "rooms":
+      return t("nav.rooms");
     case "game":
       return t("nav.game");
     case "setting": {
@@ -90,6 +56,7 @@ const pageTitle = computed(() => {
 const navItems = computed<NavItem[]>(() => [
   { id: "home", icon: "home", label: t("nav.home") },
   { id: "connect", icon: "broadcast_on_home", label: t("nav.connect") },
+  { id: "rooms", icon: "meeting_room", label: t("nav.rooms") },
   { id: "game", icon: "sports_esports", label: t("nav.game") },
   { id: "setting", icon: "tune", label: t("nav.setting") },
 ]);
@@ -147,26 +114,10 @@ function goBack() {
   router.back();
 }
 
-// ---- 会话 → 房间视图的流转 ----
-//
-// 放在外壳而不是 `ConnectView`：进入房间视图时 `ConnectView` 已被卸载，它里面的
-// `watch` 不会执行。这里与订阅同层，才覆盖得了整条会话（含退出）。
-watch(mode, (next, prev) => {
-  if (next === "connected" && prev !== "connected") {
-    void router.push({ name: "room" });
-  } else if (next === "idle" && prev === "connected" && route.name === "room") {
-    // 房间结束（用户退出、对端断开、出错回退）→ 回到联机页。
-    void router.push({ name: "connect" });
-  }
-});
-
 // ---- 启动 ----
 onMounted(async () => {
-  // 联机事件订阅挂在外壳上，与窗口同生命周期。
-  // 页面级订阅会在离开联机页时断开，导致房间视图期间的 `stopped` 事件丢失、
-  // 退出后状态卡在 `connected`（详见 `useConnect.startListening` 的注释）。
-  void startListening();
-
+  // 房间事件由 `ipc/bridge.ts` 在挂载前统一订阅，这里不再有页面级订阅：
+  // 会话在自己的窗口里，主窗口只维护房间列表。
   settings.bindSystemTheme(() => void settings.applyAll());
 
   await settings.load();
@@ -198,9 +149,9 @@ onMounted(async () => {
 <template>
   <m3e-theme
     ref="themeEl"
-    :color="themeColor"
-    :variant="themeVariant"
-    :contrast="themeContrast"
+    :color="color"
+    :variant="variant"
+    :contrast="contrast"
     :scheme="scheme"
     motion="standard"
   >

@@ -17,5 +17,6 @@ export * from "./community";
 export * from "./adapter";
 export * from "./settingMeta";
 export * from "./window";
-// 联机（P2P）后端命令当前不存在，此模块仅作将来重接的素材保留。
+// 联机：只读扫描（connect）+ 会话操作（room）。
 export * from "./connect";
+export * from "./room";

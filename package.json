@@ -30,6 +30,7 @@
     "@vue/shared": "^3.5.40",
     "clsx": "^2.1.1",
     "material-symbols": "^0.47.6",
+    "pinia": "^4.1.0",
     "vue": "^3.5.13",
     "vue-i18n": "^11.4.12",
     "vue-router": "^4.6.4"

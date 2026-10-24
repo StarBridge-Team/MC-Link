@@ -43,6 +43,7 @@ export default {
   nav: {
     home: "首页",
     connect: "联机",
+    rooms: "房间",
     game: "游戏",
     setting: "设置",
     back: "返回上一步",
@@ -128,16 +129,36 @@ export default {
   },
   // 房间视图（联机成功后）
   room: {
-    noRoom: "未在房间中",
+    title: "房间",
+    missing: "找不到这个房间的会话",
+    noRoom: "等待房间码…",
     phaseUnknown: "状态未知",
     game: "游戏",
     adapter: "适配器",
     localPort: "本地端口",
+    members: "成员",
     noMembers: "暂无成员",
     noMembersHint: "等待其他人加入；对方加入后会自动出现在这里。",
     unknownPlayer: "未知玩家",
     you: "你",
     leave: "退出房间",
+    copyInvite: "复制邀请链接",
+    phase: {
+      starting: "准备中",
+      linking: "连接中",
+      online: "已就绪",
+      stopping: "正在断开",
+      closed: "已结束",
+    },
+  },
+
+  rooms: {
+    empty: "还没有进行中的房间",
+    emptyHint: "在「联机」页建房或加入后，房间会出现在这里。",
+    focus: "打开窗口",
+    disconnect: "断开",
+    members: "成员",
+    noCode: "等待房间码…",
   },
 
   setting: {

@@ -135,6 +135,33 @@ pub(crate) fn set_window_effect(
     Ok(())
 }
 
+/// 打开（或唤出）某个会话的房间窗口。
+///
+/// 前端在 `room_start_host` / `room_join` 成功后立刻调用它，因此用户看到的是
+/// "房间窗口里正在创建房间"，而不是主窗口里转一圈再跳走。
+#[tauri::command]
+pub(crate) fn room_window_open(
+    app: tauri::AppHandle,
+    session_id: String,
+    room_code: String,
+) -> Result<String, String> {
+    crate::window::factory::open_room_window(&app, &session_id, &room_code)
+}
+
+#[tauri::command]
+pub(crate) fn room_window_focus(
+    app: tauri::AppHandle,
+    session_id: String,
+) -> Result<(), String> {
+    crate::window::factory::focus_room_window(&app, &session_id)
+}
+
+/// 关闭房间窗口但**不断开**链路：房间还在跑，只是不看了。
+#[tauri::command]
+pub(crate) fn room_window_close(app: tauri::AppHandle, session_id: String) {
+    crate::window::factory::close_room_window(&app, &session_id);
+}
+
 #[tauri::command]
 pub(crate) fn set_window_dark_mode(window: tauri::WebviewWindow, dark: bool) -> Result<(), String> {
     #[cfg(windows)]

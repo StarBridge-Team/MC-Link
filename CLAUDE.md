@@ -99,8 +99,12 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 
 0.6.x 按批次推进，**完成到哪一步以 `docs/ARCHITECTURE.md` 第 8 节为准**，不要按本节的记忆做假设。
 
-- **B0–B1**：快照与 `core/` + `bridge/`（事件契约、`EventSink`）
-- **B2 之后**：`domain/room` 多会话、房间窗口、Pinia、账号 UUID、代理池、组件系统、插件市场
+- **B0–B4 已完成**：`core/` + `bridge/`、`domain/room` 多会话、房间窗口（`room.html`）、
+  Pinia（`stores/rooms.ts`）+ 唯一事件桥（`ipc/bridge.ts`）
+- 会话命令为 `room_prepare / room_start_host / room_join / room_leave / room_snapshot /
+  room_refresh / room_list`；`connect_*` 只剩扫描与缓存查询
+- **待做**：账号 UUID、代理池、OOBE 加固（B5）；组件系统与托盘、系统窗口动画（B6）；
+  设置级联、HMCL 主题、插件市场 6 类（B7）
 - 已就绪、可直接复用：插件系统后端（8 命令 + 回环网关 + 权限）、自动更新全链路、
   OOBE 后端与界面、i18n 基础设施（现有 `zh-CN` / `en-US`，0.6.x 要补 `zh-TW`）、
   `@m3e/web` 前端外壳

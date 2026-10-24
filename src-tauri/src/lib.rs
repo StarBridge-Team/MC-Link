@@ -1,6 +1,9 @@
 mod adapter;
+mod bridge;
 mod build_channel;
 mod commands;
+mod core;
+mod domain;
 mod persist;
 mod state;
 mod utils;
@@ -54,6 +57,7 @@ mod runtime;
 mod setting_meta;
 mod setup;
 mod tray;
+mod window;
 mod action;
 mod update;
 use m3::commands::*;
@@ -173,6 +177,21 @@ pub fn run() {
             tray::setup_tray(app.handle())?;
             if let Err(e) = init_plugin_subsystem(app, &data_dir) {
                 eprintln!("[插件] 子系统初始化失败: {}", e);
+            }
+
+            // 房间编排门面：权威状态在 Rust，窗口只是视图。
+            //
+            // 插件子系统初始化失败时不登记 `RoomMgr`：此时任何房间命令都会因
+            // "状态不存在"而报错，比让用户点下去看到一个假的空列表更诚实。
+            if let Some(plugins) = app
+                .try_state::<Arc<PluginManager>>()
+                .map(|s| s.inner().clone())
+            {
+                let sink = bridge::events::TauriSink::new(app.handle().clone());
+                let registry = domain::room::RoomRegistry::new(sink);
+                app.manage(mgr::room::RoomMgr::new(registry, plugins));
+            } else {
+                eprintln!("[联机] 插件子系统不可用，房间功能将不可用");
             }
 
             // 应用打开时动作管理器：注册内置打开动作（扫描局域网游戏）并在启动后执行。
@@ -329,13 +348,18 @@ pub fn run() {
             plugin_set_grants,
             plugin_set_blocked,
             plugin_reload,
-            connect_adapters,
+            room_prepare,
+            room_start_host,
+            room_join,
+            room_leave,
+            room_snapshot,
+            room_refresh,
+            room_list,
+            room_window_open,
+            room_window_focus,
+            room_window_close,
             connect_scan,
             connect_local_games,
-            connect_start_host,
-            connect_join,
-            connect_status,
-            connect_stop,
             run_open_actions,
             write_clipboard_text,
         ])

@@ -1,5 +1,6 @@
 pub mod pull;
 pub mod read;
+pub mod room;
 pub mod write;
 
 use std::path::PathBuf;

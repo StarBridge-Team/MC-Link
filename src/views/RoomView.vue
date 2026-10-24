@@ -1,84 +1,74 @@
 <script setup lang="ts">
+/**
+ * 单个房间的内容视图。
+ *
+ * 数据只来自 `useRoomsStore`（Rust 快照的投影），**不自己发命令查状态**——
+ * 状态推进由 Rust 负责，本组件只渲染 + 低频触发一次 `sync` 让适配器报成员。
+ */
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
-import { useConnect } from "../composables/useConnect";
-import type { RoomMember } from "../lib/api/types";
+
 import EmptyState from "../components/ui/EmptyState.vue";
+import { showError, showSuccess } from "../composables/useToast";
+import { writeClipboardText } from "../lib/api/app";
+import { buildShareLink } from "../lib/shareLink";
+import { useRoomsStore } from "../stores/rooms";
+import type { RoomMember, RoomPhase } from "../ipc/contracts/room";
 
-/**
- * 房间视图：联机成功后的独立页面（外壳按路由 meta 收起左侧导航栏）。
- *
- * 两条数据来源，刻意分开：
- * - **房间信息**来自 `connect-event`（房间码 / 角色 / 延迟），是核心侧掌握的事实；
- * - **成员列表**来自适配器自报的 `connect_status`（陶瓦的 `profiles`）。
- *
- * 成员卡片**按数组实际长度渲染**，不写死 8 个格子、不造空位：目前适配器只报告本机
- * 一个档案，将来它报告更多就自动多出几张卡。
- */
+const props = defineProps<{ sessionId: string }>();
+
 const { t } = useI18n();
-const router = useRouter();
-const {
-  mode,
-  role,
-  roomCode,
-  status,
-  selectedId,
-  currentGameName,
-  refreshStatus,
-  stop,
-} = useConnect();
+const store = useRoomsStore();
 
-const HOST_PHASE = /host/;
-const STATE_OK = /-ok$/;
+const session = computed(() => store.get(props.sessionId));
+const progress = computed(() => store.progressOf(props.sessionId));
+const members = computed<RoomMember[]>(() => session.value?.members ?? []);
+const role = computed(() => session.value?.role ?? "guest");
+const phase = computed<RoomPhase>(() => session.value?.phase ?? "starting");
+const roomCode = computed(() => session.value?.roomCode ?? "");
+const leaving = ref(false);
 
-/** 适配器自报的成员（拿不到就是空数组）。 */
-const players = computed<RoomMember[]>(() => status.value?.players ?? []);
+const PHASE_LABEL: Record<RoomPhase, string> = {
+  starting: "room.phase.starting",
+  linking: "room.phase.linking",
+  online: "room.phase.online",
+  stopping: "room.phase.stopping",
+  closed: "room.phase.closed",
+};
 
-/** 房间是否已就绪：适配器状态机走到 `*-ok`。 */
-const ready = computed(() => STATE_OK.test(String(status.value?.phase ?? "")));
+const phaseLabel = computed(() => t(PHASE_LABEL[phase.value]));
+const ready = computed(() => phase.value === "online");
+const active = computed(() => phase.value !== "closed");
 
-const roleLabel = computed(() =>
-  role.value === "host" ? t("connect.host") : t("connect.guest"),
-);
-
-const phaseLabel = computed(() => {
-  const phase = String(status.value?.phase ?? "");
-  if (!phase) return t("room.phaseUnknown");
-  return phase;
-});
-
-/** 成员卡片上的角色标记：优先用适配器给的 `kind`，否则靠本机/房主推断。 */
+/** 成员卡片上的角色标记：优先用适配器给的 `kind`，否则按本机/房主推断。 */
 function memberRole(m: RoomMember): string {
   const kind = m.kind.toUpperCase();
   if (kind.includes("HOST")) return t("connect.host");
   if (kind.includes("GUEST")) return t("connect.guest");
   if (m.isSelf && role.value === "host") return t("connect.host");
   if (m.isSelf) return t("connect.guest");
-  return HOST_PHASE.test(kind) ? t("connect.host") : t("connect.guest");
+  return t("connect.guest");
 }
 
-/** 名字拿不到时用设备号兜底，别让卡片空着。 */
 function memberName(m: RoomMember): string {
   if (m.name) return m.name;
   return m.machineId ? `${m.machineId.slice(0, 8)}…` : t("room.unknownPlayer");
 }
 
-/** 设备号太长，只显示前 8 位。 */
 function shortId(id: string): string {
   return id ? `${id.slice(0, 8)}…` : "";
 }
 
-// ---- 适配器状态轮询 ----
-//
-// 成员会陆续加入，状态得跟着变；房间视图停留时间可能很长，所以用轮询而不是只取一次。
-// 与房主页的扫描轮询同理：在途去重，防止慢响应叠加。
+// ---- 成员同步 ----
+// 适配器只在被问到时才报成员，因此低频轮询一次。Rust 侧只在真的变化时才推事件。
 const POLL_INTERVAL = 3000;
 let timer: number | null = null;
 
 onMounted(() => {
-  void refreshStatus();
-  timer = window.setInterval(() => void refreshStatus(), POLL_INTERVAL);
+  timer = window.setInterval(() => {
+    if (!active.value) return;
+    void store.sync(props.sessionId).catch(() => undefined);
+  }, POLL_INTERVAL);
 });
 
 onUnmounted(() => {
@@ -86,66 +76,54 @@ onUnmounted(() => {
   timer = null;
 });
 
-// ---- 退出房间 ----
-const leaving = ref(false);
-
-/**
- * 退出房间。
- *
- * **不在这里跳转**：`stop()` 的 promise 只代表"命令已受理"，后端拆房间（停适配器、
- * 解除耦合器广播、推 `stopped`）还在进行，此刻跳走会让界面停在旧的连接状态。
- * 跳转交给 `App.vue` 的 `mode` 监听——它在收到真正的 `idle` 之后才回联机页。
- *
- * 按钮只负责"别让人连点"，并加一条兜底：若后端迟迟不回 `stopped`（例如适配器进程
- * 已崩溃），这里兜底回联机页，避免用户被困在房间视图里无路可走。
- */
-const LEAVE_FALLBACK = 8000;
-
-/**
- * 兜底定时器的句柄。
- *
- * 必须在卸载时清掉：用户点退出后可能立刻用其它方式离开房间视图（导航、快捷键），
- * 此时定时器仍会在 8 秒后触发 `router.push`，把已经切到别的页面的用户**强行拽回**
- * 联机页。
- */
-let leaveTimer: number | null = null;
-
-onUnmounted(() => {
-  if (leaveTimer !== null) {
-    window.clearTimeout(leaveTimer);
-    leaveTimer = null;
+// ---- 操作 ----
+async function copyCode() {
+  if (!roomCode.value) return;
+  try {
+    await writeClipboardText(roomCode.value);
+    showSuccess(t("connect.copied"));
+  } catch {
+    /* 剪贴板不可用时忽略 */
   }
-});
+}
+
+async function share() {
+  if (!roomCode.value) return;
+  try {
+    await writeClipboardText(buildShareLink(roomCode.value));
+    showSuccess(t("connect.linkCopied"));
+  } catch {
+    /* 忽略 */
+  }
+}
 
 async function leave() {
   if (leaving.value) return;
   leaving.value = true;
   try {
-    await stop();
-  } catch {
-    // 出错也要放人走：`useConnect` 已把错误弹成吐司，这里不重复处理。
-  }
-  leaveTimer = window.setTimeout(() => {
-    leaveTimer = null;
-    if (mode.value !== "idle") {
-      console.warn("[联机] 未收到 stopped 事件，兜底退出房间视图");
-      void router.push({ name: "connect" });
-    }
+    await store.leave(props.sessionId);
+  } catch (e) {
+    showError(e instanceof Error ? e.message : String(e));
+  } finally {
     leaving.value = false;
-  }, LEAVE_FALLBACK);
+  }
 }
 </script>
 
 <template>
   <div class="room">
-    <!-- 顶部：房间码与角色，联机中最重要的两个信息 -->
     <header class="room__head">
       <div class="room__title">
-        <span class="room__code">{{ roomCode || t("room.noRoom") }}</span>
+        <div class="room__code-row">
+          <span class="room__code">{{ roomCode || t("room.noRoom") }}</span>
+          <m3e-button variant="text" :disabled="!roomCode" @click="copyCode">
+            <m3e-icon slot="icon" name="content_copy" />
+          </m3e-button>
+        </div>
         <div class="room__badges">
           <m3e-badge size="large" class="badge--role">
             <m3e-icon slot="icon" :name="role === 'host' ? 'wifi_tethering' : 'group'" />
-            {{ roleLabel }}
+            {{ role === "host" ? t("connect.host") : t("connect.guest") }}
           </m3e-badge>
           <m3e-badge size="large" :class="ready ? 'badge--ok' : 'badge--pending'">
             {{ phaseLabel }}
@@ -153,34 +131,36 @@ async function leave() {
         </div>
       </div>
 
+      <!-- 过程提示：来自 `mclink://room/progress`，可丢、只做临时文案 -->
+      <p v-if="progress && !ready" class="room__progress">{{ progress.message }}</p>
+
       <div class="room__roominfo">
         <div class="room__field">
-          <span class="room__field-label">{{ t("room.game") }}</span>
-          <span class="room__field-value">{{ currentGameName }}</span>
-        </div>
-        <div class="room__field">
           <span class="room__field-label">{{ t("room.adapter") }}</span>
-          <span class="room__field-value mono">{{ selectedId || "—" }}</span>
+          <span class="room__field-value mono">{{ session?.adapterId || "—" }}</span>
         </div>
         <div class="room__field">
           <span class="room__field-label">{{ t("room.localPort") }}</span>
-          <span class="room__field-value mono">{{ status?.port ?? "—" }}</span>
+          <span class="room__field-value mono">{{ session?.port ?? "—" }}</span>
+        </div>
+        <div class="room__field">
+          <span class="room__field-label">{{ t("room.members") }}</span>
+          <span class="room__field-value">{{ members.length }}</span>
         </div>
       </div>
     </header>
 
-    <!-- 中部：成员网格。列数按实际人数选，不写死 4×2、不造空位。 -->
     <main class="room__players">
-      <div v-if="players.length === 0" class="room__empty">
+      <div v-if="members.length === 0" class="room__empty">
         <EmptyState
           icon="group"
           :title="t('room.noMembers')"
           :desc="t('room.noMembersHint')"
         />
       </div>
-      <div v-else class="room__grid" :style="{ '--cols': Math.min(players.length, 4) }">
+      <div v-else class="room__grid" :style="{ '--cols': Math.min(members.length, 4) }">
         <m3e-card
-          v-for="(m, i) in players"
+          v-for="(m, i) in members"
           :key="m.machineId || i"
           variant="elevated"
           class="player"
@@ -203,9 +183,12 @@ async function leave() {
       </div>
     </main>
 
-    <!-- 底部：退出 -->
     <footer class="room__foot">
-      <m3e-button variant="filled" :disabled="leaving" @click="leave">
+      <m3e-button variant="tonal" :disabled="!roomCode" @click="share">
+        <m3e-icon slot="icon" name="share" />
+        {{ t("room.copyInvite") }}
+      </m3e-button>
+      <m3e-button variant="filled" :disabled="leaving || !active" @click="leave">
         <m3e-icon slot="icon" name="logout" />
         {{ t("room.leave") }}
       </m3e-button>
@@ -220,10 +203,9 @@ async function leave() {
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
-  padding: var(--sp-6);
+  padding: var(--sp-4) var(--sp-6) var(--sp-6);
 }
 
-/* ---------- 顶部：房间信息 ---------- */
 .room__head {
   flex: none;
   display: flex;
@@ -236,6 +218,12 @@ async function leave() {
 .room__title {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.room__code-row {
+  display: flex;
   align-items: center;
   gap: var(--sp-2);
 }
@@ -257,7 +245,6 @@ async function leave() {
   justify-content: center;
 }
 
-/* 徽章只覆盖配色，形状交给组件 */
 .badge--role {
   --m3e-badge-container-color: var(--primary-container);
   --m3e-badge-color: var(--on-primary-container);
@@ -277,6 +264,12 @@ async function leave() {
 .badge--peer {
   --m3e-badge-container-color: var(--secondary-container);
   --m3e-badge-color: var(--on-secondary-container);
+}
+
+.room__progress {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
 }
 
 .room__roominfo {
@@ -301,7 +294,6 @@ async function leave() {
   color: var(--text-secondary);
 }
 
-/* ---------- 中部：成员网格 ---------- */
 .room__players {
   flex: 1;
   min-height: 0;
@@ -315,10 +307,6 @@ async function leave() {
   width: 100%;
 }
 
-/*
- * 列数由实际人数决定（--cols 在模板里按 players.length 算），最多 4 列。
- * 不写死 8 个格子：人少时不会留下大片空框，人多时自动折行。
- */
 .room__grid {
   display: grid;
   grid-template-columns: repeat(var(--cols, 1), minmax(0, 160px));
@@ -364,7 +352,6 @@ async function leave() {
   font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
   color: var(--text-primary);
-  /* 名字可能很长（可能是整条 MOTD），限制两行即可 */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -395,10 +382,10 @@ async function leave() {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
-/* ---------- 底部：退出 ---------- */
 .room__foot {
   flex: none;
   display: flex;
   justify-content: center;
+  gap: var(--sp-3);
 }
 </style>

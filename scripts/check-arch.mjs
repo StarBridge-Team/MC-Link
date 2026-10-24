@@ -77,14 +77,18 @@ for (const file of files) {
   //   - `window.__TAURI__.invoke(...)`（`withGlobalTauri` 打开时）
   //   - `import { invoke as ipc }` 这类别名解构
   // 规则宁可宽一点：这道守卫的价值在于拦住"顺手直连"，而不是拦住刻意规避。
-  if (path.startsWith("src/") && !path.startsWith("src/lib/api/")) {
+  // 合规出口：历史的 `src/lib/api/**`，以及 0.6.x 起的 `src/ipc/client.ts`。
+  const isIpcOutlet = (p) => p.startsWith("src/lib/api/") || p === "src/ipc/client.ts";
+  if (path.startsWith("src/") && !isIpcOutlet(path)) {
     const invokeCall = /\binvoke\s*[(<]/;
     const tauriGlobal = /__TAURI__/;
     lines.forEach((line, index) => {
       const trimmed = line.trimStart();
       if (trimmed.startsWith("*") || trimmed.startsWith("//")) return;
       if (invokeCall.test(line) || tauriGlobal.test(line)) {
-        errors.push(`${path}:${index + 1} 出现 invoke(...)：IPC 只能写在 src/lib/api/**`);
+        errors.push(
+          `${path}:${index + 1} 出现 invoke(...)：IPC 只能写在 src/lib/api/** 或 src/ipc/client.ts`,
+        );
       }
     });
   }

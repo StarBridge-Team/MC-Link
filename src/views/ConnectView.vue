@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
 import { listen } from "@tauri-apps/api/event";
 import { useConnect } from "../composables/useConnect";
-import { showSuccess } from "../composables/useToast";
-import { writeClipboardText } from "../lib/api/app";
 import type { LocalGame } from "../lib/api/types";
 import HostPanel from "./connect/HostPanel.vue";
 import MemberPanel from "./connect/MemberPanel.vue";
@@ -13,16 +10,12 @@ import StartDialog from "./connect/StartDialog.vue";
 
 /**
  * 联机页外壳：顶部 NavBar 在「房主 / 成员」之间切换（照搬 GameView 的 m3e-nav-bar 写法）。
- * 房主模式展示扫到的本机游戏卡片；成员模式直接选适配器 + 填字段。
- * 一旦进入 connecting/connected，内容区切到「连接状态卡」，与两个模式互斥。
+ *
+ * 建房 / 加入成功后**不在这里停留**：命令返回即打开独立房间窗口，主窗口留在本页，
+ * 用户可以继续建第二个房间。会话状态不归本页所有（见 `useConnect` 的说明）。
  */
 const { t } = useI18n();
-const router = useRouter();
 const {
-  mode,
-  role,
-  roomCode,
-  errorMsg,
   gameQuery,
   inviteValue,
   filteredLocalGames,
@@ -30,9 +23,7 @@ const {
   activeStartProcess,
   clearStartRequest,
   mount,
-  stop,
   applyInvite,
-  buildShareLink,
 } = useConnect();
 
 /**
@@ -98,8 +89,6 @@ const tabs = computed(() =>
   TAB_ORDER.map((id) => ({ id, icon: TAB_ICONS[id], label: t(`connect.tab.${id}`) })),
 );
 
-const connected = computed(() => mode.value !== "idle");
-
 /**
  * 首页点「开始联机」后落到的 Tab。
  * 在 `onMounted` 里同步消费——放在 `await mount()` 之后的话，用户会先看到房主页闪一下。
@@ -136,37 +125,15 @@ onMounted(async () => {
   });
 });
 
-// 「联机成功 → 房间视图、房间结束 → 回到本页」的流转在 `App.vue`：
-// 本组件在房间视图期间已被卸载，写在这里的 watch 不会执行。
-
 onUnmounted(() => {
   unlistenDeep?.();
 });
-
-async function copyCode() {
-  try {
-    await writeClipboardText(roomCode.value);
-    showSuccess(t("connect.copied"));
-  } catch {
-    /* 剪贴板不可用时忽略 */
-  }
-}
-
-async function share() {
-  try {
-    await writeClipboardText(buildShareLink());
-    showSuccess(t("connect.linkCopied"));
-  } catch {
-    /* 忽略 */
-  }
-}
 </script>
 
 <template>
   <div class="connect">
     <div class="connect__toolbar">
       <m3e-search-bar
-        v-if="!connected"
         clearable
         class="connect__search"
         @clear="searchValue = ''"
@@ -195,55 +162,8 @@ async function share() {
     </div>
 
     <div class="connect__content">
-      <!-- 连接中 / 已连接：与两个模式互斥 -->
-      <m3e-card v-if="connected" variant="elevated" class="connect__connected">
-        <div slot="content" class="connect__connected-body">
-          <div v-if="mode === 'connecting'" class="connect__connecting">
-            <m3e-loading-indicator />
-            <p>{{ errorMsg || t("connect.connecting") }}</p>
-          </div>
-
-          <!--
-            已连接：这里**不再展示房间码**。有房间视图专门承载房间信息（码、成员、
-            适配器状态），页面停留时间也更长；这里重复一遍反而让两个界面口径不一。
-            只在极短的过渡窗口里出现，给一句确认与去房间的入口即可。
-          -->
-          <template v-else>
-            <div class="connect__role">
-              <m3e-badge
-                size="large"
-                :class="role === 'host' ? 'role-badge--host' : 'role-badge--guest'"
-              >
-                {{ role === "host" ? t("connect.host") : t("connect.guest") }}
-              </m3e-badge>
-            </div>
-
-            <div class="connect__connected-actions">
-              <m3e-button variant="tonal" @click="copyCode">
-                <m3e-icon slot="icon" name="content_copy" />
-                {{ t("connect.copyCode") }}
-              </m3e-button>
-              <m3e-button variant="tonal" @click="share">
-                <m3e-icon slot="icon" name="share" />
-                {{ t("connect.invite") }}
-              </m3e-button>
-              <m3e-button variant="filled" @click="router.push({ name: 'room' })">
-                <m3e-icon slot="icon" name="meeting_room" />
-                {{ t("connect.openRoom") }}
-              </m3e-button>
-              <m3e-button variant="outlined" @click="stop">
-                <m3e-icon slot="icon" name="link_off" />
-                {{ t("connect.disconnect") }}
-              </m3e-button>
-            </div>
-
-            <p v-if="errorMsg" class="connect__error">{{ errorMsg }}</p>
-          </template>
-        </div>
-      </m3e-card>
-
-      <!-- 空闲：房主 / 成员 两个面板 -->
-      <Transition v-else :name="transitionName" appear mode="out-in">
+      <!-- 房主 / 成员 两个面板。会话本身在独立窗口里，本页不再有"已连接"态。 -->
+      <Transition :name="transitionName" appear mode="out-in">
         <HostPanel v-if="tab === 'host'" key="host" @start="openStart" />
         <MemberPanel v-else key="member" />
       </Transition>
@@ -298,56 +218,6 @@ async function share() {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-}
-
-/* 尺寸与圆角交给 m3e-card 自身，这里只管在内容区居中与限宽 */
-.connect__connected {
-  display: block;
-  max-width: 520px;
-  margin: 0 auto;
-}
-
-.connect__connected-body {
-  display: flex;
-  flex-direction: column;
-}
-
-.connect__connecting {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-3);
-}
-
-.connect__role {
-  display: flex;
-  justify-content: center;
-  margin-bottom: var(--sp-3);
-}
-/* 身份徽章：只覆盖配色，形状与排版用组件的 */
-.role-badge--host {
-  --m3e-badge-container-color: var(--primary-container);
-  --m3e-badge-color: var(--on-primary-container);
-}
-.role-badge--guest {
-  --m3e-badge-container-color: var(--tertiary-container, #eaddff);
-  --m3e-badge-color: var(--on-tertiary-container, #2a1a5e);
-}
-
-/* 房间码的展示样式随展示位置一起搬到了 `RoomView.vue`。 */
-
-.connect__connected-actions {
-  display: flex;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.connect__error {
-  margin-top: var(--sp-3);
-  color: var(--error, #b3261e);
-  font-size: var(--fs-sm);
-  text-align: center;
 }
 
 /* 面板切换：左右滑动翻页 + 淡入（仅动 transform/opacity，不写 @keyframes）。

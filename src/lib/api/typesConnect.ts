@@ -64,47 +64,6 @@ export interface ConnectAdapter {
   joinFields: JoinField[];
 }
 
-/** 后端推送的 `connect-event` 负载。 */
-export interface ConnectEvent {
-  stage: "progress" | "connected" | "error" | "stopped";
-  message: string;
-  role?: "host" | "guest";
-  room_code?: string;
-  nat_type?: string;
-  peer_addr?: string;
-  elapsed_ms?: number;
-}
-
-/** 房间成员（适配器自报；拿不到时为空数组，不臆造）。 */
-export interface RoomMember {
-  /** 展示名。 */
-  name: string;
-  /** 档案类型，如 `HOST` / `GUEST`。 */
-  kind: string;
-  /** 设备标识，可用于区分同名玩家。 */
-  machineId: string;
-  /** 是否是本机。 */
-  isSelf: boolean;
-}
-
-/**
- * `connect_status` 返回的快照。
- *
- * 各适配器自报的字段不固定，所以保留索引签名；内置陶瓦适配器额外规范化出下面这些
- * **稳定字段**（房间视图只依赖它们，不去猜陶瓦的原始字段名）。
- */
-export interface ConnectStatus {
-  /** 适配器是否已安装。 */
-  installed?: boolean;
-  /** 适配器进程是否在运行。 */
-  running?: boolean;
-  /** 本地服务端口。 */
-  port?: number;
-  /** 房间码。 */
-  room?: string;
-  /** 适配器自报的状态机取值，如 `host-ok` / `guest-ok` / `waiting`。 */
-  phase?: string;
-  /** 房间成员。 */
-  players?: RoomMember[];
-  [key: string]: unknown;
-}
+// `ConnectEvent` / `ConnectStatus` / `RoomMember` 已随多房间重构移除：
+// 会话状态改由 `src/ipc/contracts/room.ts` 的 `RoomSnapshot` 承载
+// （`connect-event` 事件与 `connect_status` 命令都不再存在）。

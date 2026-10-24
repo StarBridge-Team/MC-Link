@@ -130,7 +130,7 @@ src-tauri/src/
 ├─ core/                   # error / events / ids / http / lock / data_dir / cache / persist
 ├─ domain/
 │  ├─ account/             # 离线账号 + UUID
-│  ├─ room/                # model / registry / lifecycle / snapshot / error  ★ 多房间核心
+│  ├─ room/                # model / registry（状态机 + 多会话表）★ 多房间核心
 │  ├─ game/                # 扫描结果缓存
 │  ├─ settings/            # model / store / remote_meta
 │  ├─ update/
@@ -138,7 +138,7 @@ src-tauri/src/
 │  └─ asset/
 ├─ plugin/                 # 保留，PluginKind 扩到 6 类
 ├─ window/                 # registry / factory / geometry / animation  ★ 全局窗口管理器
-├─ mgr/                    # room / account / settings / update / window（只编排）
+├─ mgr/                    # room（编排：调插件）/ account / settings / update / window
 ├─ commands/               # 按域拆分，一文件一域
 └─ bridge/events.rs        # EventSink 的 Tauri 实现（唯一 emit 出口）
 ```
@@ -177,15 +177,15 @@ src/
 
 ## 8. 批次与验收
 
-| 批次 | 内容 | 验收 |
-|---|---|---|
-| B0 | 打 tag、清 `.gitignore`、提交现状 | `git status --porcelain` 为空 |
-| B1 | `core/` + `bridge/` | `cargo test --lib` 通过，命令数不变 |
-| B2 | `domain/room` + 用例命令（单房间跑通） | 旧 `connect_*` 全部删除 |
-| B3 | 房间窗口 + 多房间 | 同开 2 个房间，关主窗口链路不断 |
-| B4 | Pinia + `bridge.ts` | `rg "listen\(" src --glob '!src/ipc/**'` 为空 |
-| B5 | 账号 UUID / 代理池 / OOBE 加固 | 单测 + 断网演练 |
-| B6 | 组件系统分离 + 托盘重构 + 系统窗口动画 | 动画降级路径可复现 |
-| B7 | 设置级联 + HMCL 主题 + 插件市场 6 类 | — |
+| 批次 | 内容 | 验收 | 状态 |
+|---|---|---|---|
+| B0 | 打 tag、清 `.gitignore`、提交现状 | `git status --porcelain` 为空 | 完成（`snapshot/pre-0.6-refactor`） |
+| B1 | `core/` + `bridge/` | `cargo test --lib` 通过 | 完成 |
+| B2 | `domain/room` + 用例命令（单房间跑通） | 旧 `connect_*` 会话命令全部删除 | 完成 |
+| B3 | 房间窗口 + 多房间 | 同开 2 个房间，关主窗口链路不断 | 完成 |
+| B4 | Pinia + `bridge.ts` | `mclink://room` 只出现在 `src/ipc/**` | 完成 |
+| B5 | 账号 UUID / 代理池 / OOBE 加固 | 单测 + 断网演练 | 待做 |
+| B6 | 组件系统分离 + 托盘重构 + 系统窗口动画 | 动画降级路径可复现 | 待做 |
+| B7 | 设置级联 + HMCL 主题 + 插件市场 6 类 | — | 待做 |
 
 每批次独立可回滚，结束时 build 绿 + 该批次验收命令通过。
