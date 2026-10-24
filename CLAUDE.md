@@ -1,10 +1,10 @@
 # MC Link — 开发约束
 
-> 本文件是**硬约束**，不是介绍文档。项目背景、决策记录与"为什么这么做"见 `project_memory.md`。
-> 参考资料在 `docs/reference/`：`element-plus-manual.md` 是**第三方组件库手册**，不是本项目约定。
+> 本文件是**硬约束**，不是介绍文档。**目标态架构见 `docs/ARCHITECTURE.md`**，
+> 历史决策与"为什么这么做"见 `project_memory.md`，插件系统见 `插件系统设计.md`。
 >
 > 历史教训：本文件此前放的是那份 2485 行的 Element Plus 手册，于是每次 AI 辅助都把它当项目约束读取，
-> 在错误前提上工作。**不要把参考资料塞进这里。**
+> 在错误前提上工作。**不要把参考资料塞进这里。**（该手册已随 Element Plus 一起删除。）
 
 ## 1. 这是什么
 
@@ -12,9 +12,11 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 （`assets-server/`，分发字体、图标、适配器包与更新包）。
 
 - 本仓库**不含任何联机服务端**（`central-server`、`mc-link-relay`、`mc-link-common` 已移除，见归档 tag）
-- 联机核心（WGP）**按用户要求暂时断开**：`src-tauri` 不再依赖仓库外的 `mc-link-core`，
-  因此**本仓库可独立构建**。重接步骤见 `project_memory.md` 的"联机核心"章节
-- 前端 UI 正在**大幅重构**：结构随时在变，不要把当前目录形状当成约定
+- 联机能力**经插件系统实现**：内置陶瓦适配器 + 检测/耦合插件。`wgp-core` **不是**本仓库依赖，
+  也不要为了"恢复联机"把它加回来
+- **MC Link 不负责启动游戏**：只扫描、只建链路、只做周边工具
+- 0.6.x 是史诗级重构（多房间 / 多窗口 / 组件系统 / 插件市场），结构按批次演进，见
+  `docs/ARCHITECTURE.md` 第 8 节。**不要把当前目录形状当成约定**
 
 ## 2. 常用命令
 
@@ -29,24 +31,35 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 
 ## 3. 硬约束（提交前必须满足）
 
-1. **IPC 只写在 `src/lib/api/**`**。其它任何位置出现 `invoke(` 都会被守卫拦下——
-   命令改名时散落的调用不会有编译错误，只在运行时炸。
+1. **IPC 只写在 `src/lib/api/**`**（0.6.x 起迁移到 `src/ipc/client.ts`，迁移期两者都算合规出口）。
+   其它任何位置出现 `invoke(` 都会被守卫拦下——命令改名时散落的调用不会有编译错误，只在运行时炸。
 2. **前端本地存储只经 `src/lib/persist.ts`**。不得直接 `localStorage.*`；
    `KEYS` 里的 key 字符串**禁止改名**（会让老用户的设置变成孤儿，表现为"设置丢了"）。
 3. **Rust 侧用户数据只经 `crate::persist`**（原子写入 + 损坏隔离）。
    不得 `std::fs::write` 直接写设置类文件；**禁止**"解析失败就用默认值覆盖原文件"。
-4. **`commands/*` 只做参数校验与转交**，业务逻辑放功能模块（`plugin/`、`update/`、`downloader/`…）。
+4. **`commands/*` 只做参数校验与转交**，业务逻辑放 `mgr/` 与 `domain/`。
 5. **单文件上限：前端 400 行 / 后端 500 行**（守卫会 warn）。超了就拆，不要"下次再说"。
 6. **一次提交只做一件事**，并且**只 `git add` 自己改的文件**：
    本仓库可能被多方/多个 AI 同时编辑，`git add -A` 会把别人正在写的文件卷进你的提交。
    提交后用 `git show --name-only HEAD` 核对清单。
+7. **事件必须带标识**：房间相关事件一律带 `sessionId` + 单调 `rev`（进度/日志用 `seq`）。
+   新增无标识的全局广播事件会被拒；`rev` 与状态在同一把锁内推进。
+8. **权威状态在 Rust**。前端（Pinia）只是投影，每个窗口一份。不得让两个窗口各自持有
+   同一份"权威"状态；跨窗口同步只走事件 + 快照。
+9. **窗口级显隐动画只能由系统渲染**（`window/animation.rs` 的 `SystemAnimator`），
+   不得写 CSS 过渡；**DOM 内部**过渡（页面切换、悬浮组件进出场）仍用 CSS。
+   不得为动画改变窗口形态（无边框 + 透明 + 现有材质保持不变）。
+10. **一房间一窗口**，label = `room-<sessionId>`。label 是窗口身份唯一权威，路由参数只是镜像。
+    不做"主窗口内房间 Tab"。
 
 ## 4. 命名规范
 
-- **Tauri 命令**：`<域>_<动词>`，snake_case。现状仍带 `_command` 后缀（历史遗留），
-  改名时**只改 `src/lib/api` 一处**即可（这正是约束 1 存在的意义）。全量统一，不要搞个别例外。
-- **Tauri 事件**：现状拼写不统一（`app-log` / `download-progress` / `p2p-event` / `tray-resize`）；
-  新增事件用 `<域>:<动作>`（如 `app:log`），整体重命名属待办。
+- **Tauri 命令**：`<域>_<动词>`，snake_case。0.6.x 新命令去掉 `_command` 后缀
+  （如 `room_start_host`）；历史命令保留原名，改名**只改 `src/lib/api` 一处**。
+- **Tauri 事件**：`mclink://<域>/<动作>`（如 `mclink://room/state`）。
+  历史事件名（`app-log` / `download-progress` / `update-progress` / `tray-resize` / `deep-link`）
+  是**现存契约**，改名必须前后端同改，不要单独动一侧。
+- **窗口 label**：`main` / `room-<sessionId>` / `widget-tray` / `widget-<kind>-<id>`。
 - **文件/组件**：组件 PascalCase；**禁止拼音命名**（历史上出现过 `GaojiConnect.vue`）；
   实现代码不放进 `pages/` 之类语义模糊的目录。
 - **Rust 模块**：按职责命名，避免 `utils.rs` 这类万能文件。
@@ -68,6 +81,8 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 - 官方插件路径以 `plugins.updater.pubkey` 为开关；未配置时不注册插件，安装版回退自研路径。
 - 下载走 `downloader/verified.rs`（唯一实现）：多镜像、体积上限、空闲超时、
   SHA256 强制校验、分片并行与断点续传（需服务端支持 Range，见 `assets-server/src/server.rs`）。
+- **GitHub 代理池**是唯一代理来源：内置 3 个 + 资源服务器下发（按天缓存），
+  下载前并发测速择优、失败降级。不要在别处再写一份代理列表。
 
 ## 6. 不要做的事
 
@@ -75,14 +90,18 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 - 不要把私钥、token 提交进仓库（历史上有过：`.tauri/updater.key`，已移出索引但**必须轮换**）
 - 不要在 `commands/*` 里写网络/文件/线程逻辑
 - 不要新增第二个下载实现、第二个 IPC 出口、第二套样式 token 来源
+- 不要为窗口显隐写 CSS 动画，也不要为了动画改窗口装饰/透明/材质
 - 不要把临时产物（归档包、类型检查输出）留在仓库里
 - 不要在 `tauri.conf.json` 把 `assetProtocol.scope` 放成全盘 `**`
+- 不要保留与代码矛盾的文档：改代码的同一次提交里改掉或删掉它
 
-## 7. 现在的状态（避免重复劳动或做错假设）
+## 7. 当前状态（2026-10-24）
 
-- **OOBE**：后端与契约**已就绪**（`src-tauri/src/setup.rs` + 4 个命令），**引导界面未实现**
-- **i18n**：基础设施已就绪（`src/i18n/` + `useSetup`），切换语言会立即生效
-- **插件系统**：后端完整（8 个命令 + 回环网关 + 权限），**插件管理界面未实现**
-- **自动更新**：链路完整，但 `plugins.updater.pubkey` 仍为空 → 官方插件路径未激活
-- **联机**：按用户要求断开，重接参考 `legacy-wgp-p2p-v0.4.0`
-- **未接线的后端能力**：检查更新接界面、玩家名写入、分区设置 —— 详见 `project_memory.md`
+0.6.x 按批次推进，**完成到哪一步以 `docs/ARCHITECTURE.md` 第 8 节为准**，不要按本节的记忆做假设。
+
+- **B0–B1**：快照与 `core/` + `bridge/`（事件契约、`EventSink`）
+- **B2 之后**：`domain/room` 多会话、房间窗口、Pinia、账号 UUID、代理池、组件系统、插件市场
+- 已就绪、可直接复用：插件系统后端（8 命令 + 回环网关 + 权限）、自动更新全链路、
+  OOBE 后端与界面、i18n 基础设施（现有 `zh-CN` / `en-US`，0.6.x 要补 `zh-TW`）、
+  `@m3e/web` 前端外壳
+- 已知缺口：插件**安装器**仍无后端实现；检测类/耦合类插件只有接口与路由，无内置实现

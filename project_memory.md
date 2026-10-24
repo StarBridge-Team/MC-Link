@@ -1,23 +1,24 @@
 # 项目记忆 - MC Link
 
-> 此文件记录项目的重要架构决策和用户明确要求，供后续开发和维护参考。
+> **本文件是带日期的决策日志，不是现状说明。**
+> 当前目标态见 `docs/ARCHITECTURE.md`，硬约束见 `CLAUDE.md`。
+> 读带"现状 / 待办 / 未接线"字样的旧章节时，先确认它的日期——2026-10-02 前端已整体重写，
+> 2026-10-24 起进入 0.6.x 重构，此前描述"未实现"的界面大多已实现。
 
-## 联机核心（2026-09-30 更新）
+## 联机核心（2026-09-30 记录；2026-10-03 已被插件系统取代）
 
-### 现状：与 WGP Core 的连接已暂时断开
+> **2026-10-24 更正**：联机能力已通过插件系统恢复，入口是 `plugin/connect.rs` 的
+> `connect_*` 命令 + 内置陶瓦适配器插件；联机页（`views/ConnectView.vue` 与
+> `views/connect/*`）已重做并接线。`components/connect/` 那四个旧组件**已被删除**。
+> 下面这段只描述 2026-09-30 那次拆除，**不要再按它去重接 WGP**。
+
+### 当时的事实：与 WGP Core 的连接已拆除
 
 - 已移除 `wgp-core` 的跨目录 path 依赖及其 Tauri 命令。**项目现在可独立构建，不再需要仓库外的 `mc-link-core`。**
-- 过渡期客户端**不含可用的联机功能**：联机页（`components/connect/`）与 `lib/api/connect.ts` 保留，但调用会失败。
-- **用户明确要求：上述前端文件保持现状——不要修改、不要删除、不要"修复"。**
-  它们将作为 UI 重构与插件系统的素材；联机能力在那一阶段之后再重新接入。
-  过渡期点击"开始联机"报 `command not found` 属于**预期现象**，不是 bug，无需处理。
-- **重新接入参考**：`legacy-wgp-p2p-v0.4.0` tag，包含：
-  - `src-tauri/src/commands/connect.rs`（3 个命令 + `p2p-event` 事件）
-  - `src-tauri/src/mgr/connection.rs`（ConnectionManager 状态机）
-  - `src-tauri/Cargo.toml` 中的 `wgp-core` 依赖行
-- **重接要点**：`wgp-core` 必须放在本仓库上一级的 `Rust/mc-link-core/`；命令为
-  `start_p2p_connection` / `stop_p2p_connection` / `get_p2p_status`；事件名 `p2p-event`；
-  还需恢复 `mgr/mod.rs`、`commands/mod.rs`、`lib.rs` 中的模块声明、`app.manage(...)` 与命令注册。
+- 当时联机功能不可用，联机页保留作 UI 重构素材（该状态已于 2026-10-03 结束）。
+- 历史实现留档在 `legacy-wgp-p2p-v0.4.0` tag（`commands/connect.rs` + `mgr/connection.rs`），
+  仅供查阅，**不是重接指引**。
+
 
 ### 另一条独立链路：陶瓦适配器（已并入插件系统）
 
@@ -27,11 +28,12 @@
   `commands/adapter.rs` 的 6 个命令签名不变，内部改为经插件管理器派发。
 - 设计说明见仓库根目录 `插件系统设计.md`。
 
-### 进行中的方向
+### 进行中的方向（2026-10-24 更新）
 
-- **插件系统后端已落地**（`src-tauri/src/plugin/`）：三类能力（适配/检测/耦合）、
-  回环 WebSocket 控制面、权限与加密。检测类与耦合类目前只有接口与路由，尚无内置实现。
-- 下一步：前端 UI 大幅重构，含插件管理界面；联机能力在新流程下经插件系统接入。
+- **插件系统后端已落地**（`src-tauri/src/plugin/`）：适配 / 检测 / 耦合三类能力、
+  回环 WebSocket 控制面、权限与加密。0.6.x 要扩到 **6 类**（见 `docs/ARCHITECTURE.md`）。
+- 检测类与耦合类仍只有接口与路由，**没有内置实现**（这是已知缺口，不是 bug）。
+- 下一步是 0.6.x 重构，按 B0–B7 批次推进；**不要按本文件的历史章节去猜现状**。
 
 ### 适配器安装的完整性校验（2026-09-30）
 
@@ -45,7 +47,7 @@
 - 若将来适配器改为随应用内嵌（`tauri.conf.json` 的 `bundle.resources`），应在
   `src-tauri/src/assets/adapter.rs` 的 `fetch_manifest` 中增加"本地常量清单"分支。
 
-## UI 重构期间的约定（2026-09-30 起，进行中）
+## UI 重构期间的约定（2026-09-30 记录；2026-10-02 重写完成，2026-10-24 进入 0.6.x）
 
 **2026-10-01 补充决定：前端（`src/**`）将整体重写，因此不再修前端的设计性问题。**
 已排查出的设计清单（D1 无单一数据源 / D2 `loadPersonalization` 是死代码 / D3 `KeepAlive` 被
@@ -55,8 +57,9 @@ D9 `public/tray-menu.html` 是架构守卫盲区 / D10 `Personalization` 与 `Pe
 两份同形定义）**作为重写时的需求参考，不作为待办**；重写时优先解决 D1 与 D2/D3。
 **功能性缺陷仍照常修**（接口契约、构建配置、死命令调用等）；后端不在重写范围。
 
-**当前阶段**：用户正在做前端大面积 UI 重构；这轮**前端不接后端逻辑**，UI 完成后由 AI 负责把
-后端能力接上去（含插件系统接线与联机能力恢复）。
+**当前阶段（2026-10-24）**：前端重写已于 2026-10-02 完成，后端能力也已接线（见
+`project_unwired_features` 记忆）。现在进入 **0.6.x 史诗级重构**：多房间、多窗口、
+组件系统分离、插件市场、设置级联。范围与批次见 `docs/ARCHITECTURE.md`。
 
 ### 重构期间保持"跨层契约"不变（改了我需要同步改后端，改动前先告知）
 
@@ -75,20 +78,16 @@ D9 `public/tray-menu.html` 是架构守卫盲区 / D10 `Personalization` 与 `Pe
 - **提交时只 `git add` 自己改的文件，不要用 `git add -A`**：UI 重构期间仓库可能被多方同时编辑，
   一次 `git add -A` 会把别人正在写的文件卷进自己的提交（已发生过一次，需事后拆分提交）。
 
-### 不要删除的东西（用户已明确要求保留）
+### 不要删除的东西（此条已于 2026-10-02 失效）
 
-- 联机页 4 个组件（`components/connect/`）+ `lib/api/connect.ts`：作为 UI 重构素材保留，
-  调用会失败属预期（见上文"联机核心"章节）。
+- ~~联机页 4 个组件（`components/connect/`）+ `lib/api/connect.ts` 作为素材保留~~
+  → 重写时四个组件已删除；`lib/api/connect.ts` 被新的 `views/connect/*` 取代。
+  当前联机 UI 在 `src/views/ConnectView.vue` 与 `src/views/connect/`。
 
-### UI 完成后需要 AI 接线的后端能力（后端已实现，前端目前零调用）
+### 接线状态（2026-10-02 已完成，勿再当待办）
 
-| 能力 | 后端状态 | 前端缺口 |
-|---|---|---|
-| 插件系统 | `src-tauri/src/plugin/**` 完整（8 个命令 + 回环网关 + 权限/加密） | 无 `lib/api/plugin.ts`，无插件管理界面 |
-| 联机（P2P） | 已按用户要求**暂时断开** | 联机页保留但调用失败；重接见 `legacy-wgp-p2p-v0.4.0` |
-| 检查更新 | ✅ 已完整实现（两种安装形态，见下节） | api + composable 已就绪，**只缺界面** |
-| 玩家名 | `Setting/account.yml` 的 `player_name` | 只读不写，无写入入口 |
-| 分区设置 | `save_setting` 命令存在 | `connector.yml` / `account.yml` 无设置界面 |
+原表列的五项（插件管理界面、联机、检查更新、玩家名、分区设置）**均已接线**。
+以代码为准，缺口只剩：插件**安装器**后端、检测类/耦合类内置实现。
 
 ## 应用更新（2026-09-30 实现）
 
@@ -187,7 +186,7 @@ node scripts/make-update.mjs --platform windows-aarch64   # 其他架构，增�
 | 更新（便携版） | 自研替换 exe（待评估换 `self-replace`——rustup 抽出的自替换库，跨平台） |
 | 深链接登记 | 官方 `tauri-plugin-deep-link`，**按安装形态决定是否登记** |
 | 窗口效果 | 官方 `WebviewWindow::set_effects`（内部即 `window-vibrancy`），支持运行时切换 |
-| 托盘菜单定位 | 仍手写 `GetCursorPos`（非 Windows 恒返回 `(0,0)`，待换成熟 crate） |
+| 托盘菜单定位 | 已改用 `TrayIconEvent` 自带的 `position` / `rect`，手写 `GetCursorPos` 已删除（跨平台、Flatpak 可用）；0.6.x 托盘改为 WebviewWindow 面板 |
 | 隐藏文件 / 0600 权限 | 两处重复实现（`plugin/launcher.rs` 与 `plugin/registry.rs`），待抽公共 helper |
 
 ### 深链接与窗口效果的实现约定（2026-10-01）
@@ -237,7 +236,7 @@ node scripts/make-update.mjs --platform windows-aarch64   # 其他架构，增�
 `REPLACE_ME` 占位符）时不注册插件、整条插件路径不可用，安装版自动回退到自研的安装器拉起。
 因此**没配密钥也不会出现"更新不了"**。
 
-### 启用官方插件需要做三件事（目前尚未配置）
+### 启用官方插件需要做三件事（2026-10-01 已配置，下面是当初的步骤留档）
 
 ```powershell
 # 1. 生成密钥对（私钥务必妥善保管：丢了以后已安装的用户再也收不到更新）
@@ -255,8 +254,8 @@ pnpm build:release
 > 轮换成本为零：此前从未发布过使用该密钥的更新（插件路径是 2026-09-30 才接入的），
 > 没有任何已安装版本依赖它。生成新密钥后把新公钥填进 `plugins.updater.pubkey` 即可。
 >
-> 另注：`分析.md` 把 `.tauri/` 列为"Tauri 更新密钥"目录，正是这种做法的源头；
-> 该文件已列为待重写，重写时不要再保留这条。
+> 另注：`分析.md` 曾把 `.tauri/` 列为"Tauri 更新密钥"目录，正是这种做法的源头；
+> 该文件已于 2026-10-24 删除（内容停留在 v0.4.0，与现状完全不符）。
 
 注意 Tauri CLI 区分两个变量：`TAURI_SIGNING_PRIVATE_KEY_PATH` 收**路径**、
 `TAURI_SIGNING_PRIVATE_KEY` 收**内容**。`make-update.mjs` 两种写法都接受
@@ -326,10 +325,11 @@ CI 里必须用**环境变量**提供私钥（`.env` 文件无效），并保持
 
 ## 首次启动引导（OOBE）与国际化（2026-09-30 实现）
 
-### 现状
+### 现状（2026-10-02 更新：界面已实现）
 
-- **后端与前后端契约已就绪；OOBE 界面尚未实现**（用户本轮明确要求"前端先不体现"）。
-- 界面侧下一步：`useSetup()` → `needsOobe` 为真时展示引导页 → 选语言与地区 → 调 `finish()`。
+- 后端与前后端契约就绪；界面在 `src/components/oobe/OobeOverlay.vue`，由 `App.vue` 按
+  `useSetup().needsOobe` 挂载。三步（语言与地区 → EULA → 首个游戏）由后端 `steps` 推导。
+- 0.6.x 要"重构首次启动引导，加速下载与启动"，但**不要**改三步的推导方式。
 
 ### 存储
 
@@ -456,11 +456,11 @@ WGP Core（AGPL）同理——**必须保持"独立程序"边界，不得直接�
 真正的风险来自 ① 多处直接 `std::fs::write` + 静默覆盖（损坏即整体清空且无法取证）、
 ② 前端存储封装写好却没人用、失败被静默吞掉、`player_name` 甚至只读不写。
 
-### 已知的"未接线"项（不是 bug，重构时一并处理）
+### 已知的"未接线"项（2026-10-02 已全部解决）
 
-- 玩家名（`KEYS.playerName`）目前**没有写入入口**，只有读取，所以改了也不会保存。
-- `save_setting` 命令（`conector.yml` / `account.yml` 等分区）前端**无任何调用者**，
-  这些分区的设置界面已随 `MetaSettingSection.vue` 一起移除。
+- ~~玩家名（`KEYS.playerName`）没有写入入口~~ → 通用设置页已有入口，经 `save_setting` 落盘。
+- ~~`save_setting` 命令无调用者~~ → 服务端下发的"更多设置"分区已接线（`SettingMeta` + `save_setting`）。
+- 仍未解决的只有：插件安装器缺后端、检测/耦合类无内置实现。
 
 ## 认证方案（2026-09-30 更新）
 
