@@ -99,22 +99,29 @@ function onRegionChange(e: Event) {
 <template>
   <SettingCard :icon="'translate'" :title="t('general.title')" :desc="t('general.desc')" wide>
     <div class="locale">
-      <div class="locale__field">
-        <span class="field-label">{{ t("general.language") }}</span>
-        <m3e-select :value="language" @change="onLanguageChange">
+      <!--
+        选择器必须包在 `m3e-form-field` 里。
+        裸 `<m3e-select>` 没有表单字段容器提供宽度与排版上下文，实测只渲染出右侧箭头、
+        选中值不显示——组件文档里的每个示例也都是 form-field + label 的组合。
+      -->
+      <m3e-form-field variant="outlined" class="locale__field">
+        <label slot="label" for="lang-select">{{ t("general.language") }}</label>
+        <m3e-select id="lang-select" :value="language" @change="onLanguageChange">
           <m3e-option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </m3e-option>
         </m3e-select>
-      </div>
-      <div class="locale__field">
-        <span class="field-label">{{ t("general.region") }}</span>
-        <m3e-select :value="region" @change="onRegionChange">
+      </m3e-form-field>
+
+      <m3e-form-field variant="outlined" class="locale__field">
+        <label slot="label" for="region-select">{{ t("general.region") }}</label>
+        <m3e-select id="region-select" :value="region" @change="onRegionChange">
           <m3e-option v-for="opt in regionOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </m3e-option>
         </m3e-select>
-      </div>
+      </m3e-form-field>
+
       <m3e-button variant="filled" :disabled="savingLocale" @click="persistLocale">
         {{ t("common.save") }}
       </m3e-button>
@@ -145,11 +152,9 @@ function onRegionChange(e: Event) {
   flex-wrap: wrap;
 }
 
+/* 宽度由这里给：`m3e-form-field` 自身是行内尺寸，不撑开就只剩一个箭头。 */
 .locale__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  min-width: 200px;
+  min-width: 220px;
 }
 
 .player {

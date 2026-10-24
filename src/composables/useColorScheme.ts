@@ -123,7 +123,15 @@ export function useColorScheme() {
       const scheme = await generateM3Scheme(seed, state.theme_variant, state.theme_contrast);
       // 期间用户又改了配色：丢弃这次结果，避免旧值盖住新值
       if (mine !== token || !target) return;
-      writeRoles(el, dark ? scheme.dark : scheme.light);
+      const roles = dark ? scheme.dark : scheme.light;
+      writeRoles(el, roles);
+      // 同时写到 `:root`。
+      //
+      // `m3e-select` 的下拉面板会被挂到 `<body>`（见 @m3e/web 的 select.js：优先挂进
+      // 最近的 popover/dialog，否则 `document.body`）。它已经在 `<m3e-theme>` 之外，
+      // 拿不到那边生成的 `--md-sys-color-*`，于是表现为"下拉菜单不跟配色、也不跟明暗"。
+      // 写到 :root 后，这类"逃出主题作用域"的浮层也能拿到同一套颜色。
+      writeRoles(document.documentElement, roles);
       lastKey = key;
       active.value = true;
     } catch (e) {
