@@ -29,6 +29,13 @@ const PADDING: f64 = 20.0;
 /// 与托盘图标之间的间隙。
 const GAP: i32 = 6;
 
+/// 面板四周为 CSS 阴影预留的逻辑像素。
+///
+/// 窗口必须比内容大这一圈，否则 `box-shadow` 会被窗口边界直接裁掉（看起来就是"没阴影"）。
+/// **不能用原生 `shadow(true)`**：Windows 的窗口阴影按**窗口矩形**绘制，圆角内容配方角阴影，
+/// 反而更难看。
+const SHADOW_MARGIN: f64 = 12.0;
+
 /// 启动时调用一次：建好面板但保持隐藏。
 pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
     if app.get_webview_window(TRAY_LABEL).is_some() {
@@ -36,7 +43,10 @@ pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
     }
     let window = WebviewWindowBuilder::new(app, TRAY_LABEL, WebviewUrl::App("widget.html".into()))
         .title("MC Link")
-        .inner_size(PANEL_WIDTH, 200.0)
+        .inner_size(
+            PANEL_WIDTH + SHADOW_MARGIN * 2.0,
+            200.0 + SHADOW_MARGIN * 2.0,
+        )
         .resizable(false)
         .decorations(false)
         .transparent(true)
@@ -93,7 +103,10 @@ pub fn show_tray_panel(
     }
 
     let height = panel_height(app);
-    let _ = window.set_size(tauri::LogicalSize::new(PANEL_WIDTH, height));
+    let _ = window.set_size(tauri::LogicalSize::new(
+        PANEL_WIDTH + SHADOW_MARGIN * 2.0,
+        height + SHADOW_MARGIN * 2.0,
+    ));
 
     let scale = window
         .monitor_from_point(anchor.x, anchor.y)
@@ -147,26 +160,32 @@ fn place(
         None => (0, 0, 1920, 1080),
     };
 
-    let panel_w = (PANEL_WIDTH * scale).round() as i32;
-    let panel_h = (height * scale).round() as i32;
+    let margin = (SHADOW_MARGIN * scale).round() as i32;
+    let content_w = (PANEL_WIDTH * scale).round() as i32;
+    let content_h = (height * scale).round() as i32;
+    let win_w = content_w + margin * 2;
+    let win_h = content_h + margin * 2;
 
     // `Rect` 的位置/尺寸是 `Position`/`Size` 枚举（可能是 Logical），
     // 统一换算成物理像素再算，否则高 DPI 下会偏。
     let icon = tray.position.to_physical::<i32>(scale);
     let icon_size = tray.size.to_physical::<u32>(scale);
 
-    let center_x = icon.x + icon_size.width as i32 / 2;
-    let mut x = center_x - panel_w / 2;
-
+    // 先按"内容"对齐托盘图标，再整体偏移成窗口坐标（窗口比内容大一圈阴影边距）。
+    let x = icon.x + icon_size.width as i32 / 2 - content_w / 2;
     let below = icon.y + icon_size.height as i32 + GAP;
-    let above = icon.y - panel_h - GAP;
-    let mut y = if below + panel_h <= top + height_avail {
+    let above = icon.y - content_h - GAP;
+    let y = if below + content_h <= top + height_avail {
         below
     } else {
         above
     };
 
-    x = x.clamp(left + GAP, left + width - panel_w - GAP);
-    y = y.clamp(top + GAP, top + height_avail - panel_h - GAP);
-    (x, y)
+    let mut wx = x - margin;
+    let mut wy = y - margin;
+
+    // 夹取的是**窗口矩形**（含阴影），保证整块都落在工作区内。
+    wx = wx.clamp(left, left + width - win_w);
+    wy = wy.clamp(top, top + height_avail - win_h);
+    (wx, wy)
 }

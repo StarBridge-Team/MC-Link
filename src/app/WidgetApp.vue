@@ -104,14 +104,29 @@ function quit() {
 .panel {
   display: flex;
   flex-direction: column;
-  width: 100vw;
-  height: 100vh;
+  /*
+   * 四周留 12px：窗口比内容大这一圈，`box-shadow` 才不会被窗口边界裁掉。
+   * 数值必须与 Rust 的 `window::widget::SHADOW_MARGIN` 一致。
+   */
+  margin: 12px;
+  width: calc(100vw - 24px);
+  height: calc(100vh - 24px);
   /* 与 Rust 的 PADDING 对应：上下各 10px。 */
   padding: 10px 8px;
   box-sizing: border-box;
   overflow: hidden;
-  border-radius: 12px;
-  background: var(--surface);
+  /* 圆角与配色取 M3 菜单的令牌：托盘面板在语义上就是一个菜单。
+   * 原来的 12px 介于菜单（4）与对话框（28）之间，两头都不像。 */
+  border-radius: var(--m3e-menu-container-shape, 4px);
+  background: var(
+    --m3e-menu-container-color,
+    var(--md-sys-color-surface-container, var(--surface))
+  );
+  box-shadow: var(
+    --m3e-menu-container-elevation,
+    0 4px 8px 3px rgba(0, 0, 0, 0.15),
+    0 1px 3px 0 rgba(0, 0, 0, 0.3)
+  );
   color: var(--text-primary);
 }
 

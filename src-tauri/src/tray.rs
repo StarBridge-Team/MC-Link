@@ -34,9 +34,14 @@ pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Erro
                     ..
                 } => {
                     if let Some(window) = app_handle.get_webview_window("main") {
-                        if window.is_visible().unwrap_or(false) {
+                        // 最小化时窗口**仍然 visible**：只看 `is_visible` 会把"还原"
+                        // 误判成"收起"，用户点了托盘反而把窗口藏起来。
+                        let visible = window.is_visible().unwrap_or(false);
+                        let minimized = window.is_minimized().unwrap_or(false);
+                        if visible && !minimized {
                             let _ = window.hide();
                         } else {
+                            let _ = window.unminimize();
                             let _ = window.show();
                             let _ = window.set_focus();
                         }

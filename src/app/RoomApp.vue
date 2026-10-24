@@ -15,6 +15,7 @@ import { useI18n } from "vue-i18n";
 import { closeSelfWindow, dragWindow } from "../lib/api/window";
 import RoomView from "../views/RoomView.vue";
 import { useRoomsStore } from "../stores/rooms";
+import TitleBarButton from "../ui/TitleBarButton.vue";
 import { useThemeBinding } from "../ui/themeBinding";
 
 const { t } = useI18n();
@@ -83,9 +84,13 @@ function closeWindow() {
         <div class="room-window__drag" @pointerdown="startDrag">
           <span class="room-window__title">{{ title }}</span>
         </div>
-        <m3e-button variant="text" class="room-window__close" @click="closeWindow">
-          <m3e-icon slot="icon" name="close" />
-        </m3e-button>
+        <!-- 与主窗口同一个按钮组件：尺寸、圆角、悬停红都一致 -->
+        <TitleBarButton
+          icon="close"
+          danger
+          :title="t('titlebar.close')"
+          @click="closeWindow"
+        />
       </header>
 
       <RoomView v-if="sessionId" :session-id="sessionId" />
@@ -119,8 +124,9 @@ function closeWindow() {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  height: 40px;
+  height: var(--titlebar-height);
   padding: 0 var(--sp-2) 0 var(--sp-4);
+  color: var(--text-secondary);
   user-select: none;
 }
 
@@ -142,10 +148,6 @@ function closeWindow() {
   white-space: nowrap;
   font-size: var(--fs-sm);
   color: var(--text-secondary);
-}
-
-.room-window__close {
-  flex: none;
 }
 
 .room-window__missing {

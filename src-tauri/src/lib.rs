@@ -191,6 +191,22 @@ pub fn run() {
             if let Err(e) = window::widget::ensure_tray_panel(app.handle()) {
                 eprintln!("[托盘] 面板初始化失败（右键菜单将不可用）: {}", e);
             }
+
+            // 主窗口只能被**隐藏**，不能被销毁。
+            //
+            // 托盘面板是常驻窗口，所以"最后一个窗口关闭 → 进程退出"不再成立：
+            // 主窗口一旦被销毁，进程会活着但托盘左键找不到它——用户看到"应用还在，
+            // 但怎么点都叫不出来"。CloseRequested 覆盖标题栏关闭键、Alt+F4、
+            // 任务栏右键关闭，统一改成隐藏。
+            if let Some(main) = app.get_webview_window("main") {
+                let window = main.clone();
+                main.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                });
+            }
             if let Err(e) = init_plugin_subsystem(app, &data_dir) {
                 eprintln!("[插件] 子系统初始化失败: {}", e);
             }
@@ -306,7 +322,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             minimize_window,
             maximize_window,
-            close_window,
             drag_window,
             exit_app,
             show_window,

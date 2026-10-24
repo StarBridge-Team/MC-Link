@@ -17,21 +17,6 @@ pub(crate) fn maximize_window(window: tauri::Window) {
     }
 }
 
-/// 关闭主窗口。
-///
-/// 只停止适配器（含其托管的第三方进程），**不做**完整插件系统关停：
-/// 关闭窗口不等于退出应用（托盘左键仍可隐藏/唤出窗口），
-/// 关停网关与远程插件会让仍在运行的应用失效。
-#[tauri::command]
-pub(crate) fn close_window(
-    window: tauri::Window,
-    plugin_manager: tauri::State<'_, Arc<PluginManager>>,
-) -> Result<String, String> {
-    plugin_manager.shutdown_adapters()?;
-    let _ = window.close();
-    Ok("已退出".to_string())
-}
-
 #[tauri::command]
 pub(crate) fn drag_window(window: tauri::WebviewWindow) -> Result<(), String> {
     window.start_dragging().map_err(|e| e.to_string())
@@ -39,15 +24,21 @@ pub(crate) fn drag_window(window: tauri::WebviewWindow) -> Result<(), String> {
 
 /// 退出应用。
 ///
-/// 这里只停适配器（与改造前行为一致，保证第三方进程先于本进程退出）；
-/// 完整关停（关闭远程插件与网关）由 `lib.rs` 的 `RunEvent::Exit` 处理器统一执行，
-/// 不在此处重复调用 [`PluginManager::shutdown`]。
+/// 这里只停适配器（保证第三方进程先于本进程退出）；完整关停（关闭远程插件与网关）
+/// 由 `lib.rs` 的 `RunEvent::Exit` 处理器统一执行，不在此处重复调用
+/// [`PluginManager::shutdown`]。
+///
+/// **适配器停不掉也要退出**：用户点的是"退出"，卡在收尾上不退出只会让人去任务管理器。
+/// 失败留痕即可——进程退出后系统会回收残留子进程（Windows 上子进程不会自动结束，
+/// 但 `shutdown` 里的 `kill` 才是主路径，这里是它的兜底）。
 #[tauri::command]
 pub(crate) fn exit_app(
     plugin_manager: tauri::State<'_, Arc<PluginManager>>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    plugin_manager.shutdown_adapters()?;
+    if let Err(e) = plugin_manager.shutdown_adapters() {
+        eprintln!("[退出] 停止适配器失败（仍然退出）: {}", e);
+    }
     app.exit(0);
     Ok("已退出".to_string())
 }

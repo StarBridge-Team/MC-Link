@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 
+import TitleBarButton from "../../ui/TitleBarButton.vue";
+
 /**
  * 无边框窗口的自定义标题栏。
  *
@@ -8,9 +10,7 @@ import { useI18n } from "vue-i18n";
  * 右侧是窗口按钮。拖动由父组件传入的 `drag` 触发：走 Tauri 的
  * `start_dragging`，比纯 `data-tauri-drag-region` 在多层子元素下更稳。
  *
- * 保留自定义实现（而非 `<m3e-app-bar>`）：无边框窗口按钮需要 Windows 惯例的
- * 紧凑尺寸与悬停红，M3 app bar 的尺寸/内边距会破坏标题栏的窗口控制区。
- * 图标改用 `<m3e-icon>`，与全站图标字体统一。
+ * 按钮本身抽到 `ui/TitleBarButton.vue`，房间窗口用的是同一份。
  */
 defineProps<{
   title: string;
@@ -31,48 +31,33 @@ const { t } = useI18n();
 <template>
   <header class="titlebar" @mousedown="emit('drag')">
     <div class="titlebar__side">
-      <button
-        class="titlebar__btn"
-        type="button"
-        :disabled="!canGoBack"
+      <TitleBarButton
+        icon="arrow_back"
         :title="t('titlebar.back')"
-        @mousedown.stop
+        :disabled="!canGoBack"
         @click="emit('back')"
-      >
-        <m3e-icon name="arrow_back" />
-      </button>
+      />
     </div>
 
     <div class="titlebar__title">{{ title }}</div>
 
     <div class="titlebar__side titlebar__side--end">
-      <button
-        class="titlebar__btn"
-        type="button"
+      <TitleBarButton
+        icon="remove"
         :title="t('titlebar.minimize')"
-        @mousedown.stop
         @click="emit('minimize')"
-      >
-        <m3e-icon name="remove" />
-      </button>
-      <button
-        class="titlebar__btn"
-        type="button"
+      />
+      <TitleBarButton
+        icon="crop_square"
         :title="t('titlebar.maximize')"
-        @mousedown.stop
         @click="emit('maximize')"
-      >
-        <m3e-icon name="crop_square" />
-      </button>
-      <button
-        class="titlebar__btn titlebar__btn--danger"
-        type="button"
+      />
+      <TitleBarButton
+        icon="close"
+        danger
         :title="t('titlebar.close')"
-        @mousedown.stop
         @click="emit('close')"
-      >
-        <m3e-icon name="close" />
-      </button>
+      />
     </div>
   </header>
 </template>
@@ -113,39 +98,5 @@ const { t } = useI18n();
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.titlebar__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 30px;
-  border-radius: var(--r-sm);
-  color: inherit;
-  font-size: var(--fs-title);
-  transition: background-color var(--motion-short) var(--ease-standard),
-    color var(--motion-short) var(--ease-standard);
-}
-
-.titlebar__btn m3e-icon {
-  font-size: inherit;
-}
-
-.titlebar__btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--on-surface) 10%, transparent);
-  color: var(--text-primary);
-}
-
-.titlebar__btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-/* 与通用悬停 `.titlebar__btn:hover:not(:disabled)` 特异性相同（0,3,0），
-   且本规则写在后面 → 关闭按钮悬停时优先取红色，不会被灰色通用态覆盖。 */
-.titlebar__btn--danger:hover:not(:disabled) {
-  background: var(--error);
-  color: var(--on-error);
 }
 </style>

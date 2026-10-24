@@ -5,7 +5,7 @@
 
 import { onDeactivated, onUnmounted, ref } from "vue";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
-import { closeWindow, dragWindow, exitApp, resizeWindow } from "../lib/api/window";
+import { dragWindow, exitApp, hideSelfWindow, resizeWindow } from "../lib/api/window";
 import { KEYS, local } from "../lib/persist";
 
 interface WindowState {
@@ -116,15 +116,20 @@ export function useWindowControls() {
     }
   }
 
-  /** 关闭窗口（保留托盘，应用仍在后台运行）。 */
+  /**
+   * 关闭窗口 = **隐藏到托盘**。
+   *
+   * 不销毁窗口、也不停适配器：房间链路要继续跑，托盘左键还要能把它叫回来。
+   * 真正的退出只走 `handleExit`（托盘面板的「退出主程序」）。
+   */
   async function handleClose() {
     await saveWindowState();
     try {
       isExiting.value = true;
       await wait(EXIT_MS);
-      await closeWindow();
+      await hideSelfWindow();
     } catch (e) {
-      console.warn("[window] 关闭窗口失败:", e);
+      console.warn("[window] 隐藏窗口失败:", e);
     } finally {
       isExiting.value = false;
     }

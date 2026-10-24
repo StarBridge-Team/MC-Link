@@ -6,10 +6,14 @@ import { invoke } from "@tauri-apps/api/core";
  * 最小化 / 最大化 / 移动用的是 `@tauri-apps/api/window` 的窗口方法，
  * 不属于自定义命令，因此不在这里再包一层。
  *
- * # `closeWindow` 与 `exitApp` 不是一回事
+ * # 「关窗口」与「退出」不是一回事
  *
- * - `closeWindow`：只关窗口，托盘仍在，可唤回；
- * - `exitApp`：`app.exit(0)`，真正结束进程（插件关停由后端 `RunEvent::Exit` 执行）。
+ * - 主窗口的关闭键 = `hideSelfWindow`：**隐藏到托盘**，进程与房间链路继续；
+ *   主窗口本身由后端的 `CloseRequested` 拦截，永远不会被销毁（否则托盘叫不回来）。
+ * - `exitApp`：`app.exit(0)`，真正结束进程（适配器与插件关停由后端执行）。
+ *
+ * 曾经的 `closeWindow`（`close_window` 命令）会先停掉所有适配器再关窗口，
+ * 语义是"关主窗口=结束联机"——与"关窗口≠断链路"的设计相反，已删除。
  */
 
 /** 调整窗口尺寸；`center` 为 true 时居中。 */
@@ -26,11 +30,6 @@ export async function resizeWindow(options: {
 /** 开始拖动窗口（无边框窗口的自定义标题栏用）。 */
 export async function dragWindow() {
   return invoke<void>("drag_window");
-}
-
-/** 关闭窗口（保留托盘）。 */
-export async function closeWindow() {
-  return invoke<void>("close_window");
 }
 
 /** 完全退出应用。 */
