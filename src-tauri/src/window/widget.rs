@@ -58,12 +58,16 @@ pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
     // **不套窗口材质**：材质画在窗口矩形上，会把 DOM 的圆角与阴影整个盖住，
     // 看起来永远是方角。面板自己画底色 + 圆角 + 阴影（见 `WidgetApp.vue`）。
 
-    // 失焦即收起。动画由 `animation` 负责，失败会退化成瞬时隐藏。
+    // 失焦即收起；尺寸变化后重算圆角裁剪。
+    //
+    // **Resized 这一条不能省**：`set_size` 是异步投递的，紧接着调 `apply_round_region`
+    // 时 `inner_size()` 往往还是旧值，region 按旧尺寸算 → 窗口变大后右下角露白。
+    // 挂到 Resized 上，等尺寸真正生效后再裁。
     let w = window.clone();
-    window.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Focused(false)) {
-            crate::window::animation::hide(&w);
-        }
+    window.on_window_event(move |event| match event {
+        tauri::WindowEvent::Focused(false) => crate::window::animation::hide(&w),
+        tauri::WindowEvent::Resized(_) => apply_round_region(&w),
+        _ => {}
     });
 
     Ok(())
@@ -135,7 +139,7 @@ pub fn hide_tray_panel(app: &AppHandle) {
 /// 圆角半径与 `WidgetApp.vue` 的 `border-radius` 必须一致（30px）。
 /// 窗口尺寸变化后要重新应用：region 是按当时的像素尺寸算的。
 #[cfg(windows)]
-fn apply_round_region(window: &tauri::WebviewWindow) {
+pub(crate) fn apply_round_region(window: &tauri::WebviewWindow) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
 
@@ -175,7 +179,7 @@ fn apply_round_region(window: &tauri::WebviewWindow) {
 }
 
 #[cfg(not(windows))]
-fn apply_round_region(_window: &tauri::WebviewWindow) {
+pub(crate) fn apply_round_region(_window: &tauri::WebviewWindow) {
     // macOS / Linux 由窗口自身（或合成器）处理圆角；CSS 的 border-radius 足够。
 }
 

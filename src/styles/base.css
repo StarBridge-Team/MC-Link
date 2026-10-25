@@ -266,12 +266,12 @@ m3e-search-bar :focus-visible {
     --md-sys-color-surface-container-low,
     #f5f0f7
   );
-  --m3e-option-panel-container-shape: 4px;
   --m3e-floating-panel-container-color: var(
     --md-sys-color-surface-container-low,
     #f5f0f7
   );
-  --m3e-floating-panel-container-shape: 4px;
+  /* 圆角**不覆盖**：组件默认值（extraSmall 档）与整体观感一致，
+   * 之前强行改成 4px 反而把它改成了另一副样子。 */
 
   /* 选中项：M3 规范里下拉的选中态就是 secondary-container / on-secondary-container。
    * 不钉这一组时，组件会用它自己推导的角色色（截图里那个青绿 #afdccc），
