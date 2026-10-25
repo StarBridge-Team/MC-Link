@@ -118,6 +118,10 @@ function quit() {
   /* 与主窗口卡片同款表面（`--card-bg`）：比 `surface-container` 更"浮"一层，
    * 在深色/低对比配色下不会糊成一片。 */
   background: var(--card-bg, var(--md-sys-color-surface-container-high, var(--surface)));
+  /* 不用阴影，改用 1px 描边界定边界。
+   * 原因：面板与页面底色同属 surface 家族，明度差只有几个点，靠颜色分不开；
+   * 而阴影在透明 + 圆角裁剪的窗口上会被裁掉一半，反而更脏。 */
+  border: 1px solid color-mix(in srgb, var(--on-surface) 12%, transparent);
   color: var(--text-primary);
 }
 

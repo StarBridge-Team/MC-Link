@@ -260,12 +260,37 @@ m3e-search-bar :focus-visible {
  * 颜色取 `surface-container-low`：比页面底色（`surface`）高一档、比 `surface-container`
  * 低一档，既有层次又不会在浅色下显得发暗发蓝。 */
 .app-select-panel {
+  /* 面板容器：`option-panel` 自己有一份，内部浮层基类还有一份，两个都要给，
+   * 否则内边距区域会用组件默认色（表现为面板下方/右侧多一块白）。 */
+  --m3e-option-panel-container-color: var(
+    --md-sys-color-surface-container-low,
+    #f5f0f7
+  );
+  --m3e-option-panel-container-shape: 4px;
   --m3e-floating-panel-container-color: var(
     --md-sys-color-surface-container-low,
     #f5f0f7
   );
   --m3e-floating-panel-container-shape: 4px;
-  /* 选中项/悬停底色也跟着走，否则选项行还是默认色 */
+
+  /* 选中项：M3 规范里下拉的选中态就是 secondary-container / on-secondary-container。
+   * 不钉这一组时，组件会用它自己推导的角色色（截图里那个青绿 #afdccc），
+   * 与页面配色完全不是一家人。 */
+  --m3e-option-selected-container-color: var(
+    --md-sys-color-secondary-container,
+    #e8def8
+  );
+  --m3e-option-selected-container-hover-color: var(
+    --md-sys-color-secondary-container,
+    #e8def8
+  );
+  --m3e-option-selected-container-focus-color: var(
+    --md-sys-color-secondary-container,
+    #e8def8
+  );
+  --m3e-option-selected-color: var(--md-sys-color-on-secondary-container, #1d192b);
+
+  /* 普通行的悬停/聚焦 */
   --m3e-option-container-hover-color: var(--md-sys-color-surface-container, #f3edf7);
   --m3e-option-container-focus-color: var(--md-sys-color-surface-container-high, #ece6f0);
 }
