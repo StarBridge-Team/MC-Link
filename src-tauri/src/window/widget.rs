@@ -55,8 +55,9 @@ pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| format!("创建托盘面板失败: {}", e))?;
 
-    // **不套窗口材质**：材质画在窗口矩形上，会把 DOM 的圆角与阴影整个盖住，
-    // 看起来永远是方角。面板自己画底色 + 圆角 + 阴影（见 `WidgetApp.vue`）。
+    // 套材质**不是为了显示材质**，而是让窗口进入合成模式：没有它窗口底色是白的，
+    // 圆角外会露白。面板自己画不透明底色盖住材质，圆角由 `apply_round_region` 裁窗口。
+    crate::effect::apply_tray_menu_effect(&window);
 
     // 失焦即收起；尺寸变化后重算圆角裁剪。
     //
@@ -170,11 +171,13 @@ pub(crate) fn apply_round_region(window: &tauri::WebviewWindow) {
         )
     };
     if region.is_null() {
+        eprintln!("[托盘] CreateRoundRectRgn 失败，窗口未裁剪");
         return;
     }
     // 成功后 region 归系统所有，**不要**再 DeleteObject。
-    unsafe {
-        SetWindowRgn(win32.hwnd.get() as _, region, 1);
+    let applied = unsafe { SetWindowRgn(win32.hwnd.get() as _, region, 1) };
+    if applied == 0 {
+        eprintln!("[托盘] SetWindowRgn 失败（窗口未裁剪，圆角处会露底色）");
     }
 }
 

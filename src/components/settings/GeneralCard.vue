@@ -104,7 +104,7 @@ function onRegionChange(e: Event) {
         裸 `<m3e-select>` 没有表单字段容器提供宽度与排版上下文，实测只渲染出右侧箭头、
         选中值不显示——组件文档里的每个示例也都是 form-field + label 的组合。
       -->
-      <m3e-form-field variant="filled" class="locale__field">
+      <m3e-form-field variant="outlined" class="locale__field">
         <label slot="label" for="lang-select">{{ t("general.language") }}</label>
         <m3e-select
           id="lang-select"
@@ -118,7 +118,7 @@ function onRegionChange(e: Event) {
         </m3e-select>
       </m3e-form-field>
 
-      <m3e-form-field variant="filled" class="locale__field">
+      <m3e-form-field variant="outlined" class="locale__field">
         <label slot="label" for="region-select">{{ t("general.region") }}</label>
         <m3e-select
           id="region-select"
@@ -141,7 +141,7 @@ function onRegionChange(e: Event) {
 
   <SettingCard :icon="'person'" :title="t('general.playerTitle')">
     <div class="player">
-      <m3e-form-field variant="filled" class="player__input">
+      <m3e-form-field variant="outlined" class="player__input">
         <label slot="label">{{ t("general.playerName") }}</label>
         <input v-model="playerName" maxlength="32" :placeholder="t('general.playerNamePlaceholder')" />
       </m3e-form-field>
