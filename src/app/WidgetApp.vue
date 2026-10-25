@@ -115,18 +115,17 @@ function quit() {
   padding: 10px 8px;
   box-sizing: border-box;
   overflow: hidden;
-  /* 圆角与配色取 M3 菜单的令牌：托盘面板在语义上就是一个菜单。
-   * 原来的 12px 介于菜单（4）与对话框（28）之间，两头都不像。 */
-  border-radius: var(--m3e-menu-container-shape, 4px);
-  background: var(
-    --m3e-menu-container-color,
-    var(--md-sys-color-surface-container, var(--surface))
-  );
-  box-shadow: var(
-    --m3e-menu-container-elevation,
-    0 4px 8px 3px rgba(0, 0, 0, 0.15),
-    0 1px 3px 0 rgba(0, 0, 0, 0.3)
-  );
+  /* 28px：与 M3 对话框/大面板同档。
+   *
+   * 这里能画出圆角的前提是**窗口没套材质**（见 `window::widget::ensure_tray_panel`）：
+   * 材质画在窗口矩形上，会把圆角和阴影整个盖掉。
+   * 也别指望 `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE)`：它只给系统预设
+   * 半径（约 8px），且阴影按窗口矩形绘制——28px 与"有阴影"两者不可兼得，只能自己画。 */
+  border-radius: 28px;
+  background: var(--md-sys-color-surface-container, var(--surface));
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.22),
+    0 2px 6px rgba(0, 0, 0, 0.16);
   color: var(--text-primary);
 }
 

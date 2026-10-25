@@ -106,7 +106,12 @@ function onRegionChange(e: Event) {
       -->
       <m3e-form-field variant="outlined" class="locale__field">
         <label slot="label" for="lang-select">{{ t("general.language") }}</label>
-        <m3e-select id="lang-select" :value="language" @change="onLanguageChange">
+        <m3e-select
+          id="lang-select"
+          panel-class="app-select-panel"
+          :value="language"
+          @change="onLanguageChange"
+        >
           <m3e-option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </m3e-option>
@@ -115,7 +120,12 @@ function onRegionChange(e: Event) {
 
       <m3e-form-field variant="outlined" class="locale__field">
         <label slot="label" for="region-select">{{ t("general.region") }}</label>
-        <m3e-select id="region-select" :value="region" @change="onRegionChange">
+        <m3e-select
+          id="region-select"
+          panel-class="app-select-panel"
+          :value="region"
+          @change="onRegionChange"
+        >
           <m3e-option v-for="opt in regionOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </m3e-option>

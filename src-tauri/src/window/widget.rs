@@ -58,8 +58,8 @@ pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| format!("创建托盘面板失败: {}", e))?;
 
-    // 材质交给官方 API（与主窗口同一套映射），不在窗口里自己画背景。
-    crate::effect::apply_tray_menu_effect(&window);
+    // **不套窗口材质**：材质画在窗口矩形上，会把 DOM 的圆角与阴影整个盖住，
+    // 看起来永远是方角。面板自己画底色 + 圆角 + 阴影（见 `WidgetApp.vue`）。
 
     // 失焦即收起。动画由 `animation` 负责，失败会退化成瞬时隐藏。
     let w = window.clone();

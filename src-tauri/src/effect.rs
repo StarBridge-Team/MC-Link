@@ -85,19 +85,12 @@ pub fn apply_effect(window: &tauri::WebviewWindow, effect: &str, tint: f64, dark
     }
 }
 
-/// 托盘菜单窗口的材质（Windows 的 Tabbed 材质）。
-///
-/// 结果与"应用哪个效果"无关，因此不进 [`effects_for`] 的取值集合——
-/// 它只是同一个官方 API 的另一处调用，集中在这里以免又出现一份手写 FFI。
-pub(crate) fn apply_tray_menu_effect(window: &tauri::WebviewWindow) {
-    let config = WindowEffectsConfig {
-        effects: vec![Effect::Tabbed],
-        ..Default::default()
-    };
-    if let Err(e) = window.set_effects(config) {
-        eprintln!("[窗口效果] 托盘菜单材质应用失败: {e}");
-    }
-}
+// 托盘面板**不再套材质**（原来的 `apply_tray_menu_effect`，Tabbed）。
+//
+// 原因：材质是画在**窗口矩形**上的，它会把 DOM 的圆角与阴影整个盖住——
+// 无论 CSS 怎么写 `border-radius`，用户看到的都是一个方角的材质块。
+// 面板现在自己画底色（`--md-sys-color-surface-container`）+ 28px 圆角 + 阴影，
+// 窗口保持纯透明，圆角和阴影才真正可见。
 
 /// 效果名 → 官方参数；`None` 表示清空材质。
 ///
