@@ -220,6 +220,10 @@ m3e-icon {
  * 字体靠继承；这里显式兜一层，确保 shadow 内也拿到 Poppins）。 */
 m3e-theme {
   font-family: var(--font-sans);
+  /* 自定义元素默认是 inline：不改成 block 并撑满，子元素的 `100vh` 与圆角背景
+   * 在部分窗口里会算错（表现为"面板没铺满、下面露出一条白"）。 */
+  display: block;
+  height: 100%;
 }
 
 /* 卡片不用 `actionable`：它的波纹是 WAAPI 驱动的，`--m3e-ripple-opacity` 关不掉。

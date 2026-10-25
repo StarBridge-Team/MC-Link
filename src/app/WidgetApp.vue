@@ -104,28 +104,17 @@ function quit() {
 .panel {
   display: flex;
   flex-direction: column;
-  /*
-   * 四周留 12px：窗口比内容大这一圈，`box-shadow` 才不会被窗口边界裁掉。
-   * 数值必须与 Rust 的 `window::widget::SHADOW_MARGIN` 一致。
-   */
-  margin: 12px;
-  width: calc(100vw - 24px);
-  height: calc(100vh - 24px);
+  /* 窗口尺寸与面板严格相等：任何内缩边距都会露出 WebView 的底色（一片白）。 */
+  width: 100vw;
+  height: 100vh;
   /* 与 Rust 的 PADDING 对应：上下各 10px。 */
   padding: 10px 8px;
   box-sizing: border-box;
   overflow: hidden;
-  /* 28px：与 M3 对话框/大面板同档。
-   *
-   * 这里能画出圆角的前提是**窗口没套材质**（见 `window::widget::ensure_tray_panel`）：
-   * 材质画在窗口矩形上，会把圆角和阴影整个盖掉。
-   * 也别指望 `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE)`：它只给系统预设
-   * 半径（约 8px），且阴影按窗口矩形绘制——28px 与"有阴影"两者不可兼得，只能自己画。 */
-  border-radius: 28px;
+  /* 30px 圆角。能看见的前提是窗口没套材质、且窗口本身是全透明的
+   * （见 `window::widget::ensure_tray_panel` 的 `background_color` 与去材质说明）。 */
+  border-radius: 30px;
   background: var(--md-sys-color-surface-container, var(--surface));
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.22),
-    0 2px 6px rgba(0, 0, 0, 0.16);
   color: var(--text-primary);
 }
 

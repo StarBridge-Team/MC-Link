@@ -167,6 +167,13 @@ function onRegionChange(e: Event) {
   min-width: 220px;
 }
 
+/* 输入框容器与托盘面板同档圆角（30px）。m3e 的 outlined 容器用自己的令牌，
+ * 不覆盖 `--m3e-form-field-container-shape`（那个是 filled 用的）。 */
+.locale__field,
+.player__input {
+  --m3e-outlined-form-field-container-shape: 30px;
+}
+
 .player {
   display: flex;
   align-items: center;
