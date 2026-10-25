@@ -96,6 +96,9 @@ winreg = "0.52"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
+    # 托盘面板的圆角裁剪：`CreateRoundRectRgn` + `SetWindowRgn`
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

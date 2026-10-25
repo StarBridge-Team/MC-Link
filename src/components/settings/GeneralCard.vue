@@ -167,10 +167,14 @@ function onRegionChange(e: Event) {
   min-width: 220px;
 }
 
-/* 输入框容器与托盘面板同档圆角（30px）。m3e 的 outlined 容器用自己的令牌，
- * 不覆盖 `--m3e-form-field-container-shape`（那个是 filled 用的）。 */
+/* 输入框容器与托盘面板同档圆角（30px）。
+ *
+ * 两个令牌都要给：`--m3e-form-field-container-shape` 是通用容器，
+ * `--m3e-outlined-form-field-container-shape` 是 outlined 变体专用。
+ * 只给后者时，标签缺口（notch）那一侧的角不受它控制，会出现"只有一半圆角"。 */
 .locale__field,
 .player__input {
+  --m3e-form-field-container-shape: 30px;
   --m3e-outlined-form-field-container-shape: 30px;
 }
 

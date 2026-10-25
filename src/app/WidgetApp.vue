@@ -111,10 +111,13 @@ function quit() {
   padding: 10px 8px;
   box-sizing: border-box;
   overflow: hidden;
-  /* 30px 圆角。能看见的前提是窗口没套材质、且窗口本身是全透明的
-   * （见 `window::widget::ensure_tray_panel` 的 `background_color` 与去材质说明）。 */
+  /* 30px 圆角。窗口本身也被 `SetWindowRgn` 裁成同样的圆角（见
+   * `window::widget::apply_round_region`），否则窗口的方形底色会从圆角外露出来。
+   * 这里的 CSS 圆角负责内容自身的绘制边界。 */
   border-radius: 30px;
-  background: var(--md-sys-color-surface-container, var(--surface));
+  /* 与主窗口卡片同款表面（`--card-bg`）：比 `surface-container` 更"浮"一层，
+   * 在深色/低对比配色下不会糊成一片。 */
+  background: var(--card-bg, var(--md-sys-color-surface-container-high, var(--surface)));
   color: var(--text-primary);
 }
 

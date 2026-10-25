@@ -253,11 +253,21 @@ m3e-search-bar :focus-visible {
 /* `m3e-select` 的下拉面板被挂到 `<body>`（见 @m3e/web 的 select.js），
  * 所以只能用**全局类名**命中它——scoped 样式与 `m3e-theme` 的作用域都够不到。
  *
- * 配色钉在 `surface-container-low`：默认的 `surface-container` 比本项目的页面底色
- * （`surface`）更暗更蓝，浅色下看起来就是"偏色"。低一档更接近页面底色，仍有层次。 */
+ * 面板元素是 **`m3e-option-panel`**，它的容器令牌是 `--m3e-floating-panel-*`，
+ * 不是 `--m3e-menu-*`。之前写错令牌名，等于完全没生效，面板一直用组件默认色
+ * （在当前种子下算出来是 #afdccc，与页面配色完全不是一家人）。
+ *
+ * 颜色取 `surface-container-low`：比页面底色（`surface`）高一档、比 `surface-container`
+ * 低一档，既有层次又不会在浅色下显得发暗发蓝。 */
 .app-select-panel {
-  --m3e-menu-container-color: var(--md-sys-color-surface-container-low, #f5f0f7);
-  --m3e-menu-container-shape: 4px;
+  --m3e-floating-panel-container-color: var(
+    --md-sys-color-surface-container-low,
+    #f5f0f7
+  );
+  --m3e-floating-panel-container-shape: 4px;
+  /* 选中项/悬停底色也跟着走，否则选项行还是默认色 */
+  --m3e-option-container-hover-color: var(--md-sys-color-surface-container, #f3edf7);
+  --m3e-option-container-focus-color: var(--md-sys-color-surface-container-high, #ece6f0);
 }
 
 /* ============================================================
