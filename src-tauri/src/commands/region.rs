@@ -81,6 +81,22 @@ pub fn is_mainland_china(region: &str) -> bool {
 /// 由前端决定降级方式，日志里也留得下原因。
 #[tauri::command]
 pub async fn get_region_info() -> Result<RegionInfo, String> {
+    // 开发构建（`tauri dev` / `cargo build`）一律不拦：
+    //
+    // localhost 调试时公网归属地可能来自代理、也可能是机房 IP，每次都去请求一遍
+    // 既慢又容易得出"今天该不该拦"这种与代码无关的结论。限制只在 release 构建里
+    // 生效（`tauri build`）。
+    //
+    // 想在 dev 里验证限制本身，设环境变量 `MCLINK_REGION_GATE=1` 再启动即可。
+    let forced = std::env::var("MCLINK_REGION_GATE").is_ok_and(|v| v == "1");
+    if cfg!(debug_assertions) && !forced {
+        return Ok(RegionInfo {
+            ip: String::new(),
+            region: "开发构建：未做地区判定".to_string(),
+            mainland_china: false,
+        });
+    }
+
     let client = UapiClient::builder()
         .build()
         .map_err(|e| format!("创建客户端失败: {}", e))?;
