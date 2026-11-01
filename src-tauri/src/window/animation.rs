@@ -27,8 +27,66 @@
 //!
 //! 因此这里保留 `show` / `hide` 两个入口（调用方不必知道实现），内部只做瞬时显隐。
 //! 将来要接动画，改这两个函数即可，调用点无需改动。
+//!
+//! # 最小化/最大化动画：由系统给，但受系统开关控制（2026-11-01 实测）
+//!
+//! `SPI_GETANIMATION` / `ANIMATIONINFO.iMinAnimate` 就是「辅助功能 → 视觉效果 →
+//! 动画效果」与「性能选项 → 在最大化和最小化时显示窗口动画」背后的那个开关
+//! （同一份状态也写在 `HKCU\Control Panel\Desktop\WindowMetrics\MinAnimate`）。
+//! 它关掉时**任何**程序都没有这段动画：`ShowWindow(SW_MINIMIZE)` 就是瞬间消失。
+//! 这很容易被误判成"无边框窗口的毛病"——本仓库当年那套"先播 200ms CSS 淡出再
+//! `minimize()`"就是为这个洞打的补丁。现在不补：那是用户的系统偏好，程序不该绕过。
+//!
+//! 无边框窗口**能**播放这段动画所需的样式，一个都不能少（实测主窗口：
+//! `STYLE=0x34CF0000`、`EXSTYLE=0x00040110`）：
+//!
+//! - `WS_THICKFRAME`：`resizable: true` 时 tao 会给；只有算窗口尺寸用的
+//!   `to_adjusted_window_styles()` 才剥掉它。Electron 的 `thickFrame` 文档把这条
+//!   说得很直白——去掉它会"移除窗口阴影与窗口动画"；
+//! - `WS_CAPTION` / `WS_MINIMIZEBOX`：tao 对 `decorations: false` 仍然保留；
+//! - 不能是 `WS_EX_LAYERED`，也不能是 `WS_EX_TOOLWINDOW`（工具窗口没有任务栏，
+//!   也就没有"缩进任务栏"的目标）。
+//!
+//! 所以**不要**为了让动画"看起来有"去改窗口样式或加透明通道：当前三个样式位都在、
+//! 两个排除位都没有，形式是对的，缺的只是系统开关。
+//!
+//! 与之相对，`DWMWA_TRANSITIONS_FORCEDISABLED` 只能**关**过渡，没有"强制开"的用法；
+//! 而且对透明无边框窗口的显示淡入是 no-op（外部实测，见 `docs/ARCHITECTURE.md`）。
 
 use tauri::WebviewWindow;
+
+/// 启动时检查一次"系统是否允许最小化/最大化动画"，关了就在日志里说清楚。
+///
+/// 只为解决一类反复出现的误判：用户看到最小化瞬间完成，以为是窗口实现的问题，
+/// 实际是系统开关关着。留一行日志比每次重新排查便宜。
+#[cfg(windows)]
+pub fn log_system_animation_state() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SystemParametersInfoW, ANIMATIONINFO, SPI_GETANIMATION,
+    };
+
+    let mut info = ANIMATIONINFO {
+        cbSize: std::mem::size_of::<ANIMATIONINFO>() as u32,
+        iMinAnimate: 1,
+    };
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETANIMATION,
+            info.cbSize,
+            &mut info as *mut _ as *mut core::ffi::c_void,
+            0,
+        )
+    };
+    if ok != 0 && info.iMinAnimate == 0 {
+        eprintln!(
+            "[窗口] 系统已关闭「最小化/最大化时的窗口动画」（辅助功能 → 视觉效果）。\
+             最小化不会有系统动画，与本程序无关"
+        );
+    }
+}
+
+#[cfg(not(windows))]
+pub fn log_system_animation_state() {}
 
 /// 显示窗口。
 ///

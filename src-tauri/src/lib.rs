@@ -202,6 +202,10 @@ pub fn run() {
             // 真正的原生子窗口在第一次收到矩形时创建，见 `window::snap`。
             app.manage(Arc::new(window::snap::SnapTracker::default()));
 
+            // 系统关了"最小化/最大化动画"时留一行日志：那种情况下最小化瞬间完成，
+            // 很容易被误判成窗口实现有问题（详见 `window::animation` 的文档）。
+            window::animation::log_system_animation_state();
+
             if let Some(main) = app.get_webview_window("main") {
                 let window = main.clone();
                 main.on_window_event(move |event| {

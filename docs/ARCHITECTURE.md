@@ -104,6 +104,13 @@ core/       基础设施：events / ids / error / http / lock / cache / persist
   盖住（`window::snap`），由它的窗口过程返回 `HTMAXBUTTON`；按钮位置由前端按
   `id="snap-maximize"` 跟随上报，hover/click 通过 `mclink://window` 回传。
   **那个 id 是跨层契约**，改名会让贴靠失效（表现为按钮位置错位或完全不弹菜单）。
+- **窗口级动画归系统，且受系统开关控制**：最小化/最大化动画由 DWM 播放，开关就是
+  `SPI_GETANIMATION`（辅助功能 → 视觉效果，等价于
+  `HKCU\Control Panel\Desktop\WindowMetrics\MinAnimate`）。它关着时**任何**程序都瞬间完成，
+  不要用 CSS 或 `AnimateWindow` 去补（后者会冻结消息泵，已实测移除）。无边框窗口能
+  播放这段动画的前提是保留 `WS_CAPTION`/`WS_THICKFRAME`/`WS_MINIMIZEBOX` 且不是
+  `WS_EX_LAYERED`/`WS_EX_TOOLWINDOW`——tao 对 `decorations: false` 已经满足，
+  **不要为了"动画可见"去改窗口样式**。启动时会检查一次并在关闭时留日志。
 
 ### 组件系统的两半
 
