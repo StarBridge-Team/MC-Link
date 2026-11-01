@@ -7,7 +7,7 @@
 //! 这样做的好处是：将来接入第二个适配器（例如自研打洞或 ZeroTier）时，
 //! 只需要在插件注册表里加一条记录，这里的命令一行都不用改。
 
-use serde_json::{json, Value};
+use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::Emitter;

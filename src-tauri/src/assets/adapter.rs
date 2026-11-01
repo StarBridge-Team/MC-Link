@@ -54,8 +54,33 @@ pub(crate) struct AdapterEntry {
 }
 
 /// 当前平台标识，与清单中的 `platform` 字段对应。
+///
+/// # 架构标签必须与上游产物一致
+///
+/// 上游（陶瓦）的发布产物用 `arm64` / `armv7` 命名架构，而 Rust 的
+/// [`std::env::consts::ARCH`] 用 `aarch64` / `arm`。不映射就对不上包，
+/// 表现为"清单里没有当前平台的适配器"。操作系统的取值两边一致
+/// （`windows` / `linux` / `macos` / `freebsd`），无需映射。
+///
+/// 该标识同时是资源服务器 `adapter/manifest.json` 里的 `platform` 字段
+/// （见 [`pick_entry`]），因此**发布脚本 `scripts/sync-assets.mjs` 生成的
+/// 平台 key 必须与这里的输出逐字相同**。
 pub(crate) fn current_platform() -> String {
-    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+    platform_label(std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// 由操作系统与架构拼出平台标识（纯函数，便于单测覆盖各分支）。
+pub(crate) fn platform_label(os: &str, arch: &str) -> String {
+    format!("{}-{}", os, upstream_arch_label(arch))
+}
+
+/// 把 Rust 的架构名映射成上游产物使用的架构标签。
+fn upstream_arch_label(arch: &str) -> &str {
+    match arch {
+        "aarch64" => "arm64",
+        "arm" => "armv7",
+        other => other,
+    }
 }
 
 fn manifest_url(data_dir: &Path) -> String {
@@ -166,9 +191,28 @@ mod tests {
 
     #[test]
     fn platform_matches_current_target() {
-        // 形如 windows-x86_64 / linux-x86_64 / macos-aarch64
+        // 形如 windows-x86_64 / linux-x86_64 / macos-arm64
         let p = current_platform();
         assert!(p.contains('-'), "平台标识应形如 <os>-<arch>，实际: {}", p);
+    }
+
+    #[test]
+    fn arch_label_follows_upstream_artifact_naming() {
+        // 上游产物用 arm64 / armv7，Rust 用 aarch64 / arm —— 不映射就对不上包
+        assert_eq!(platform_label("linux", "aarch64"), "linux-arm64");
+        assert_eq!(platform_label("macos", "aarch64"), "macos-arm64");
+        assert_eq!(platform_label("linux", "arm"), "linux-armv7");
+        // 其余架构原样透传
+        assert_eq!(platform_label("windows", "x86_64"), "windows-x86_64");
+        assert_eq!(platform_label("linux", "x86"), "linux-x86");
+        assert_eq!(platform_label("linux", "riscv64"), "linux-riscv64");
+        assert_eq!(platform_label("linux", "loongarch64"), "linux-loongarch64");
+    }
+
+    #[test]
+    fn windows_x86_64_platform_key_is_unchanged() {
+        // 现有清单条目（windows-x86_64）必须继续有效
+        assert_eq!(platform_label("windows", "x86_64"), "windows-x86_64");
     }
 
     #[test]
