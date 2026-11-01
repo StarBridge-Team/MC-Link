@@ -95,11 +95,18 @@ pub fn install_mode() -> InstallMode {
 /// 全都落到那里：换个启动方式（快捷方式 / 任务计划 / 终端）数据就"不见了"，
 /// 而共享目录里的文件也拿不到 `fs_secure` 的 0600 保护。
 /// 拿不到数据目录属于**环境坏了**，让用户看到明确报错比静默写到别处好。
+///
+/// # 便携版**绝不**回退到系统共享目录
+///
+/// 便携版的语义是"数据跟着 exe 走"——同一台机器上**任意两份便携版**靠单实例锁互斥
+/// （见 `lib.rs` 的单实例初始化），但数据隔离的真正防线在这里：一旦判定为便携版，
+/// 就必须拿到 exe 所在目录，**拿不到就直接报错**，绝不能掉进下面的 `app_data_dir`
+/// 分支。否则两份便携版（或便携版 + 安装版）会共享同一份设置与密钥，数据就串了。
 pub fn resolve_data_dir(app: &tauri::App) -> Result<PathBuf, String> {
     if install_mode() == InstallMode::Portable {
-        if let Some(dir) = exe_dir() {
-            return Ok(dir);
-        }
+        return exe_dir().ok_or_else(|| {
+            "便携版无法确定自身可执行文件所在目录，数据无处安放（进程可能被非常规方式启动）".to_string()
+        });
     }
 
     app.path().app_data_dir().map_err(|e| {
