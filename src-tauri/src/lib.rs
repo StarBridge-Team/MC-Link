@@ -324,11 +324,9 @@ pub fn run() {
 
     let app = builder
         .invoke_handler(tauri::generate_handler![
-            minimize_window,
-            maximize_window,
             drag_window,
+            resize_drag,
             exit_app,
-            show_window,
             show_main_window,
             close_self_window,
             hide_self_window,

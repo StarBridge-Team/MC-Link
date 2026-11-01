@@ -57,6 +57,20 @@ export async function showMainWindow() {
   return invoke<void>("show_main_window");
 }
 
+/** 窗口边缘方向，与 `commands/window.rs::resize_drag` 的字符串一一对应。 */
+export type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+/**
+ * 从窗口边缘发起缩放拖动。
+ *
+ * 只有 Linux 需要：Windows 的缩放热区由 tao 的命中测试给出。见
+ * `ui/WindowResizeEdges.vue`（那里解释了为什么是自定义命令而不是 JS 的
+ * `startResizeDragging`）。
+ */
+export async function resizeDrag(direction: ResizeEdge) {
+  return invoke<void>("resize_drag", { direction });
+}
+
 /**
  * 上报最大化按钮矩形（CSS 逻辑像素），供 Windows 贴靠布局覆盖层跟随。
  *

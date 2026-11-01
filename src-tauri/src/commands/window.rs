@@ -4,22 +4,48 @@ use tauri::Emitter;
 use tauri::Manager;
 
 #[tauri::command]
-pub(crate) fn minimize_window(window: tauri::Window) {
-    window.minimize().ok();
-}
-
-#[tauri::command]
-pub(crate) fn maximize_window(window: tauri::Window) {
-    if window.is_maximized().unwrap_or(false) {
-        window.unmaximize().ok();
-    } else {
-        window.maximize().ok();
-    }
-}
-
-#[tauri::command]
 pub(crate) fn drag_window(window: tauri::WebviewWindow) -> Result<(), String> {
     window.start_dragging().map_err(|e| e.to_string())
+}
+
+/// 从窗口边缘发起缩放拖动。方向是 `n` / `s` / `e` / `w` / `ne` / `nw` / `se` / `sw`。
+///
+/// # 为什么需要它
+///
+/// 无边框窗口在 Linux 上**没有可拖的边缘**：tao 里实现这一手的是 Windows 的
+/// `WM_NCHITTEST` 缩放分支，GTK 侧不会自己给窗口边缘留热区。前端因此在窗口四边
+/// 放了 8 条透明热区（`ui/WindowResizeEdges.vue`），按下时把方向传过来。
+///
+/// # 为什么是自定义命令，而不是 JS 的 `startResizeDragging`
+///
+/// 那条 API 走 `plugin:window|start_resize_dragging` 权限，得给**每一个**窗口的
+/// capability 都配上（主窗口、房间窗口、托盘面板、各类小组件），漏配时没有任何
+/// 报错，表现只是"边缘拖不动"。自己的命令不受 ACL 限制，与 `drag_window` 同一取舍
+/// （见 `RoomApp.vue` 里那段说明）。
+///
+/// # 为什么方向是字符串
+///
+/// 前端只该表达"哪条边"，不该知道 `ResizeDirection`。这里集中做一次校验，
+/// 非法值报错而不是悄悄当成某个方向缩放。
+#[tauri::command]
+pub(crate) fn resize_drag(window: tauri::Window, direction: String) -> Result<(), String> {
+    use tauri_runtime::ResizeDirection;
+
+    let direction = match direction.as_str() {
+        "n" => ResizeDirection::North,
+        "s" => ResizeDirection::South,
+        "e" => ResizeDirection::East,
+        "w" => ResizeDirection::West,
+        "ne" => ResizeDirection::NorthEast,
+        "nw" => ResizeDirection::NorthWest,
+        "se" => ResizeDirection::SouthEast,
+        "sw" => ResizeDirection::SouthWest,
+        other => return Err(format!("未知的缩放方向: {other}")),
+    };
+
+    window
+        .start_resize_dragging(direction)
+        .map_err(|e| e.to_string())
 }
 
 /// 退出应用。
@@ -41,12 +67,6 @@ pub(crate) fn exit_app(
     }
     app.exit(0);
     Ok("已退出".to_string())
-}
-
-#[tauri::command]
-pub(crate) fn show_window(window: tauri::Window) {
-    let _ = window.show();
-    let _ = window.set_focus();
 }
 
 #[tauri::command]

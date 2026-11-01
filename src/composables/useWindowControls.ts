@@ -15,7 +15,7 @@
 // 位置记忆的存储键是 `KEYS.windowState`（冻结），因为它是纯前端数据，
 // 丢了只是窗口回到默认位置，不会造成功能缺失。
 
-import { onDeactivated, onUnmounted, ref } from "vue";
+import { onDeactivated, onUnmounted } from "vue";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
 import { dragWindow, exitApp, hideSelfWindow, resizeWindow } from "../lib/api/window";
 import { KEYS, local } from "../lib/persist";
@@ -31,7 +31,6 @@ const DEFAULT_SIZE = { width: 960, height: 680, minWidth: 720, minHeight: 520 };
 
 export function useWindowControls() {
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
-  const isDragging = ref(false);
 
   async function saveWindowState() {
     try {
@@ -95,8 +94,6 @@ export function useWindowControls() {
 
   function startDrag() {
     void dragWindow().catch((e) => console.warn("[window] 拖动失败:", e));
-    isDragging.value = true;
-    setTimeout(() => (isDragging.value = false), 200);
   }
 
   /** 直接最小化：系统自带动画，见文件头的「没有退场动画」。 */
@@ -152,7 +149,6 @@ export function useWindowControls() {
   onDeactivated(clearTimers);
 
   return {
-    isDragging,
     saveWindowState,
     restoreWindowState,
     setDefaultWindowSize,

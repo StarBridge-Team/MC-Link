@@ -14,6 +14,11 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+# 只为拿一个枚举：`start_resize_dragging` 的入参是 `tauri_runtime::ResizeDirection`，
+# 而 `tauri` 只重导出了方法、没重导出这个类型（`tauri::window` 里搜不到）。
+# 它不是新增的编译产物——`tauri` 本来就依赖它，这里只是把已有的那份提成直接依赖，
+# 因此版本必须跟着 `tauri` 的主版本走，升级 tauri 时一起看。
+tauri-runtime = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }

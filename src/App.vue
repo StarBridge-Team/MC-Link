@@ -12,6 +12,7 @@ import { adapterStartupInit } from "./lib/api/adapter";
 import { DEFAULT_SETTING_TAB, SETTING_TABS, isSettingTab } from "./router";
 import { useIntentStore } from "./stores/intent";
 import { useThemeBinding } from "./ui/themeBinding";
+import WindowResizeEdges from "./ui/WindowResizeEdges.vue";
 
 /**
  * 应用外壳：标题栏 + 导航 + 路由出口 + 背景层 + 引导浮层。
@@ -220,6 +221,8 @@ onMounted(async () => {
     </div>
 
     <OobeOverlay v-if="needsOobe" />
+    <!-- 边缘缩放热区：Windows 由命中测试接管，组件内部只在 Linux 渲染 -->
+    <WindowResizeEdges />
     </div>
   </Transition>
   </m3e-theme>

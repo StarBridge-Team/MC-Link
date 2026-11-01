@@ -16,6 +16,7 @@ import { closeSelfWindow, dragWindow } from "../lib/api/window";
 import RoomView from "../views/RoomView.vue";
 import { useRoomsStore } from "../stores/rooms";
 import TitleBarButton from "../ui/TitleBarButton.vue";
+import WindowResizeEdges from "../ui/WindowResizeEdges.vue";
 import { useThemeBinding } from "../ui/themeBinding";
 
 const { t } = useI18n();
@@ -95,12 +96,17 @@ function closeWindow() {
 
       <RoomView v-if="sessionId" :session-id="sessionId" />
       <div v-else class="room-window__missing">{{ t("room.missing") }}</div>
+
+      <!-- 与主窗口同一套边缘缩放热区（内部只在 Linux 渲染） -->
+      <WindowResizeEdges />
     </div>
   </m3e-theme>
 </template>
 
 <style scoped>
 .room-window {
+  /* 缩放热区（`WindowResizeEdges`）是绝对定位，需要定位祖先 */
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100vw;
