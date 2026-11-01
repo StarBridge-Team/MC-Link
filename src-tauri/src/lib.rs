@@ -139,8 +139,12 @@ pub fn run() {
         }))
         .manage(AppState)
         .setup(|app| {
-            let data_dir = resolve_data_dir(app);
-            std::fs::create_dir_all(&data_dir).ok();
+            // 数据目录解析不出来就**启动失败**：旧实现回退到相对路径 `"."`，
+            // 那是进程工作目录 —— 设置、插件密钥、会话令牌全落到那里，
+            // 换个启动方式数据就"不见了"。环境坏了就让用户看到明确报错。
+            let data_dir = resolve_data_dir(app)?;
+            std::fs::create_dir_all(&data_dir)
+                .map_err(|e| format!("创建数据目录 {} 失败: {}", data_dir.display(), e))?;
 
             // 把实际数据目录加入 asset 协议白名单。
             //
@@ -186,7 +190,12 @@ pub fn run() {
                 eprintln!("[配置检查] {}", e);
             }
 
-            tray::setup_tray(app.handle())?;
+            // 托盘是**可选增强功能**，建不起来（Linux 缺 appindicator、精简发行版没有
+            // D-Bus 会话）不该让整个应用启动失败。主窗口与联机功能都不依赖托盘。
+            // 托盘面板的预建已经是同样的口径（只打日志、不阻断）。
+            if let Err(e) = tray::setup_tray(app.handle()) {
+                eprintln!("[托盘] 创建失败，托盘不可用（应用其余功能正常）: {}", e);
+            }
             // 托盘面板预建常驻：右键时只 show/hide，不冷建 WebView。
             if let Err(e) = window::widget::ensure_tray_panel(app.handle()) {
                 eprintln!("[托盘] 面板初始化失败（右键菜单将不可用）: {}", e);

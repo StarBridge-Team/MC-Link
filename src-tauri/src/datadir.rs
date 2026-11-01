@@ -88,16 +88,27 @@ pub fn install_mode() -> InstallMode {
 ///
 /// - Windows 便携模式：可执行文件同目录
 /// - Windows 安装模式 / Linux / macOS：Tauri app_data_dir
-pub fn resolve_data_dir(app: &tauri::App) -> PathBuf {
+///
+/// # 解析不出来就**失败**，不静默换个目录
+///
+/// 旧实现回退到相对路径 `"."`，那是**当前工作目录**——设置、插件密钥、会话令牌
+/// 全都落到那里：换个启动方式（快捷方式 / 任务计划 / 终端）数据就"不见了"，
+/// 而共享目录里的文件也拿不到 `fs_secure` 的 0600 保护。
+/// 拿不到数据目录属于**环境坏了**，让用户看到明确报错比静默写到别处好。
+pub fn resolve_data_dir(app: &tauri::App) -> Result<PathBuf, String> {
     if install_mode() == InstallMode::Portable {
         if let Some(dir) = exe_dir() {
-            return dir;
+            return Ok(dir);
         }
     }
 
-    app.path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+    app.path().app_data_dir().map_err(|e| {
+        format!(
+            "无法确定应用数据目录：{}。\
+             请确认系统用户目录可用（例如 Linux 上的 HOME / XDG_DATA_HOME 未设置或不可写）",
+            e
+        )
+    })
 }
 
 pub fn setting_dir(data_dir: &Path) -> Result<PathBuf, String> {
