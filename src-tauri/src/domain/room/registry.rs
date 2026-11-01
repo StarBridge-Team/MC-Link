@@ -77,13 +77,25 @@ impl RoomRegistry {
         Ok(session.snapshot())
     }
 
-    /// 全部会话（含已结束的），按创建时间升序。
-    pub fn list(&self) -> Vec<RoomSnapshot> {
-        let handles: Vec<_> = match self.sessions.read() {
+    /// 取全部会话句柄。
+    ///
+    /// **锁顺序约定**：这里只持注册表的**读锁**取 `Arc` 并立刻释放，之后才去取
+    /// 会话锁。**不要**改成"持注册表锁时再取会话锁"——那会与 `insert`
+    /// （写锁 + 会话锁）形成 ABBA，死锁。
+    fn handles(&self) -> Vec<Arc<Mutex<RoomSession>>> {
+        match self.sessions.read() {
             Ok(map) => map.values().cloned().collect(),
-            Err(_) => return Vec::new(),
-        };
-        let mut out: Vec<RoomSnapshot> = handles
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// 全部会话（含已结束的），按创建时间升序。
+    ///
+    /// **代价**：会克隆每个会话的完整快照（含成员列表）。历史会话只给 UI 看，
+    /// 数量有限；但别把它放在高频路径上——高频路径用 `list_active`。
+    pub fn list(&self) -> Vec<RoomSnapshot> {
+        let mut out: Vec<RoomSnapshot> = self
+            .handles()
             .iter()
             .filter_map(|h| h.lock().ok().map(|s| s.snapshot()))
             .collect();
@@ -92,11 +104,23 @@ impl RoomRegistry {
     }
 
     /// 进行中的会话。主窗口的房间列表用这个。
+    ///
+    /// **只克隆活跃会话**：先在会话锁内判 `phase`，非活跃的直接跳过，
+    /// 免得"每次列房间都把历史上所有房间克隆一遍"。
     pub fn list_active(&self) -> Vec<RoomSnapshot> {
-        self.list()
-            .into_iter()
-            .filter(|s| s.phase.is_active())
-            .collect()
+        let mut out: Vec<RoomSnapshot> = self
+            .handles()
+            .iter()
+            .filter_map(|h| {
+                let session = h.lock().ok()?;
+                if !session.phase.is_active() {
+                    return None;
+                }
+                Some(session.snapshot())
+            })
+            .collect();
+        out.sort_by_key(|s| s.created_at);
+        out
     }
 
     /// 同一 `(适配器, 游戏)` 已有进行中的会话时返回它。
@@ -114,11 +138,28 @@ impl RoomRegistry {
     where
         F: FnOnce(&mut RoomSession),
     {
+        self.update_if(session_id, |s| {
+            mutate(s);
+            true
+        })
+    }
+
+    /// **只在真的变了**时才推进 `rev` 并广播。
+    ///
+    /// 闭包返回 `true` 表示"我改了状态"；返回 `false` 时快照原样返回——
+    /// `rev` 不动、事件不发。高频轮询靠它避免把 `rev` 刷成噪音，
+    /// 也让"已结束的会话不被后台写回"这条守卫能真正生效。
+    pub fn update_if<F>(&self, session_id: &str, mutate: F) -> AppResult<RoomSnapshot>
+    where
+        F: FnOnce(&mut RoomSession) -> bool,
+    {
         let handle = self.handle(session_id)?;
         let mut session = handle
             .lock()
             .map_err(|_| AppError::internal("会话锁中毒"))?;
-        mutate(&mut session);
+        if !mutate(&mut session) {
+            return Ok(session.snapshot());
+        }
         session.touch();
         let snapshot = session.snapshot();
         self.emit_state(&snapshot);
@@ -148,6 +189,10 @@ impl RoomRegistry {
         );
     }
 
+    /// 移除会话。返回是否真的移除了。
+    ///
+    /// **必须先广播终态快照再移除**：移除后 `snapshot` / `update` 一律返回
+    /// "会话不存在"，前端就再也拿不到那个"已断开"的终态了。
     pub fn remove(&self, session_id: &str) -> bool {
         match self.sessions.write() {
             Ok(mut map) => map.remove(session_id).is_some(),
@@ -223,5 +268,22 @@ mod tests {
         let reg = registry();
         let err = reg.snapshot("nope").unwrap_err();
         assert_eq!(err.code, "not-found");
+    }
+
+    #[test]
+    fn update_if_does_not_advance_rev_when_nothing_changed() {
+        let reg = registry();
+        let snap = reg.insert(session("a")).unwrap();
+        let same = reg.update_if(&snap.session_id, |_| false).unwrap();
+        assert_eq!(same.rev, snap.rev, "没有变化时 rev 不该推进");
+    }
+
+    #[test]
+    fn remove_drops_the_session_from_the_registry() {
+        let reg = registry();
+        let snap = reg.insert(session("a")).unwrap();
+        assert!(reg.remove(&snap.session_id));
+        assert!(reg.snapshot(&snap.session_id).is_err());
+        assert!(reg.list().is_empty());
     }
 }

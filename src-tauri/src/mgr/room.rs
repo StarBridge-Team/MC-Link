@@ -1,22 +1,23 @@
 //! 房间编排门面：把「检测器 / 适配器 / 耦合器」串成一次完整联机。
 //!
-//! # 为什么编排在这里而不是 `domain/room`
-//!
 //! `domain/room` 只管状态（可纯单测）；这里负责调插件（必须起网关）。
 //! 两者分开后，状态机的"非法跃迁""rev 递增""列表过滤"都能在没有 WebView 的情况下验证。
 //!
-//! # 与旧 `plugin/connect.rs` 的差别
+//! # 终态不可回退
 //!
-//! 旧实现的命令直接 `spawn` 一段闭包，把进度用全局 `connect-event` 推给前端，
-//! 并且**只返回 `adapterId`**——前端只能靠"当前页面上下文"猜是哪个房间。
-//! 现在每次调用先建会话、立刻返回 `sessionId` + 快照，进度与状态都带 `sessionId`。
+//! 轮询与建链任务都是"后台在跑"的活，随时可能比用户动作慢。因此**任何**后台写回
+//! 都要先在会话锁内确认会话还活着（见 `is_terminal`），否则会出现"用户已断开、
+//! 房间又显示在线"这种没法收场的状态。
 
-use std::sync::Arc;
+mod helpers;
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
 use crate::core::error::{AppError, AppResult};
-use crate::domain::room::{Phase, Role, RoomMember, RoomRegistry, RoomSession, RoomSnapshot};
+use crate::domain::room::{Phase, Role, RoomRegistry, RoomSession, RoomSnapshot};
 use crate::plugin::manager::PluginManager;
 use crate::plugin::manifest::PluginKind;
 use crate::plugin::permission::{required_for, Permission};
@@ -25,14 +26,39 @@ use crate::plugin::protocol::{
     RoomMember as PluginMember,
 };
 
+use self::helpers::{normalize_fields, port_from_value, room_members};
+
+/// 终态：`Closed`（已结束）与 `Stopping`（正在结束，下一步就是 `Closed`）。
+///
+/// **不能拿 `Phase::is_active()` 代替**：它只排除 `Closed`，`Stopping` 仍算"进行中"。
+/// 但 `Stopping` 的会话同样不该被后台写回——`leave()` 正在收尾，这时把 phase 写回
+/// `Online`，房间就"死而不僵"了。
+fn is_terminal(phase: Phase) -> bool {
+    matches!(phase, Phase::Closed | Phase::Stopping)
+}
+
+/// 会话是否已经结束，或已被从注册表摘掉（读不到也算结束）。
+fn is_gone(registry: &RoomRegistry, session_id: &str) -> bool {
+    registry
+        .snapshot(session_id)
+        .map(|s| is_terminal(s.phase))
+        .unwrap_or(true)
+}
+
 pub struct RoomMgr {
     registry: Arc<RoomRegistry>,
     plugins: Arc<PluginManager>,
+    /// 建链任务句柄：`leave()` 靠它把还在跑的 `run_link` 掐掉。
+    link_tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
 }
 
 impl RoomMgr {
     pub fn new(registry: Arc<RoomRegistry>, plugins: Arc<PluginManager>) -> Arc<Self> {
-        Arc::new(Self { registry, plugins })
+        Arc::new(Self {
+            registry,
+            plugins,
+            link_tasks: Mutex::new(HashMap::new()),
+        })
     }
 
     pub fn registry(&self) -> &Arc<RoomRegistry> {
@@ -112,6 +138,9 @@ impl RoomMgr {
             s.message = "正在断开…".to_string();
         })?;
 
+        // 掐掉还在跑的建链任务：否则它可能在下面"停适配器"之后又把适配器拉起来。
+        self.abort_link_task(session_id);
+
         if let Ok(provider) = self.plugins.provider(&adapter_id).await {
             let _ = provider
                 .invoke_checked(Permission::NetListenLocal, adapter_method::HOST_STOP, json!({}))
@@ -140,6 +169,8 @@ impl RoomMgr {
             s.members.clear();
         })?;
         self.registry.progress(session_id, "stopped", "已断开");
+        // 终态已经广播，会话不会再被查询：从注册表摘掉，别让历史房间永久驻留。
+        self.registry.remove(session_id);
         Ok(snapshot)
     }
 
@@ -149,8 +180,9 @@ impl RoomMgr {
     /// **只在真的变化时才写**：每 3 秒推一次快照会把 `rev` 刷成噪音，
     /// 让"状态是否更新"失去意义，也会让所有窗口做无谓的重渲染。
     pub async fn refresh(&self, session_id: &str) -> AppResult<RoomSnapshot> {
+        // 入口短路：会话已结束/正在结束就别再去问适配器了。
         let snapshot = self.registry.snapshot(session_id)?;
-        if !snapshot.phase.is_active() {
+        if is_terminal(snapshot.phase) {
             return Ok(snapshot);
         }
         let provider = self
@@ -164,24 +196,31 @@ impl RoomMgr {
             .map_err(|e| AppError::new("adapter-failed", e.message))?;
 
         let members = room_members(&value);
-        let port = value
-            .get("port")
-            .and_then(port_from_value)
-            .or(snapshot.port);
+        let reported_port = value.get("port").and_then(port_from_value);
         let ready = value
             .get("phase")
             .and_then(|v| v.as_str())
             .map(|p| p.ends_with("-ok"))
             .unwrap_or(false);
-        let phase = if ready { Phase::Online } else { snapshot.phase };
 
-        if snapshot.members == members && snapshot.port == port && snapshot.phase == phase {
-            return Ok(snapshot);
-        }
-        self.registry.update(session_id, |s| {
+        // 判定与写入都在会话锁内完成：轮询期间用户可能已经断开了，
+        // 拿锁外的旧快照写回，会把已断开的房间"复活"成在线。
+        self.registry.update_if(session_id, |s| {
+            // 终态守卫：已结束/正在结束的会话，轮询无权写回。
+            if is_terminal(s.phase) {
+                return false;
+            }
+            let port = reported_port.or(s.port);
+            // 没 ready 时**保持当前 phase**：旧快照里的 phase 是离开前的值，写回去就是回退。
+            let next_phase = if ready { Phase::Online } else { s.phase };
+            // 比较也必须在锁内做，否则会拿旧快照误判"没变化"。
+            if s.members == members && s.port == port && s.phase == next_phase {
+                return false;
+            }
             s.members = members;
             s.port = port;
-            s.phase = phase;
+            s.phase = next_phase;
+            true
         })
     }
 
@@ -230,7 +269,8 @@ impl RoomMgr {
         // 这里返回一个明确的错误，而不是把进程带走。
         let handle = tokio::runtime::Handle::try_current()
             .map_err(|_| AppError::internal("房间启动缺少 Tokio 运行时上下文（命令必须是 async）"))?;
-        handle.spawn(async move {
+        let task_id = session_id.clone();
+        let join = handle.spawn(async move {
             run_link(
                 plugins,
                 registry,
@@ -243,8 +283,27 @@ impl RoomMgr {
             )
             .await;
         });
+        // 留住句柄：`leave()` 要靠它 abort 建链任务（句柄一丢就再也掐不掉）。
+        self.track_link_task(&task_id, join);
 
         Ok(snapshot)
+    }
+
+    /// 掐掉某个会话的建链任务（若还在跑）。
+    fn abort_link_task(&self, session_id: &str) {
+        if let Ok(mut map) = self.link_tasks.lock() {
+            if let Some(handle) = map.remove(session_id) {
+                handle.abort();
+            }
+        }
+    }
+
+    /// 记录建链任务句柄，顺手丢掉已经跑完的旧句柄。
+    fn track_link_task(&self, session_id: &str, handle: tokio::task::JoinHandle<()>) {
+        if let Ok(mut map) = self.link_tasks.lock() {
+            map.retain(|_, h| !h.is_finished());
+            map.insert(session_id.to_string(), handle);
+        }
     }
 }
 
@@ -263,10 +322,20 @@ async fn run_link(
     } else {
         "正在加入房间…"
     };
-    let _ = registry.update(&session_id, |s| {
+    // 终态守卫：会话已经被断开，就别把它拽回"建链中"。
+    let mut linking = false;
+    let _ = registry.update_if(&session_id, |s| {
+        if is_terminal(s.phase) {
+            return false;
+        }
         s.phase = Phase::Linking;
         s.message = start_message.to_string();
+        linking = true;
+        true
     });
+    if !linking {
+        return;
+    }
     registry.progress(&session_id, "progress", start_message);
 
     let provider = match plugins.provider(&adapter_id).await {
@@ -293,6 +362,11 @@ async fn run_link(
         }
     }
 
+    // 拉适配器之前再确认一次：用户可能在这几秒里就点了"断开"。
+    if is_gone(&registry, &session_id) {
+        return;
+    }
+
     let method = if role == Role::Host {
         adapter_method::HOST_START
     } else {
@@ -308,6 +382,11 @@ async fn run_link(
             return;
         }
     };
+
+    // 适配器可能已经建好房间，但用户在这期间断开了：这时不该再广播、也不该写回在线。
+    if is_gone(&registry, &session_id) {
+        return;
+    }
 
     let room_code = value
         .get("room")
@@ -358,22 +437,40 @@ async fn run_link(
     } else {
         "已加入房间"
     };
-    let _ = registry.update(&session_id, |s| {
+    // 收尾守卫：会话已经结束/正在结束，就别再写回"在线"。
+    let mut linked = false;
+    let _ = registry.update_if(&session_id, |s| {
+        if is_terminal(s.phase) {
+            return false;
+        }
         s.phase = Phase::Online;
         s.room_code = room_code;
         s.members = members;
         s.port = port;
         s.message = done_message.to_string();
+        linked = true;
+        true
     });
-    registry.progress(&session_id, "connected", done_message);
+    if linked {
+        registry.progress(&session_id, "connected", done_message);
+    }
 }
 
 fn fail(registry: &RoomRegistry, session_id: &str, message: &str) {
-    let _ = registry.update(session_id, |s| {
+    // 已经在断开中就别覆盖"正在断开"的文案。
+    let mut failed = false;
+    let _ = registry.update_if(session_id, |s| {
+        if is_terminal(s.phase) {
+            return false;
+        }
         s.phase = Phase::Closed;
         s.message = message.to_string();
+        failed = true;
+        true
     });
-    registry.progress(session_id, "error", message);
+    if failed {
+        registry.progress(session_id, "error", message);
+    }
 }
 
 async fn resolve_port(
@@ -409,102 +506,16 @@ async fn resolve_port(
     }
 }
 
-/// 把适配器自报的字段列表规范化成前端契约（camelCase）。
-///
-/// 外部插件可以按任意命名返回：内置陶瓦用 `autofill_from_invite`，前端契约读的是
-/// `autofillFromInvite`。不转换时该字段恒为 `undefined`，前端只能退化成
-/// "取第一个字段当邀请码"——适配器一旦声明多个字段就会写错位置。
-fn normalize_fields(value: Option<Value>) -> Value {
-    let Some(Value::Array(items)) = value else {
-        return Value::Array(vec![]);
-    };
-    Value::Array(
-        items
-            .into_iter()
-            .map(|item| {
-                let Value::Object(mut map) = item else {
-                    return item;
-                };
-                for (from, to) in [
-                    ("autofill_from_invite", "autofillFromInvite"),
-                    ("max_length", "maxLength"),
-                ] {
-                    if let Some(v) = map.remove(from) {
-                        map.insert(to.to_string(), v);
-                    }
-                }
-                Value::Object(map)
-            })
-            .collect(),
-    )
-}
-
-/// 端口越界一律判无效：`as u16` 会把 70000 静默截断成 4464，
-/// 于是耦合器往一个没人监听的端口广播，且没有任何报错。
-fn port_from_value(value: &Value) -> Option<u16> {
-    let p = value.as_u64()?;
-    (1..=65535).contains(&p).then_some(p as u16)
-}
-
-/// 从适配器返回值里提取成员列表。只认统一约定 `players` 数组，拿不到就是空数组。
-fn room_members(value: &Value) -> Vec<RoomMember> {
-    value
-        .get("players")
-        .and_then(|v| v.as_array())
-        .map(|list| {
-            list.iter()
-                .filter_map(|p| {
-                    let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let machine_id = p.get("machineId").and_then(|v| v.as_str()).unwrap_or("");
-                    if name.is_empty() && machine_id.is_empty() {
-                        return None;
-                    }
-                    Some(RoomMember {
-                        name: name.to_string(),
-                        kind: p.get("kind").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        machine_id: machine_id.to_string(),
-                        is_self: p.get("self").and_then(|v| v.as_bool()).unwrap_or(false),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn normalize_fields_renames_known_snake_case_keys() {
-        let raw = json!([{ "key": "code", "autofill_from_invite": true, "max_length": 32 }]);
-        let out = normalize_fields(Some(raw));
-        assert_eq!(out[0]["autofillFromInvite"], true);
-        assert_eq!(out[0]["maxLength"], 32);
-        assert!(out[0].get("autofill_from_invite").is_none());
-    }
-
-    #[test]
-    fn normalize_fields_defaults_to_empty_array() {
-        assert_eq!(normalize_fields(None), json!([]));
-    }
-
-    #[test]
-    fn port_rejects_out_of_range() {
-        assert_eq!(port_from_value(&json!(25565)), Some(25565));
-        assert_eq!(port_from_value(&json!(70000)), None);
-        assert_eq!(port_from_value(&json!(0)), None);
-        assert_eq!(port_from_value(&json!("25565")), None);
-    }
-
-    #[test]
-    fn members_skip_anonymous_entries() {
-        let raw = json!({ "players": [
-            { "name": "Steve", "machineId": "m1", "self": true },
-            { "name": "", "machineId": "" }
-        ]});
-        let members = room_members(&raw);
-        assert_eq!(members.len(), 1);
-        assert!(members[0].is_self);
+    fn terminal_covers_stopping_and_closed() {
+        assert!(is_terminal(Phase::Closed));
+        assert!(is_terminal(Phase::Stopping));
+        assert!(!is_terminal(Phase::Starting));
+        assert!(!is_terminal(Phase::Linking));
+        assert!(!is_terminal(Phase::Online));
     }
 }
