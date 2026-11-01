@@ -16,13 +16,18 @@ import { invoke } from "@tauri-apps/api/core";
  * 语义是"关主窗口=结束联机"——与"关窗口≠断链路"的设计相反，已删除。
  */
 
-/** 调整窗口尺寸；`center` 为 true 时居中。 */
+/**
+ * 调整窗口尺寸；`center` 为 true 时居中。
+ *
+ * `center` **必填**：后端 `resize_window` 的签名是 `center: bool`（没有默认值），
+ * 写成可选会让"漏传"在类型上合法、在运行时却按 `false` 处理。
+ */
 export async function resizeWindow(options: {
   width: number;
   height: number;
   minWidth?: number;
   minHeight?: number;
-  center?: boolean;
+  center: boolean;
 }) {
   return invoke<void>("resize_window", options);
 }
