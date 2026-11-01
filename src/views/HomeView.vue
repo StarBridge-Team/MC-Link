@@ -52,19 +52,30 @@ const localGame = ref<LocalGameFound | null>(null);
 const scanning = ref(true);
 const hostMode = ref(false);
 let unlisteners: UnlistenFn[] = [];
+/** 组件是否已卸载：`await listen()` 期间卸载的话，句柄回来时必须就地退订。 */
+let disposed = false;
 
 onMounted(async () => {
-  unlisteners.push(
-    await listen<{ status: string; count?: number }>("local-game-status", (e) => {
-      scanning.value = e.payload.status === "scanning";
-    }),
-  );
-  unlisteners.push(
-    await listen<LocalGameFound>("local-game-found", (e) => {
-      localGame.value = e.payload;
-      hostMode.value = true; // 扫到局域网游戏自动切换房主
-    }),
-  );
+  const offStatus = await listen<{ status: string; count?: number }>("local-game-status", (e) => {
+    scanning.value = e.payload.status === "scanning";
+  });
+  // `await` 期间组件可能已卸载：此时句柄还没进数组，`onUnmounted` 清不到它，
+  // 监听器会永远留着（闭包持有组件状态）。所以先复查再决定收不收。
+  if (disposed) {
+    offStatus();
+    return;
+  }
+  unlisteners.push(offStatus);
+
+  const offFound = await listen<LocalGameFound>("local-game-found", (e) => {
+    localGame.value = e.payload;
+    hostMode.value = true; // 扫到局域网游戏自动切换房主
+  });
+  if (disposed) {
+    offFound();
+    return;
+  }
+  unlisteners.push(offFound);
 
   // 先订阅、再拉取当前结果。
   //
@@ -87,7 +98,9 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  disposed = true;
   unlisteners.forEach((u) => u());
+  unlisteners = [];
 });
 
 function toggleMode() {
@@ -128,8 +141,14 @@ function startCoop() {
 </script>
 
 <template>
+  <!--
+    设置还没读完时先不渲染任何模式：默认态与真实设置（空白 / 网页模式）差别很大，
+    先渲染默认态、等设置回来再切过去 = 整页突变一次。
+  -->
+  <div v-if="!settings.loaded.value" class="home-loading" />
+
   <!-- 空白模式：整块透明区域，让背景与窗口材质完全露出 -->
-  <div v-if="mode === 'blank'" class="blank" />
+  <div v-else-if="mode === 'blank'" class="blank" />
 
   <!-- 网页模式 -->
   <div v-else-if="mode === 'webpage'" class="webpage">
@@ -223,6 +242,12 @@ function startCoop() {
 </template>
 
 <style scoped>
+/* 设置未加载完成时的占位：什么都不渲染，避免先画默认态再突变 */
+.home-loading {
+  flex: 1;
+  min-height: 0;
+}
+
 .blank {
   flex: 1;
   min-height: 0;
