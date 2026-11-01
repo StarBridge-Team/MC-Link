@@ -15,6 +15,7 @@ import { useIntentStore } from "./stores/intent";
 import { useRegionStore } from "./stores/region";
 import { useThemeBinding } from "./ui/themeBinding";
 import WindowResizeEdges from "./ui/WindowResizeEdges.vue";
+import WidgetLayer from "./ui/WidgetLayer.vue";
 
 /**
  * 应用外壳：标题栏 + 导航 + 路由出口 + 背景层 + 引导浮层。
@@ -246,6 +247,9 @@ onMounted(async () => {
         </RouterView>
       </main>
     </div>
+
+    <!-- 窗口内挂件层：内置背景音视频控制面板 + 未来的 widget 类插件挂件 -->
+    <WidgetLayer v-if="!hideNav" />
 
     <OobeOverlay v-if="needsOobe" />
     <!-- 边缘缩放热区：Windows 由命中测试接管，组件内部只在 Linux 渲染 -->
