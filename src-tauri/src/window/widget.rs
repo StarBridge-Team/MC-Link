@@ -28,6 +28,8 @@ const ROW_HEIGHT: f64 = 40.0;
 const PADDING: f64 = 20.0;
 /// 与托盘图标之间的间隙。
 const GAP: i32 = 6;
+/// 面板圆角半径（逻辑像素）。必须与 `WidgetApp.vue` 的 `border-radius` 一致。
+const PANEL_RADIUS: f64 = 30.0;
 
 // 这里曾经有 `SHADOW_MARGIN`：窗口比内容大一圈，给 CSS 阴影留位置。
 // 现在**不做阴影**（用户明确不要），窗口尺寸与内容严格相等——
@@ -56,7 +58,8 @@ pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| format!("创建托盘面板失败: {}", e))?;
 
     // 套材质**不是为了显示材质**，而是让窗口进入合成模式：没有它窗口底色是白的，
-    // 圆角外会露白。面板自己画不透明底色盖住材质，圆角由 `apply_round_region` 裁窗口。
+    // 圆角外会露白。面板自己画不透明底色盖住材质，圆角由
+    // `window::region::apply_round_region` 裁窗口。
     crate::effect::apply_tray_menu_effect(&window);
 
     // 失焦即收起；尺寸变化后重算圆角裁剪。
@@ -67,7 +70,9 @@ pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
     let w = window.clone();
     window.on_window_event(move |event| match event {
         tauri::WindowEvent::Focused(false) => crate::window::animation::hide(&w),
-        tauri::WindowEvent::Resized(_) => apply_round_region(&w),
+        tauri::WindowEvent::Resized(_) => {
+            crate::window::region::apply_round_region(&w, PANEL_RADIUS)
+        }
         _ => {}
     });
 
@@ -107,7 +112,7 @@ pub fn show_tray_panel(
     let height = panel_height(app);
     let _ = window.set_size(tauri::LogicalSize::new(PANEL_WIDTH, height));
     // 尺寸变了，region 要按新尺寸重算（它记的是像素矩形）。
-    apply_round_region(&window);
+    crate::window::region::apply_round_region(&window, PANEL_RADIUS);
 
     let scale = window
         .monitor_from_point(anchor.x, anchor.y)
@@ -127,63 +132,6 @@ pub fn hide_tray_panel(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(TRAY_LABEL) {
         crate::window::animation::hide(&window);
     }
-}
-
-/// 把窗口裁成圆角矩形。
-///
-/// # 为什么必须裁窗口，而不是只写 CSS
-///
-/// 窗口是**矩形**的。CSS 的 `border-radius` 只裁剪 DOM 的绘制，裁不掉窗口本身的底色——
-/// 去掉材质后那层底色就是 WebView2 的白，于是圆角外面会露出四个白角 / 一条白边。
-/// `SetWindowRgn` 直接把窗口形状改成圆角矩形，白底连同一并消失。
-///
-/// 圆角半径与 `WidgetApp.vue` 的 `border-radius` 必须一致（30px）。
-/// 窗口尺寸变化后要重新应用：region 是按当时的像素尺寸算的。
-#[cfg(windows)]
-pub(crate) fn apply_round_region(window: &tauri::WebviewWindow) {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
-
-    /// 与前端 `border-radius` 一致的逻辑像素值。
-    const RADIUS: f64 = 30.0;
-
-    let Ok(handle) = window.window_handle() else {
-        return;
-    };
-    let RawWindowHandle::Win32(win32) = handle.as_raw() else {
-        return;
-    };
-    let Ok(size) = window.inner_size() else {
-        return;
-    };
-    let scale = window.scale_factor().unwrap_or(1.0);
-    let radius = (RADIUS * scale).round() as i32;
-
-    // 椭圆宽高是**直径**；右/下边界是开区间，+1 才覆盖到最后一个像素。
-    let region = unsafe {
-        CreateRoundRectRgn(
-            0,
-            0,
-            size.width as i32 + 1,
-            size.height as i32 + 1,
-            radius * 2,
-            radius * 2,
-        )
-    };
-    if region.is_null() {
-        eprintln!("[托盘] CreateRoundRectRgn 失败，窗口未裁剪");
-        return;
-    }
-    // 成功后 region 归系统所有，**不要**再 DeleteObject。
-    let applied = unsafe { SetWindowRgn(win32.hwnd.get() as _, region, 1) };
-    if applied == 0 {
-        eprintln!("[托盘] SetWindowRgn 失败（窗口未裁剪，圆角处会露底色）");
-    }
-}
-
-#[cfg(not(windows))]
-pub(crate) fn apply_round_region(_window: &tauri::WebviewWindow) {
-    // macOS / Linux 由窗口自身（或合成器）处理圆角；CSS 的 border-radius 足够。
 }
 
 /// 位置计算：优先在图标下方，放不下就翻到上方；最后一律夹进工作区。
