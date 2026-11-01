@@ -150,6 +150,9 @@ pub(crate) async fn get_adapter_status(
 }
 
 /// 获取陶瓦联机状态。
+///
+/// 返回**整个状态对象**（适配器状态 + 陶瓦状态机 + 房间与成员），
+/// 与前端 `lib/api/typesCore.ts` 的 `TerracottaState` 一一对应。
 #[tauri::command]
 pub(crate) async fn get_terracotta_state(
     plugin_manager: tauri::State<'_, Arc<PluginManager>>,
@@ -157,7 +160,7 @@ pub(crate) async fn get_terracotta_state(
     let value = plugin_manager
         .adapter_invoke(adapter_method::STATUS, None, json!({}))
         .await?;
-    Ok(value.get("state").cloned().unwrap_or(Value::Null))
+    Ok(value)
 }
 
 /// 启动陶瓦联机（房主）。

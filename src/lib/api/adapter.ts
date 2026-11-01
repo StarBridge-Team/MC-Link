@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AdapterStatus } from "./types";
+import type { AdapterStatus, TerracottaState } from "./types";
 
 /** 下载适配器 */
 export async function downloadAdapter() {
@@ -16,9 +16,9 @@ export async function getAdapterStatus() {
   return invoke<AdapterStatus>("get_adapter_status");
 }
 
-/** 获取陶瓦联机状态 */
+/** 获取陶瓦联机状态（适配器状态 + 陶瓦状态机 + 房间与成员） */
 export async function getTerracottaState() {
-  return invoke<Record<string, unknown>>("get_terracotta_state");
+  return invoke<TerracottaState>("get_terracotta_state");
 }
 
 /** 启动陶瓦联机（房主） */
