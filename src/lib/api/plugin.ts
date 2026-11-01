@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   GameListResult,
+  MarketManifest,
   PluginEvent,
   PluginGateway,
   PluginListQuery,
@@ -70,6 +71,21 @@ export async function setPluginBlocked(pluginId: string, blocked: boolean) {
 /** 重新扫描插件目录，返回本次的告警列表。 */
 export async function reloadPlugins() {
   return invoke<string[]>("plugin_reload");
+}
+
+/**
+ * 拉取插件市场清单。
+ *
+ * 后端 fail-closed：拉不到/解析失败会**报错**而不是返回空清单，
+ * 因此界面要把"加载失败"与"市场为空"区分开。
+ */
+export async function marketList() {
+  return invoke<MarketManifest>("market_list");
+}
+
+/** 安装市场插件（下载 → 校验 → 解压 → 重扫），返回插件 id。 */
+export async function marketInstall(pluginId: string) {
+  return invoke<string>("market_install", { pluginId });
 }
 
 /**

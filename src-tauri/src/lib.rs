@@ -452,6 +452,8 @@ pub fn run() {
             plugin_set_grants,
             plugin_set_blocked,
             plugin_reload,
+            market_list,
+            market_install,
             room_prepare,
             room_start_host,
             room_join,

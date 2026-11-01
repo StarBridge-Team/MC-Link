@@ -54,6 +54,7 @@ pub mod launcher;
 pub mod localgames;
 pub mod manager;
 pub mod manifest;
+pub mod market;
 pub mod permission;
 pub mod protocol;
 pub mod registry;

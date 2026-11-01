@@ -68,6 +68,29 @@ export interface PluginInfo {
   fallback: string[];
 }
 
+// ===== 插件市场（后端 plugin/market.rs） =====
+
+/** 市场中一个插件的条目（与后端 `MarketEntry` 同形）。 */
+export interface MarketEntry {
+  id: string;
+  name: string;
+  version: string;
+  kind: string;
+  author: string;
+  description: string;
+  platforms: string[];
+  urls: string[];
+  /** 必填：缺失时后端拒绝安装。 */
+  sha256: string;
+  size: number | null;
+}
+
+/** 市场清单（资源服务器 `plugins/market.json`）。 */
+export interface MarketManifest {
+  manifest_version: number;
+  plugins: MarketEntry[];
+}
+
 /** 各维度的可选值与计数（分母是**其它**维度的筛选结果）。 */
 export interface PluginFacets {
   kinds: Record<string, number>;
