@@ -120,16 +120,21 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      # 只收 `Assets/update/` 下的正式命名产物（理由同 build-windows.yml）。
+      # 裸二进制是唯一例外：它不进更新链路，`make-update.mjs` 不搬运它，
+      # 所以直接取 `target/release/` 下的（`rename-build.js` 只处理 `.exe`，不动它）。
+      #
+      # arch 由 `make-update.mjs --platform linux-<arch>` 决定，这里给裸二进制
+      # 也用同一个后缀，免得用户拿到一个不知道什么架构的 `mc-link`。
       - name: 收集 Linux 产物
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mc-link-linux-${{ needs.prepare.outputs.version }}
           path: |
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/appimage/*.AppImage
-            src-tauri/target/release/mc-link
-            assets-server/Assets/update/*.deb
             assets-server/Assets/update/*.AppImage
+            assets-server/Assets/update/*.deb
+            assets-server/Assets/update/*.rpm
+            src-tauri/target/release/mc-link
           if-no-files-found: warn
 
       # 更新清单与 Windows job 各自产出，发布时都在同一个 Release 里合并。

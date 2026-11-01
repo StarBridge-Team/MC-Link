@@ -107,14 +107,23 @@ jobs:
       # 的开关，只能随发布流程（release.yml）挂载。自动构建若把清单挂上发行版，
       # 客户端的第一更新源（GitHub Release）会绕开人工发布闸门，直接把版本推给所有人。
       # 更新包本体（exe/zip）可以提前挂——没有清单，没有客户端会去找它们。
+      # 只收 `Assets/update/` 下的**正式命名的更新包**。
+      #
+      # 不要同时收 `bundle/nsis/*.exe`：那是 Tauri 的中间产物，`rename-build.js`
+      # 会给它追加一段版本号（`MC Link_0.5.4_x64-setup-0.5.4.exe`），而
+      # `make-update.mjs` 又按正式名复制了一份到 `Assets/update/`。
+      # 两边都上传的结果是发行版里出现**同一个包的两个名字**——
+      # 用户面对 `MC-Link-0.5.4-windows-x86_64-setup.exe` 与
+      # `MC Link_0.5.4_x64-setup-0.5.4.exe` 根本不知道该下哪个。
+      #
+      # 更新包名由 `make-update.mjs` 统一裁定，这里只做搬运，不再引入第二套命名。
       - name: 收集产物
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mc-link-windows-${{ steps.version.outputs.version }}
           path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            assets-server/Assets/update/*.zip
             assets-server/Assets/update/*.exe
+            assets-server/Assets/update/*.zip
           if-no-files-found: warn
 
       # 更新清单只在发布路径产出：release.yml 拿到它挂上 GitHub Release 之后，

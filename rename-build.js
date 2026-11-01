@@ -1,21 +1,20 @@
 /**
- * 构建产物重命名：给 EXE / 安装包加上版本号后缀。
+ * 构建收尾：**只**给未打包的调试用 EXE 复制一份带版本号的副本。
  * ------------------------------------------------------------------
  * 由 `scripts/tauri-build.mjs` 在 `tauri build` 之后调用。
  *
- * # 幂等是硬要求
+ * # 为什么这里几乎什么也不做了
  *
- * 历史实现只判断"名字里是否含**当前**版本号"，于是每发一个新版本，上一版已经带过
- * 后缀的文件又被追加一次，最终堆出这种产物：
+ * 过去这个脚本会给 `bundle/` 里的安装包改名字。现在命名由
+ * `scripts/make-update.mjs` **统一裁定**（`MC-Link-<版本>-<平台>-<架构>-<类型>.<扩展名>`），
+ * 并复制到 `Assets/update/` 下供发布与 `latest.json` 引用；
+ * `bundle/` 里的原始文件名不再被任何人消费，因此不该再改。
  *
- *   mc-link_0.2.0_x64-setup-v0.2.1-0.2.1-0.2.2-...-0.4.0.exe
+ * 原地改名会制造两类问题（都已在发行版里实际出现）：
+ * 1. 双版本号：`MC Link_0.5.4_x64-setup-0.5.4.exe`；
+ * 2. 同一产物两个名字同时挂到发行版，用户无从选择。
  *
- * 现在改成：**先把末尾已有的版本后缀剥掉，再拼当前版本**。
- * 这样同一份产物无论重跑多少次、无论经过多少个版本，名字都只有一段版本号。
- *
- * 顺带修掉一个隐患：安装包名字可能是 `MC Link_0.4.0_x64-setup.exe`（含空格与大写），
- * 旧实现只匹配小写 `mc-link`，这类文件永远不被重命名。这里统一按"文件名里出现
- * mc-link（忽略大小写与空格差异）"判断。
+ * 版本号仍然保留在这里，因为下面的 EXE 副本要用它。
  */
 import fs from "fs";
 import path from "path";
@@ -35,58 +34,34 @@ if (!fs.existsSync(bundleDir)) {
   process.exit(1);
 }
 
-/** 末尾的 `-1.2.3` 版本后缀。 */
-const VERSION_SUFFIX = /-\d+\.\d+\.\d+$/;
+// 【已停用】不再对 `bundle/` 里的产物重命名。
+//
+// # 为什么停用
+//
+// 这些产物**不是最终分发物**：`scripts/make-update.mjs` 会把它们按统一命名
+// （`MC-Link-<版本>-<平台>-<架构>-<类型>.<扩展名>`）复制到 `Assets/update/` 下，
+// 那才是挂到发行版、以及被 `latest.json` 引用的名字。
+//
+// 原先这里额外改名会带来两个真实问题：
+//
+// 1. **产生双版本号的名字**：Tauri 已经写过版本（`MC Link_0.5.4_x64-setup.exe`），
+//    本文件的 `VERSION_SUFFIX` 只认「末尾是 `-x.y.z`」，匹配不到 `_x64-setup` 结尾，
+//    于是再拼一次版本，得到 `MC Link_0.5.4_x64-setup-0.5.4.exe`。
+// 2. **让发行版出现同一产物的两个名字**：CI 一度同时收集 `bundle/` 与
+//    `Assets/update/`，用户面对 `MC-Link-0.5.4-windows-x86_64-setup.exe` 与
+//    `MC Link_0.5.4_x64-setup-0.5.4.exe` 无从选择。
+//
+// 而重命名原本想解决的"区分本次构建的产物"并不需要它：Tauri 自己就会把版本号
+// 写进文件名，`make-update.mjs` 的版本匹配（`_<版本>_` / `-<版本>-`）直接可用。
+//
+// 版本匹配的兜底逻辑仍保留在 `make-update.mjs::findInstaller`（找不到精确匹配时
+// 退化为取目录中最新修改的那个，并打警告），因此这里不再改名是安全的。
+console.log(`[rename-build] 跳过 bundle 重命名（命名由 make-update.mjs 统一裁定），版本号: ${version}`);
 
-/** 文件名是否属于本应用的产物（`mc-link` / `MC Link` / `mc_link` 都算）。 */
-function isAppArtifact(nameWithoutExt) {
-  return /mc[-_ ]?link/i.test(nameWithoutExt);
-}
-
-/**
- * 计算目标文件名；返回 null 表示不改动。
- *
- * 两条规则缺一不可：
- *
- * 1. **只处理本次构建的产物**（文件名里已含当前版本号）。各打包器都会把版本写进文件名，
- *    因此这是可靠判据；若不判断，上一版的安装包会被加上**当前**版本后缀，
- *    变成一个"文件名骗人"的产物。
- * 2. **先剥掉末尾已有版本后缀再拼当前版本**：这是幂等的来源，
- *    同一份产物重跑多少次、跨多少个版本都只有一段版本号。
- */
-function targetName(name) {
-  const ext = path.extname(name);
-  const base = name.slice(0, name.length - ext.length);
-  if (!isAppArtifact(base)) return null;
-  if (!base.includes(version)) return null;
-
-  const stripped = base.replace(VERSION_SUFFIX, "");
-  const next = `${stripped}-${version}${ext}`;
-  return next === name ? null : next;
-}
-
-function renameFiles(dir) {
-  for (const entry of fs.readdirSync(dir)) {
-    const full = path.join(dir, entry);
-    if (fs.statSync(full).isDirectory()) {
-      renameFiles(full);
-      continue;
-    }
-
-    const next = targetName(entry);
-    if (!next) continue;
-
-    const nextPath = path.join(dir, next);
-    if (fs.existsSync(nextPath)) fs.unlinkSync(nextPath);
-    fs.renameSync(full, nextPath);
-    console.log(`已重命名: ${entry} -> ${next}`);
-  }
-}
-
-console.log(`开始重命名构建文件，版本号: ${version}`);
-renameFiles(bundleDir);
-
-// 未打包的可执行文件：复制一份带版本号的副本（原文件保持不变，便于直接运行调试）
+// 未打包的可执行文件：复制一份带版本号的副本，**仅供本地调试时区分版本**。
+// 不要把它当成分发物——发布走的产物全部来自 `Assets/update/`，
+// 那里的名字由 `make-update.mjs` 决定（例如
+// `MC-Link-<版本>-windows-x86_64-portable.exe`）。
 const exePath = path.join(__dirname, "src-tauri", "target", "release", "mc-link.exe");
 if (fs.existsSync(exePath)) {
   const versionedExe = path.join(
@@ -98,7 +73,7 @@ if (fs.existsSync(exePath)) {
   );
   if (fs.existsSync(versionedExe)) fs.unlinkSync(versionedExe);
   fs.copyFileSync(exePath, versionedExe);
-  console.log(`已复制: mc-link.exe -> mc-link-${version}.exe`);
+  console.log(`[rename-build] 调试副本: mc-link.exe -> mc-link-${version}.exe`);
 }
 
 console.log("");
