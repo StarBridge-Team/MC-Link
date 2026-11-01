@@ -46,7 +46,7 @@ useSnapTracking(MAXIMIZE_BUTTON_ID, () => emit("maximize"));
 </script>
 
 <template>
-  <header class="titlebar" @mousedown="emit('drag')">
+  <header class="titlebar">
     <div class="titlebar__side">
       <TitleBarButton
         icon="arrow_back"
@@ -56,7 +56,9 @@ useSnapTracking(MAXIMIZE_BUTTON_ID, () => emit("maximize"));
       />
     </div>
 
-    <div class="titlebar__title">{{ title }}</div>
+    <!-- 拖动区只包标题：按钮在它外面。挂在 header 上的话，点关闭/最小化会先触发
+         一次 `drag_window`，窗口在那 100ms 里跟着鼠标走一下（房间窗口已按此改过）。 -->
+    <div class="titlebar__title" @mousedown="emit('drag')">{{ title }}</div>
 
     <div class="titlebar__side titlebar__side--end">
       <TitleBarButton
@@ -92,7 +94,9 @@ useSnapTracking(MAXIMIZE_BUTTON_ID, () => emit("maximize"));
   color: var(--text-secondary);
   /* 标题栏本身透明：窗口材质与自定义背景要能透上来 */
   background: transparent;
-  -webkit-app-region: drag;
+  /* 这里**不写** `-webkit-app-region`：那是 Electron 给 Chromium 打的私有补丁，
+     WebView2 不实现，写着只会让人以为拖动靠 CSS。拖动由 `.titlebar__title` 上的
+     mousedown → `drag_window` 命令完成（房间窗口同一套）。 */
 }
 
 .titlebar__side {
@@ -100,7 +104,6 @@ useSnapTracking(MAXIMIZE_BUTTON_ID, () => emit("maximize"));
   align-items: center;
   gap: 2px;
   min-width: 96px;
-  -webkit-app-region: no-drag;
 }
 
 .titlebar__side--end {
