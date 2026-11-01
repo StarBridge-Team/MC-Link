@@ -17,6 +17,7 @@
 
 import { onDeactivated, onUnmounted } from "vue";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { dragWindow, exitApp, hideSelfWindow, resizeWindow } from "../lib/api/window";
 import { KEYS, local } from "../lib/persist";
 
@@ -31,6 +32,16 @@ const DEFAULT_SIZE = { width: 960, height: 680, minWidth: 720, minHeight: 520 };
 
 export function useWindowControls() {
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * 原生窗口事件（resize / move）的退订句柄。
+   *
+   * `onResized` / `onMoved` 返回的退订函数**必须留着**：丢掉就等于永久注册，
+   * 组件每次重挂载都多一份监听，一次拖动触发 N 次 `scheduleSave`。
+   */
+  const windowStateUnlisteners: UnlistenFn[] = [];
+  /** 组件是否已卸载：`await` 之后要复查，防止卸载后还注册监听。 */
+  let disposed = false;
 
   async function saveWindowState() {
     try {
@@ -88,8 +99,21 @@ export function useWindowControls() {
 
   async function setupWindowStateListeners() {
     const win = getCurrentWindow();
-    await win.onResized(scheduleSave);
-    await win.onMoved(scheduleSave);
+    const offResized = await win.onResized(scheduleSave);
+    // `await` 期间组件可能已卸载：此时句柄还没进数组，`onUnmounted` 清不到它，
+    // 监听器会永远留着。所以先复查再决定收不收。
+    if (disposed) {
+      offResized();
+      return;
+    }
+    windowStateUnlisteners.push(offResized);
+
+    const offMoved = await win.onMoved(scheduleSave);
+    if (disposed) {
+      offMoved();
+      return;
+    }
+    windowStateUnlisteners.push(offMoved);
   }
 
   function startDrag() {
@@ -145,7 +169,26 @@ export function useWindowControls() {
     saveTimer = null;
   }
 
-  onUnmounted(clearTimers);
+  /** 摘掉原生窗口监听：句柄在 `setupWindowStateListeners` 里收集。 */
+  function removeWindowStateListeners() {
+    while (windowStateUnlisteners.length > 0) {
+      const off = windowStateUnlisteners.pop();
+      try {
+        off?.();
+      } catch (e) {
+        console.warn("[window] 移除窗口事件监听失败:", e);
+      }
+    }
+  }
+
+  function dispose() {
+    disposed = true;
+    clearTimers();
+    removeWindowStateListeners();
+  }
+
+  // 只在卸载时摘监听：失活（KeepAlive）后重新激活时仍要能记住窗口位置。
+  onUnmounted(dispose);
   onDeactivated(clearTimers);
 
   return {
