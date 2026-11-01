@@ -50,6 +50,7 @@ export function defaultSettings(): PersonalizationSettings {
     homepage_value: "",
     // 与后端默认一致：默认跟随手选的 theme_color。
     theme_from_background: false,
+    theme_seed_source: "manual",
   };
 }
 
@@ -266,8 +267,10 @@ const BACKGROUND_KEYS = new Set<string>([
   "transparent_effect",
   "background_type",
   "background_value",
-  // 开关本身不改变背景的渲染，但它是"配色跟随背景图"的输入之一：
-  // 放进这里，打开/关闭后 `applyAll` 那条链路会把状态落一遍 DOM。
+  // 种子来源不改变背景的渲染，但它是配色的输入之一：
+  // 放进这里，切换后 `applyAll` 那条链路会把状态落一遍 DOM。
+  "theme_seed_source",
+  // 旧布尔保留：外部若仍直接改它，行为要与来源枚举一致地触发重算。
   "theme_from_background",
   "background_fit",
   "background_overlay",
@@ -316,7 +319,15 @@ function applyChanged(partial: Partial<PersonalizationSettings>) {
 
 /** 合并默认值，兼容老配置缺失字段。 */
 function withDefaults(data: Partial<PersonalizationSettings>): PersonalizationSettings {
-  return { ...defaultSettings(), ...data };
+  const merged = { ...defaultSettings(), ...data };
+  // 老配置没有 `theme_seed_source`（后端存的是空串）：按原来的布尔迁移一次。
+  //
+  // 迁移**只在这里做**：后端存空串表示"这个字段本来不存在"，它要是自己填成
+  // `manual`，就再也分不清"用户选过手选"和"字段是空的"了。
+  if (!merged.theme_seed_source) {
+    merged.theme_seed_source = merged.theme_from_background ? "background" : "manual";
+  }
+  return merged;
 }
 
 /** 从后端读取设置并应用。读失败时保持当前（默认）值，只记录错误。 */
@@ -350,6 +361,11 @@ async function load(): Promise<PersonalizationSettings> {
  */
 function patch(partial: Partial<PersonalizationSettings>, options?: { silent?: boolean }) {
   Object.assign(state, partial);
+  // 来源改了就把旧的布尔一起维护上：降级回旧版本时，它仍能正确判断"是否跟随背景图"。
+  // 反过来不自动推导（旧布尔变了不改来源）——升级后的读写只认来源。
+  if (partial.theme_seed_source !== undefined) {
+    state.theme_from_background = partial.theme_seed_source === "background";
+  }
   applyChanged(partial);
   if (!options?.silent) scheduleSave();
 }

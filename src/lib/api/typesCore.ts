@@ -73,9 +73,27 @@ export interface PersonalizationSettings {
    * 配色种子是否取自背景图（"配色跟随背景图"）。
    *
    * 开启后 `theme_color` 退居为**回退值**：取色失败时仍用它，避免界面失去主题色。
+   *
+   * @deprecated 已被 `theme_seed_source` 取代，只为"降级回旧版本仍能判断"继续写。
+   * 读的时候一律用 `theme_seed_source`（`useSettings` 会在读入时按这个布尔迁移）。
    */
   theme_from_background: boolean;
+  /** 种子色来源，见 {@link ThemeSeedSource}。 */
+  theme_seed_source: ThemeSeedSource;
 }
+
+/**
+ * 种子色来源。
+ *
+ * - `manual`：用 `theme_color`；
+ * - `background`：从当前背景图取主色（等价于原来的 `theme_from_background`）；
+ * - `system_wallpaper`：从系统桌面壁纸取主色；
+ * - `system_accent`：直接用系统强调色（Windows 主题色 / GNOME 强调色）。
+ *
+ * 空串只可能来自"升级前的老配置"（后端存空串表示字段不存在），`useSettings`
+ * 读入时归一化掉，界面永远只会看到上面四个值之一。
+ */
+export type ThemeSeedSource = "" | "manual" | "background" | "system_wallpaper" | "system_accent";
 
 export interface BackgroundFile {
   name: string;

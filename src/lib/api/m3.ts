@@ -75,3 +75,23 @@ export async function generateM3Scheme(
 export async function extractBackgroundSeed(filename: string): Promise<string> {
   return invoke<string>("extract_background_seed", { filename });
 }
+
+/**
+ * 从**系统桌面壁纸**提取种子色（"配色跟随系统背景"）。
+ *
+ * 后端先问系统"当前壁纸是哪个文件"，再走与背景图同一套取色流程。取不到
+ * （Wayland 只支持设置壁纸、壁纸存在主题缓存里、文件被删）时抛错，调用方应回退手选色。
+ */
+export async function systemWallpaperSeed(): Promise<string> {
+  return invoke<string>("system_wallpaper_seed");
+}
+
+/**
+ * 系统强调色（"配色跟随系统颜色"），`#rrggbb`。
+ *
+ * Windows 走 `DwmGetColorizationColor`，Linux 走 `gsettings accent-color`（GNOME 47+）；
+ * 其它平台/桌面环境会抛错，调用方回退手选色。
+ */
+export async function systemAccentSeed(): Promise<string> {
+  return invoke<string>("system_accent_seed");
+}

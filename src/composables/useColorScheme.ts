@@ -1,5 +1,11 @@
 import { ref, watch } from "vue";
-import { extractBackgroundSeed, generateM3Scheme, type M3Roles } from "../lib/api/m3";
+import {
+  extractBackgroundSeed,
+  generateM3Scheme,
+  systemAccentSeed,
+  systemWallpaperSeed,
+  type M3Roles,
+} from "../lib/api/m3";
 import { isRemoteUrl } from "../lib/appearance/background";
 import { remoteBackground, useSettings } from "./useSettings";
 
@@ -48,20 +54,45 @@ export function useColorScheme() {
   let failedFor = "";
 
   /**
+   * 系统来源（壁纸 / 强调色）的种子缓存。
+   *
+   * 按来源种类缓存、**跨设置改动复用**：壁纸取色要读一张 4K 图再量化，比
+   * `generate_m3_scheme` 贵得多；而变体、对比度、明暗切换都会触发重算。
+   * 代价是"换壁纸后要重启才生效"——与多数应用一致，也比每次重算白色闪烁好。
+   */
+  const systemSeedCache = new Map<"wallpaper" | "accent", string>();
+
+  /**
    * 决定本次配色的种子色。
    *
-   * 两条来源，取色成本完全不同：
+   * 四个来源，取色成本差很多：
    *
-   * - **网络背景**：种子色是后端在下载时顺手提取的（`remoteBackground().seed`），
-   *   这里直接取用，**不要再发一次 IPC**（那等于把同一张图再解码一遍）。
-   * - **本地背景**：需要调 `extract_background_seed` 现取，代价高，所以按文件名缓存。
+   * - **手选**：直接用 `theme_color`，无成本。
+   * - **背景图**：网络背景的种子色是后端下载时顺手提的（`remoteBackground().seed`），
+   *   直接取用，**不要再发一次 IPC**（那等于把同一张图再解码一遍）；本地背景要调
+   *   `extract_background_seed` 现取，按文件名缓存。
+   * - **系统壁纸 / 系统强调色**：各一次 IPC，按种类缓存（见上）。
    *
-   * 其余情况与取色失败一律回退到手选 `theme_color`——**不返回空**：
-   * 没有种子色就没有主题色，那比"用了手选色"更糟。
+   * 取色失败一律回退到手选 `theme_color`——**不返回空**：没有种子色就没有主题色，
+   * 那比"用了手选色"更糟。
    */
   async function resolveSeed(): Promise<string> {
     const fallback = state.theme_color;
-    if (!state.theme_from_background) return fallback;
+
+    switch (state.theme_seed_source) {
+      case "background":
+        return resolveBackgroundSeed(fallback);
+      case "system_wallpaper":
+        return resolveSystemSeed("wallpaper", fallback);
+      case "system_accent":
+        return resolveSystemSeed("accent", fallback);
+      default:
+        return fallback;
+    }
+  }
+
+  /** 背景图取色（网络背景复用下载时算好的种子色）。 */
+  async function resolveBackgroundSeed(fallback: string): Promise<string> {
     if (state.background_type !== "image" || !state.background_value) return fallback;
 
     const source = state.background_value;
@@ -92,6 +123,29 @@ export function useColorScheme() {
     }
   }
 
+  /** 系统壁纸 / 系统强调色。失败不缓存，下次改动设置还会再试一次。 */
+  async function resolveSystemSeed(
+    kind: "wallpaper" | "accent",
+    fallback: string,
+  ): Promise<string> {
+    const cached = systemSeedCache.get(kind);
+    if (cached) return cached;
+
+    try {
+      const seed = kind === "wallpaper" ? await systemWallpaperSeed() : await systemAccentSeed();
+      systemSeedCache.set(kind, seed);
+      return seed;
+    } catch (e) {
+      // Linux 上这很常见（GNOME < 47 没有强调色键、Wayland 读不到壁纸路径），
+      // 是预期内的回退路径，不当错误上报。
+      console.warn(
+        `[color] 取系统${kind === "wallpaper" ? "壁纸主色" : "强调色"}失败，回退到手选主题色:`,
+        e,
+      );
+      return fallback;
+    }
+  }
+
   function writeRoles(el: HTMLElement, roles: M3Roles) {
     for (const [field, value] of Object.entries(roles)) {
       if (typeof value === "string" && value) {
@@ -105,11 +159,12 @@ export function useColorScheme() {
     if (!el) return;
 
     const dark = isDark.value;
-    // 跟随背景图时，种子实际来自图片，key 必须带上图片来源——否则"换一张背景图"
-    // 会因为 `theme_color` 没变而被这行判断挡住，配色纹丝不动。
-    const sourceKey = state.theme_from_background
-      ? `bg:${state.background_value}`
-      : `seed:${state.theme_color}`;
+    // 种子来自图片时，key 必须带上图片来源——否则"换一张背景图"会因为
+    // `theme_color` 没变而被这行判断挡住，配色纹丝不动。
+    const sourceKey =
+      state.theme_seed_source === "background"
+        ? `bg:${state.background_value}`
+        : `src:${state.theme_seed_source}:${state.theme_color}`;
     const key = `${sourceKey}|${state.theme_variant}|${state.theme_contrast}|${dark ? "dark" : "light"}`;
     // 同一个输入不重复要一次（配色之外的其他设置改动也会触发本组合函数）
     if (key === lastKey) return;
@@ -162,7 +217,7 @@ export function useColorScheme() {
       state.theme_color,
       state.theme_variant,
       state.theme_contrast,
-      state.theme_from_background,
+      state.theme_seed_source,
       // 换背景图 / 换背景类型都要重算：前者换种子，后者可能让"跟随"失效。
       state.background_type,
       state.background_value,

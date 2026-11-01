@@ -202,8 +202,18 @@ export default {
 
   color: {
     title: "配色",
-    followBackground: "配色跟随背景图",
-    followBackgroundHint: "从当前背景图片提取主色作为主题色；取色失败时用下面手选的颜色。",
+    seedSource: "种子色来源",
+    sourceManual: "手选颜色",
+    sourceBackground: "背景图",
+    sourceSystemWallpaper: "系统壁纸",
+    sourceSystemAccent: "系统颜色",
+    sourceHintManual: "用下面手选的颜色作为种子色。",
+    sourceHintBackground:
+      "从当前背景图片提取主色；背景不是图片或取色失败时，用下面手选的颜色。",
+    sourceHintSystemWallpaper:
+      "从系统桌面壁纸提取主色；取不到时用下面手选的颜色。换壁纸后需重启应用才生效。",
+    sourceHintSystemAccent:
+      "直接使用系统强调色（Windows 主题色 / GNOME 强调色）；取不到时用下面手选的颜色。",
     desc: "以种子色生成整套动态配色，随明暗与对比度自动调整",
     seed: "种子色",
     variant: "配色风格",

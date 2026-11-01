@@ -10,6 +10,7 @@
 
 pub mod commands;
 pub mod extract;
+pub mod system;
 
 use material_colors::color::Argb;
 use material_colors::dynamic_color::Variant;

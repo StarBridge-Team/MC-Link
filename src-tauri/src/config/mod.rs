@@ -76,6 +76,20 @@ pub struct PersonalizationSettings {
     /// 默认 `false`：这是新增行为，不能因为升级就改变老用户既有的配色。
     #[serde(default)]
     pub theme_from_background: bool,
+    /// 种子色来源：`manual` / `background` / `system_wallpaper` / `system_accent`。
+    ///
+    /// 取代原来的 `theme_from_background` 布尔：那时候只有"手选 / 跟随背景图"两种，
+    /// 加进系统壁纸与系统强调色之后，两个布尔会互相打架（都能开，谁生效？），
+    /// 所以改成一个来源枚举。
+    ///
+    /// 空字符串 = 老配置，没有这个字段。前端按
+    /// `theme_from_background ? "background" : "manual"` 迁移（`useSettings`），
+    /// **不在这里做**：迁移规则只该有一处实现。
+    ///
+    /// `theme_from_background` 仍会随写入保持同步（`== "background"`），
+    /// 这样降级回旧版本时行为不会突变。
+    #[serde(default)]
+    pub theme_seed_source: String,
 }
 
 impl Default for PersonalizationSettings {
@@ -116,6 +130,9 @@ impl Default for PersonalizationSettings {
             homepage_value: String::new(),
             // 保持与加入本项之前一致：默认跟随手选的 `theme_color`。
             theme_from_background: false,
+            // 空字符串表示"老配置"：前端据此按旧布尔迁移，不在这里预置 `manual`，
+            // 否则无法区分"用户选过 manual"和"这个字段本来是空的"。
+            theme_seed_source: String::new(),
         }
     }
 }

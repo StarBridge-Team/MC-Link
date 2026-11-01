@@ -211,6 +211,31 @@ fn scheme_roles(source: Argb, variant: &Variant, contrast: f64) -> (M3Roles, M3R
     (roles_from_scheme(&light), roles_from_scheme(&dark))
 }
 
+/// 从系统壁纸提取种子色（配色种子的「跟随系统背景」）。
+///
+/// # 为什么是 async
+///
+/// 同步命令跑在主线程上，而这里要读一张 4K 壁纸再解码量化——即便取色本身已经在
+/// 大栈线程里做（见 `extract::EXTRACT_STACK_BYTES`），**等它**的那几百毫秒仍会把
+/// 主线程（窗口消息泵）一起卡住。扔进阻塞线程池，界面不跟着停。
+#[tauri::command]
+pub async fn system_wallpaper_seed() -> Result<String, String> {
+    tokio::task::spawn_blocking(super::system::seed_from_wallpaper)
+        .await
+        .map_err(|e| format!("壁纸取色任务失败: {e}"))?
+}
+
+/// 系统强调色（配色种子的「跟随系统颜色」），返回 `#rrggbb`。
+///
+/// 只读一个值、几乎不耗时；仍写成 async 是为了与上面同形，前端不必为两个
+/// 来源写两套错误处理。
+#[tauri::command]
+pub async fn system_accent_seed() -> Result<String, String> {
+    tokio::task::spawn_blocking(super::system::accent_color)
+        .await
+        .map_err(|e| format!("读取系统强调色任务失败: {e}"))?
+}
+
 /// 生成完整的 M3 配色方案（接口 / 配置同步的核心命令）
 #[tauri::command]
 pub fn generate_m3_scheme(

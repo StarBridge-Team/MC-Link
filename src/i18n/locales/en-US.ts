@@ -199,9 +199,18 @@ export default {
   color: {
     title: "Colors",
     desc: "Generate a full dynamic palette from a seed color, adapting to light/dark and contrast",
-    followBackground: "Match background image",
-    followBackgroundHint:
-      "Extract the dominant color from the current background image; falls back to the seed color below if extraction fails.",
+    seedSource: "Seed source",
+    sourceManual: "Picked color",
+    sourceBackground: "Background image",
+    sourceSystemWallpaper: "System wallpaper",
+    sourceSystemAccent: "System accent",
+    sourceHintManual: "Use the seed color picked below.",
+    sourceHintBackground:
+      "Extract the dominant color from the current background image; falls back to the picked color below when the background is not an image or extraction fails.",
+    sourceHintSystemWallpaper:
+      "Extract the dominant color from the desktop wallpaper; falls back to the picked color below on failure. Changes to the wallpaper apply after a restart.",
+    sourceHintSystemAccent:
+      "Use the system accent color (Windows accent / GNOME accent); falls back to the picked color below on failure.",
     seed: "Seed color",
     variant: "Palette style",
     contrast: "Contrast",
