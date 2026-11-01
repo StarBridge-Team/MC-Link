@@ -31,9 +31,30 @@ const GAP: i32 = 6;
 /// 面板圆角半径（逻辑像素）。必须与 `WidgetApp.vue` 的 `border-radius` 一致。
 const PANEL_RADIUS: f64 = 30.0;
 
+/// 主窗口的 label（Wayland 降级定位时用作锚点）。
+const MAIN_LABEL: &str = "main";
+
 // 这里曾经有 `SHADOW_MARGIN`：窗口比内容大一圈，给 CSS 阴影留位置。
 // 现在**不做阴影**（用户明确不要），窗口尺寸与内容严格相等——
 // 那圈透明边距会露出 WebView 的白色底，表现为"面板下面多一片白"。
+
+/// 当前是否运行在 Wayland 会话下。
+///
+/// # 为什么必须区分 Wayland 与 X11
+///
+/// Wayland 的 xdg-shell 协议**不允许客户端自行设置顶层窗口位置**：位置由合成器管理，
+/// `set_position` 会被静默忽略。X11 则允许自由定位。
+///
+/// GNOME / KDE 默认走 Wayland，所以不做这个判断的话，托盘面板会落到合成器给的位置
+/// （常见的是屏幕中部），而不是托盘图标正下方。
+///
+/// **注意**：这是平台协议层面的判断（依据 xdg-shell 规范），本机是 Windows，
+/// **无法在开发机上实测**；实际表现需要在真实 Wayland 会话里验证。
+fn is_wayland_session() -> bool {
+    std::env::var("WAYLAND_DISPLAY")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+}
 
 /// 启动时调用一次：建好面板但保持隐藏。
 pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
@@ -44,7 +65,8 @@ pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
         .title("MC Link")
         .inner_size(PANEL_WIDTH, 200.0)
         // 显式把窗口与 WebView 底色都设成全透明：没有材质兜底时，
-        // WebView2 的默认白底会从圆角外露出来。
+        // WebView 的默认白底会从圆角外露出来（Linux 上**永远**没有材质兜底，
+        // 透明能否生效完全取决于 WebKitGTK/合成器是否支持，详见 `crate::effect`）。
         .background_color(tauri::window::Color(0, 0, 0, 0))
         .resizable(false)
         .decorations(false)
@@ -57,9 +79,8 @@ pub fn ensure_tray_panel(app: &AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| format!("创建托盘面板失败: {}", e))?;
 
-    // 套材质**不是为了显示材质**，而是让窗口进入合成模式：没有它窗口底色是白的，
-    // 圆角外会露白。面板自己画不透明底色盖住材质，圆角由
-    // `window::region::apply_round_region` 裁窗口。
+    // 材质兜底**只存在于 Windows / macOS**（Linux 上 `set_effects` 是空操作），
+    // 平台差异与排查线索都写在 `crate::effect::apply_tray_menu_effect` 的注释里。
     crate::effect::apply_tray_menu_effect(&window);
 
     // 失焦即收起；尺寸变化后重算圆角裁剪。
@@ -114,18 +135,54 @@ pub fn show_tray_panel(
     // 尺寸变了，region 要按新尺寸重算（它记的是像素矩形）。
     crate::window::region::apply_round_region(&window, PANEL_RADIUS);
 
-    let scale = window
-        .monitor_from_point(anchor.x, anchor.y)
-        .ok()
-        .flatten()
-        .map(|m| m.scale_factor())
-        .unwrap_or(1.0);
-    let (x, y) = place(&window, anchor, tray, height, scale);
-    let _ = window.set_position(PhysicalPosition::new(x, y));
+    if is_wayland_session() {
+        // Wayland：xdg-shell 不允许客户端设置顶层窗口位置，**贴着托盘图标是做不到的**。
+        // 退而求其次——以**主窗口**为锚（`outer_position()` / `outer_size()` 是读操作，
+        // Wayland 下可用），让面板出现在主窗口下方、用户看得见的地方。
+        //
+        // 仍然调 `set_position`：它是唯一能用的定位 API，有些环境会采纳；
+        // 但 Wayland 下**不能指望它生效**，所以下面必须留一行日志，
+        // 否则"面板没贴着托盘图标"这个现象会变成查不到线索的灵异事件。
+        let scale = window.scale_factor().unwrap_or(1.0);
+        match place_below_main_window(app, scale) {
+            Some((x, y)) => {
+                eprintln!("[托盘] Wayland 会话：窗口位置由合成器接管，无法贴着托盘图标定位；已改为定位到主窗口下方，实际位置可能仍有偏差");
+                let _ = window.set_position(PhysicalPosition::new(x, y));
+            }
+            None => {
+                eprintln!("[托盘] Wayland 会话：读不到主窗口位置，已跳过定位；面板位置完全由合成器决定，不会贴着托盘图标");
+            }
+        }
+    } else {
+        // X11 / Windows：可以自由定位，沿用"贴着托盘图标"的位置计算。
+        let scale = window
+            .monitor_from_point(anchor.x, anchor.y)
+            .ok()
+            .flatten()
+            .map(|m| m.scale_factor())
+            .unwrap_or(1.0);
+        let (x, y) = place(&window, anchor, tray, height, scale);
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
 
     crate::window::animation::show(&window);
     let _ = window.set_focus();
     Ok(())
+}
+
+/// Wayland 降级用：面板贴到**主窗口**下方（水平居中）。
+///
+/// 用主窗口的 `outer_position()` + `outer_size()`：这两个是**读操作**，Wayland 下可用
+/// （虽然坐标由合成器给出、可能与像素级预期有偏差，但至少是"用户看得见"的位置）。
+fn place_below_main_window(app: &AppHandle, scale: f64) -> Option<(i32, i32)> {
+    let main = app.get_webview_window(MAIN_LABEL)?;
+    let pos = main.outer_position().ok()?;
+    let size = main.outer_size().ok()?;
+
+    let panel_w = (PANEL_WIDTH * scale).round() as i32;
+    let x = pos.x + (size.width as i32 - panel_w) / 2;
+    let y = pos.y + size.height as i32 + GAP;
+    Some((x, y))
 }
 
 pub fn hide_tray_panel(app: &AppHandle) {

@@ -92,15 +92,45 @@ pub fn apply_effect(window: &tauri::WebviewWindow, effect: &str, tint: f64, dark
 /// 不是为了好看，是为了**让窗口进入合成模式**。去掉材质后窗口底色是 WebView2 的白，
 /// 圆角外侧/边缘会露白；而 `transparent(true)` 单独并不能保证底色透明。
 /// 套上材质后窗口底色变成材质（不再是白），面板再在上面盖一层不透明色 ——
-/// 视觉上仍是纯色卡片，但白边消失了。圆角由 `window::widget::apply_round_region`
+/// 视觉上仍是纯色卡片，但白边消失了。圆角由 `window::region::apply_round_region`
 /// 用 `SetWindowRgn` 裁窗口形状，材质也会跟着被裁掉。
+///
+/// # 这个"材质兜底"只存在于 Windows / macOS
+///
+/// `Effect::Tabbed` 的落地实现来自 `window-vibrancy`（Tauri 自己的跨平台材质库），
+/// 它**没有 Linux 实现**：Tauri 官方的 `set_effects` 在 Linux 上是**空操作**
+/// （`tauri/src/vibrancy/mod.rs` 里 Windows / macOS 两个分支都不命中）。
+///
+/// 因此在 Linux 上，"套材质 → 窗口进入合成模式 → 底色不是白的"这条链条**不成立**：
+/// Linux 面板是否透明**完全**依赖 `background_color(0,0,0,0)` + `transparent(true)`
+/// 这一条路，即完全依赖 WebKitGTK / GTK / 合成器对透明窗口的支持。
+/// 若该发行版的组合没开透明支持，面板会变成一个**白底矩形**，四角露白。
+///
+/// # 为什么不做"透明是否生效"的运行时探测
+///
+/// Tauri v2 **没有**可靠的探测 API：既没有 `is_transparent()`，
+/// `background_color()` 也只有 builder 上的 setter（`set_background_color` 同样是只写），
+/// 读不回来。所以这里**不臆造探测**，只按平台把依赖条件说清楚，让排查有据可查。
 pub(crate) fn apply_tray_menu_effect(window: &tauri::WebviewWindow) {
-    let config = WindowEffectsConfig {
-        effects: vec![Effect::Tabbed],
-        ..Default::default()
-    };
-    if let Err(e) = window.set_effects(config) {
-        eprintln!("[窗口效果] 托盘面板材质应用失败: {e}");
+    #[cfg(any(windows, target_os = "macos"))]
+    {
+        let config = WindowEffectsConfig {
+            effects: vec![Effect::Tabbed],
+            ..Default::default()
+        };
+        if let Err(e) = window.set_effects(config) {
+            eprintln!("[窗口效果] 托盘面板材质应用失败: {e}");
+        }
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        // Linux 没有材质兜底：`set_effects` 在这里是空操作，调了也没有任何效果。
+        // 直接说清楚透明依赖什么条件——异常时面板显示为白底，这一行就是线索。
+        let _ = window;
+        eprintln!(
+            "[窗口效果] 当前平台无材质兜底：托盘面板透明依赖 WebKitGTK/合成器对透明窗口的支持，\
+             若未生效面板会显示为白底矩形"
+        );
     }
 }
 

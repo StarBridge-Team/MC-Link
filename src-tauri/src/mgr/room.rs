@@ -1,13 +1,12 @@
 //! 房间编排门面：把「检测器 / 适配器 / 耦合器」串成一次完整联机。
 //!
-//! `domain/room` 只管状态（可纯单测）；这里负责调插件（必须起网关）。
-//! 两者分开后，状态机的"非法跃迁""rev 递增""列表过滤"都能在没有 WebView 的情况下验证。
+//! `domain/room` 只管状态（可纯单测）；这里负责调插件（必须起网关）：分开后，状态机的
+//! "非法跃迁""rev 递增""列表过滤"都能在没有 WebView 的情况下验证。
 //!
 //! # 终态不可回退
 //!
-//! 轮询与建链任务都是"后台在跑"的活，随时可能比用户动作慢。因此**任何**后台写回
-//! 都要先在会话锁内确认会话还活着（见 `is_terminal`），否则会出现"用户已断开、
-//! 房间又显示在线"这种没法收场的状态。
+//! 轮询与建链任务随时可能比用户动作慢，**任何**后台写回都要先在会话锁内确认会话还活着
+//! （见 `is_terminal`），否则会出现"用户已断开、房间又显示在线"这种没法收场的状态。
 
 mod helpers;
 
@@ -30,9 +29,8 @@ use self::helpers::{normalize_fields, port_from_value, room_members};
 
 /// 终态：`Closed`（已结束）与 `Stopping`（正在结束，下一步就是 `Closed`）。
 ///
-/// **不能拿 `Phase::is_active()` 代替**：它只排除 `Closed`，`Stopping` 仍算"进行中"。
-/// 但 `Stopping` 的会话同样不该被后台写回——`leave()` 正在收尾，这时把 phase 写回
-/// `Online`，房间就"死而不僵"了。
+/// **不能拿 `Phase::is_active()` 代替**：它只排除 `Closed`，`Stopping` 仍算"进行中"，
+/// 但 `Stopping` 的会话同样不该被后台写回——`leave()` 正在收尾，这时写回 `Online` 就"死而不僵"。
 fn is_terminal(phase: Phase) -> bool {
     matches!(phase, Phase::Closed | Phase::Stopping)
 }
@@ -66,9 +64,7 @@ impl RoomMgr {
     }
 
     /// 一次拿齐联机页需要的静态数据：可用适配器（含各自声明的字段）+ 已扫到的本地游戏。
-    ///
-    /// 旧前端要连发 `connect_adapters` + `connect_local_games` 两个命令再自己拼，
-    /// 中间任何一步失败都得在前端处理半成品状态。
+    /// 旧前端要连发两个命令再自己拼，中间任何一步失败都得在前端处理半成品状态。
     pub async fn prepare(&self, game_id: Option<&str>) -> Value {
         let plan = self.plugins.plan(PluginKind::Adapter, game_id);
         let mut adapters = Vec::new();
@@ -126,9 +122,7 @@ impl RoomMgr {
     pub async fn leave(&self, session_id: &str) -> AppResult<RoomSnapshot> {
         let handle = self.registry.handle(session_id)?;
         let (adapter_id, game_id) = {
-            let session = handle
-                .lock()
-                .map_err(|_| AppError::internal("会话锁中毒"))?;
+            let session = handle.lock().map_err(|_| AppError::internal("会话锁中毒"))?;
             (session.adapter_id.clone(), session.game_id.clone())
         };
 
@@ -142,24 +136,18 @@ impl RoomMgr {
         self.abort_link_task(session_id);
 
         if let Ok(provider) = self.plugins.provider(&adapter_id).await {
-            let _ = provider
-                .invoke_checked(Permission::NetListenLocal, adapter_method::HOST_STOP, json!({}))
-                .await;
-            let _ = provider
-                .invoke_checked(Permission::NetListenLocal, adapter_method::LEAVE, json!({}))
-                .await;
+            for method in [adapter_method::HOST_STOP, adapter_method::LEAVE] {
+                let _ = provider
+                    .invoke_checked(Permission::NetListenLocal, method, json!({}))
+                    .await;
+            }
         }
 
-        if let Err(e) = self
+        let detach = self
             .plugins
-            .invoke(
-                PluginKind::Coupler,
-                game_id.as_deref(),
-                coupler_method::DETACH,
-                json!({}),
-            )
-            .await
-        {
+            .invoke(PluginKind::Coupler, game_id.as_deref(), coupler_method::DETACH, json!({}))
+            .await;
+        if let Err(e) = detach {
             eprintln!("[联机] 解除耦合器失败（不影响断开）: {}", e.message);
         }
 
@@ -174,11 +162,11 @@ impl RoomMgr {
         Ok(snapshot)
     }
 
-    /// 向适配器要一次实时状态，合并进会话。
+    /// 向适配器要一次实时状态，合并进会话。成员会陆续加入，而适配器只在被问到时才报，
+    /// 所以房间窗口需要低频轮询。
     ///
-    /// 成员会陆续加入，而适配器只在被问到时才报——房间窗口因此需要低频轮询。
-    /// **只在真的变化时才写**：每 3 秒推一次快照会把 `rev` 刷成噪音，
-    /// 让"状态是否更新"失去意义，也会让所有窗口做无谓的重渲染。
+    /// **只在真的变化时才写**：否则每 3 秒推一次快照会把 `rev` 刷成噪音，"状态是否更新"
+    /// 会失去意义，所有窗口也要做无谓的重渲染。
     pub async fn refresh(&self, session_id: &str) -> AppResult<RoomSnapshot> {
         // 入口短路：会话已结束/正在结束就别再去问适配器了。
         let snapshot = self.registry.snapshot(session_id)?;
@@ -203,8 +191,7 @@ impl RoomMgr {
             .map(|p| p.ends_with("-ok"))
             .unwrap_or(false);
 
-        // 判定与写入都在会话锁内完成：轮询期间用户可能已经断开了，
-        // 拿锁外的旧快照写回，会把已断开的房间"复活"成在线。
+        // 判定与写入都在会话锁内完成：拿锁外的旧快照写回，会把已断开的房间"复活"成在线。
         self.registry.update_if(session_id, |s| {
             // 终态守卫：已结束/正在结束的会话，轮询无权写回。
             if is_terminal(s.phase) {
@@ -245,8 +232,8 @@ impl RoomMgr {
             return Err(AppError::invalid("未选择联机适配器"));
         }
 
-        // 防双击：同一适配器 + 游戏已有进行中的会话时直接返回它。
-        // 否则两个会话会抢同一个本地端口，第二个必然失败，且用户看不出原因。
+        // 防双击：同一适配器 + 游戏已有进行中的会话时直接返回它，否则两个会话会抢同一个
+        // 本地端口，第二个必然失败，且用户看不出原因。
         if let Some(existing) = self.registry.find_active(&adapter_id, game_id.as_deref()) {
             return Ok(existing);
         }
@@ -261,12 +248,10 @@ impl RoomMgr {
         // 必须显式取运行时句柄再 spawn。
         //
         // `tokio::spawn` 要求**当前线程**处于 Tokio 运行时上下文里；而 Tauri 的**同步**命令
-        // 跑在主线程（WebView2 的 IPC 回调栈上），那里没有 reactor。之前在这里直接
-        // `tokio::spawn` 的结果是：panic → 该栈帧在 COM 回调里不可 unwind → 进程直接 abort
-        // （STATUS_STACK_BUFFER_OVERRUN），用户看到的是"点开始联机，软件消失"。
-        //
-        // 用 `try_current` 而不是 `spawn`：将来若有人从同步上下文调进来，
-        // 这里返回一个明确的错误，而不是把进程带走。
+        // 跑在主线程（WebView2 的 IPC 回调栈上），那里没有 reactor。此前直接 `tokio::spawn`
+        // 的结果是 panic → 该栈帧在 COM 回调里不可 unwind → 进程直接 abort，用户看到的是
+        // "点开始联机，软件消失"。改用 `try_current`：从同步上下文调进来时返回明确错误，
+        // 而不是把进程带走。
         let handle = tokio::runtime::Handle::try_current()
             .map_err(|_| AppError::internal("房间启动缺少 Tokio 运行时上下文（命令必须是 async）"))?;
         let task_id = session_id.clone();
@@ -317,10 +302,9 @@ async fn run_link(
     fields: Value,
     player_name: String,
 ) {
-    let start_message = if role == Role::Host {
-        "正在创建房间…"
-    } else {
-        "正在加入房间…"
+    let start_message = match role {
+        Role::Host => "正在创建房间…",
+        Role::Guest => "正在加入房间…",
     };
     // 终态守卫：会话已经被断开，就别把它拽回"建链中"。
     let mut linking = false;
@@ -398,15 +382,15 @@ async fn run_link(
 
     // 耦合器广播是 best-effort：它失败只影响"游戏能发现我们"，
     // 房间本身已经建好，不该因此把整次联机判失败。
-    if let Err(e) = plugins
+    let attach = plugins
         .invoke(
             PluginKind::Coupler,
             game_id.as_deref(),
             coupler_method::ATTACH,
             json!({ "motd": "MC Link", "port": port.unwrap_or(25565) }),
         )
-        .await
-    {
+        .await;
+    if let Err(e) = attach {
         eprintln!("[联机] 耦合器广播失败（不影响房间）: {}", e.message);
     }
 
@@ -432,10 +416,9 @@ async fn run_link(
         peers: vec![],
     });
 
-    let done_message = if role == Role::Host {
-        "房间已创建"
-    } else {
-        "已加入房间"
+    let done_message = match role {
+        Role::Host => "房间已创建",
+        Role::Guest => "已加入房间",
     };
     // 收尾守卫：会话已经结束/正在结束，就别再写回"在线"。
     let mut linked = false;
@@ -486,12 +469,7 @@ async fn resolve_port(
         return Some(p);
     }
     match plugins
-        .invoke(
-            PluginKind::Detector,
-            game_id,
-            detector_method::SCAN,
-            json!({}),
-        )
+        .invoke(PluginKind::Detector, game_id, detector_method::SCAN, json!({}))
         .await
     {
         Ok((_, value)) => value
@@ -512,8 +490,7 @@ mod tests {
 
     #[test]
     fn terminal_covers_stopping_and_closed() {
-        assert!(is_terminal(Phase::Closed));
-        assert!(is_terminal(Phase::Stopping));
+        assert!(is_terminal(Phase::Closed) && is_terminal(Phase::Stopping));
         assert!(!is_terminal(Phase::Starting));
         assert!(!is_terminal(Phase::Linking));
         assert!(!is_terminal(Phase::Online));
