@@ -21,6 +21,8 @@
  *   ASSET_UPLOAD_TOKEN    上传令牌（与服务器 upload_token / ASSET_UPLOAD_TOKEN 一致）
  *   ASSET_UPLOAD_REQUIRED=1 上传失败时以非零码退出（CI 中强制校验）
  *   SKIP_ASSET_UPLOAD=1 | --no-upload  跳过上传（仅重新生成 manifest）
+ *   ADAPTER_PLATFORMS     逗号分隔的适配器平台列表（默认见 ADAPTER_DEFAULT_PLATFORMS）
+ *                         平台标签须与上游产物标签、客户端 current_platform() 逐字一致
  *   --prod               使用生产资源服务器地址
  */
 import {
@@ -45,10 +47,52 @@ const ASSETS_DIR = join(ROOT, "assets-server", "Assets");
 const ADAPTER_DIR = join(ASSETS_DIR, "adapter");
 
 // 适配器包来源与版本：升级时改这里，再执行 pnpm sync:assets 发布新清单
-const ADAPTER_PLATFORM = "windows-x86_64";
 const ADAPTER_VERSION = "0.4.2";
-const ADAPTER_FILE = `terracotta-${ADAPTER_VERSION}-${ADAPTER_PLATFORM}-pkg.tar.gz`;
-const ADAPTER_URL = `https://gitee.com/burningtnt/Terracotta/releases/download/v${ADAPTER_VERSION}/${ADAPTER_FILE}`;
+const ADAPTER_RELEASE_BASE = "https://gitee.com/burningtnt/Terracotta/releases/download";
+
+/**
+ * 默认分发的适配器平台（桌面平台）。
+ *
+ * 平台标签必须与**上游发布产物的标签**逐字相同（上游 v0.4.2 有
+ * `windows-x86_64` / `windows-arm64` / `linux-x86_64` / `linux-arm64` /
+ * `macos-x86_64` / `macos-arm64`），也必须与客户端
+ * `src-tauri/src/assets/adapter.rs` 里 `current_platform()` 的输出逐字相同
+ * —— 客户端按这个 key 选包，两边不一致就装不上。
+ *
+ * 注意架构命名：客户端把 Rust 的 `aarch64` / `arm` 映射成上游的
+ * `arm64` / `armv7`，所以这里写 `arm64` 而不是 `aarch64`。
+ *
+ * 不包含 android（上游的 `.so` 是 native 库，不是桌面可执行文件），
+ * 也不包含 freebsd / linux-riscv64 / linux-loongarch64（暂未验证可用性）。
+ */
+const ADAPTER_DEFAULT_PLATFORMS = [
+  "windows-x86_64",
+  "windows-arm64",
+  "linux-x86_64",
+  "linux-arm64",
+  "macos-x86_64",
+  "macos-arm64",
+];
+
+/**
+ * 本次要分发的平台列表。
+ *
+ * 可用环境变量 `ADAPTER_PLATFORMS` 覆盖（逗号分隔），便于 CI 限制下载量：
+ *   ADAPTER_PLATFORMS="windows-x86_64,linux-x86_64" pnpm sync:assets
+ */
+function adapterPlatforms() {
+  const raw = process.env.ADAPTER_PLATFORMS;
+  if (!raw || !raw.trim()) return [...ADAPTER_DEFAULT_PLATFORMS];
+  const list = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (list.length === 0) {
+    console.error("[sync-assets] ADAPTER_PLATFORMS 已设置但没有任何有效平台");
+    process.exit(1);
+  }
+  return [...new Set(list)];
+}
 
 // ------------------------------------------------------------------
 // 法务文件（EULA 与许可证全文）
@@ -374,50 +418,121 @@ function prepareLegal() {
   );
 }
 
+/**
+ * 下载上游适配器发布包，计算 SHA256 并生成校验清单（客户端据此校验后才安装）。
+ *
+ * 多平台分发：逐平台下载 → 逐平台算哈希 → 写进清单的 `adapters` 数组。
+ *
+ * 失败策略：
+ * - 单个平台下载失败 → 打印告警并跳过该平台，其余平台照常发布；
+ * - **所有**平台都失败 → 以非零码退出。否则会发布一份空清单，
+ *   把客户端的适配器安装彻底弄坏（客户端按平台选包，选不到就是"未安装"）。
+ */
 async function prepareAdapters() {
   mkdirSync(ADAPTER_DIR, { recursive: true });
-  const pkgPath = join(ADAPTER_DIR, ADAPTER_FILE);
   const manifestPath = join(ADAPTER_DIR, "manifest.json");
+  const platforms = adapterPlatforms();
 
-  // 包已存在且与清单记录的哈希一致 → 跳过下载（避免每次 sync 都重下整个包）
-  if (existsSync(pkgPath) && existsSync(manifestPath)) {
+  // 旧清单用于"包已存在且哈希一致就跳过下载"的缓存判断
+  let prev = null;
+  if (existsSync(manifestPath)) {
     try {
-      const prev = JSON.parse(readFileSync(manifestPath, "utf8"));
-      const rec = (prev.adapters || []).find((a) => a.platform === ADAPTER_PLATFORM);
-      if (rec && rec.version === ADAPTER_VERSION) {
-        const actual = createHash("sha256").update(readFileSync(pkgPath)).digest("hex");
-        if (actual === rec.sha256) {
-          console.log(`[sync-assets] 适配器包已是最新（${ADAPTER_FILE}），跳过下载`);
-          return;
-        }
-      }
+      prev = JSON.parse(readFileSync(manifestPath, "utf8"));
     } catch {
-      // 清单损坏：落到下面重新生成
+      prev = null; // 清单损坏：落到下面重新生成
     }
   }
+  const prevByPlatform = new Map(
+    (prev?.adapters || []).map((a) => [a.platform, a]),
+  );
 
-  console.log(`[sync-assets] 下载适配器包 ${ADAPTER_URL} ...`);
-  const buf = await httpGetBuffer(ADAPTER_URL);
-  const sha256 = createHash("sha256").update(buf).digest("hex");
-  writeFileSync(pkgPath, buf);
+  const entries = [];
+  const failed = [];
 
-  const manifest = {
-    version: "1",
-    adapters: [
-      {
-        platform: ADAPTER_PLATFORM,
-        version: ADAPTER_VERSION,
-        file: ADAPTER_FILE,
-        sha256,
-        size: buf.length,
-        urls: [ADAPTER_URL],
-      },
-    ],
-  };
+  for (const platform of platforms) {
+    const file = `terracotta-${ADAPTER_VERSION}-${platform}-pkg.tar.gz`;
+    const url = `${ADAPTER_RELEASE_BASE}/v${ADAPTER_VERSION}/${file}`;
+    const pkgPath = join(ADAPTER_DIR, file);
+
+    // 缓存（按平台分别判断）：包已存在且与旧清单记录的哈希一致 → 跳过下载
+    const rec = prevByPlatform.get(platform);
+    if (existsSync(pkgPath) && rec && rec.version === ADAPTER_VERSION) {
+      try {
+        const actual = createHash("sha256").update(readFileSync(pkgPath)).digest("hex");
+        if (actual === rec.sha256) {
+          console.log(`[sync-assets] 适配器包已是最新（${file}），跳过下载`);
+          entries.push({
+            platform,
+            version: ADAPTER_VERSION,
+            file,
+            sha256: rec.sha256,
+            size: statSync(pkgPath).size,
+            urls: rec.urls?.length ? rec.urls : [url],
+          });
+          continue;
+        }
+      } catch {
+        // 读包失败：落到下面重新下载
+      }
+    }
+
+    console.log(`[sync-assets] 下载适配器包 ${url} ...`);
+    let buf;
+    try {
+      buf = await httpGetBuffer(url);
+    } catch (e) {
+      // 单个平台失败不拖垮整个发布
+      console.warn(
+        `[sync-assets] 平台 ${platform} 下载失败（${e.message}），跳过该平台`,
+      );
+      failed.push(platform);
+      continue;
+    }
+    const sha256 = createHash("sha256").update(buf).digest("hex");
+    writeFileSync(pkgPath, buf);
+    entries.push({
+      platform,
+      version: ADAPTER_VERSION,
+      file,
+      sha256,
+      size: buf.length,
+      urls: [url],
+    });
+  }
+
+  if (entries.length === 0) {
+    console.error(
+      `[sync-assets] 所有平台下载失败（${failed.join(", ") || "无平台"}），拒绝发布空清单`,
+    );
+    process.exit(1);
+  }
+  if (failed.length > 0) {
+    console.warn(
+      `[sync-assets] 有 ${failed.length} 个平台未发布：${failed.join(", ")}`,
+    );
+  }
+
+  // 多平台时 version 取各平台 file+sha256 的聚合哈希（内容变了版本就变）；
+  // 单平台时保持原来的 "1"，不引入无谓的版本变动。
+  const version =
+    entries.length === 1 ? "1" : computeAdapterVersion(entries);
+
+  const manifest = { version, adapters: entries };
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
   console.log(
-    `[sync-assets] 适配器清单已生成：${ADAPTER_FILE}（${buf.length}B，sha256=${sha256.slice(0, 16)}…）`,
+    `[sync-assets] 适配器清单已生成：${entries.length} 个平台（${entries
+      .map((e) => e.platform)
+      .join(", ")}），version=${version}`,
   );
+}
+
+/** 适配器清单版本 = 各平台「file + sha256」的聚合哈希（与内容绑定）。 */
+function computeAdapterVersion(entries) {
+  const h = createHash("sha256");
+  for (const e of [...entries].sort((a, b) => a.platform.localeCompare(b.platform))) {
+    h.update(`${e.platform}\u0000${e.file}\u0000${e.sha256}\u0000`);
+  }
+  return h.digest("hex").slice(0, 16);
 }
 
 /**
