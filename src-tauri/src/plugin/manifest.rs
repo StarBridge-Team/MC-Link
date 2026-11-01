@@ -13,7 +13,11 @@ use crate::plugin::permission::Permission;
 /// 清单文件名。
 pub const MANIFEST_FILE: &str = "plugin.json";
 
-/// 插件种类。对应需求中的三类插件能力。
+/// 插件种类。对应需求中的六类插件能力。
+///
+/// 前三类是联机链路的核心；后三类是 B7 扩展：
+/// 桥接器（不携带引擎、只做协议兼容）、挂件（窗口内挂件 / 窗口外页面）、
+/// 小工具（不参与链路的功能扩展）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginKind {
@@ -23,6 +27,12 @@ pub enum PluginKind {
     Detector,
     /// 耦合类：把具体游戏接入 MC Link 的统一调度流程。
     Coupler,
+    /// 桥接类：**不携带引擎**，只做协议兼容/翻译（把某种游戏协议转成统一协议）。
+    Bridge,
+    /// 挂件类：向窗口内注入小挂件，或提供窗口外页面（`mount` 区分两种形态）。
+    Widget,
+    /// 工具类：不参与联机链路的小工具（脚本、批处理、辅助面板等）。
+    Utility,
 }
 
 /// 工作方式：插件靠什么把局域网暴露给对端。
@@ -152,6 +162,9 @@ impl PluginKind {
             PluginKind::Adapter => "adapter",
             PluginKind::Detector => "detector",
             PluginKind::Coupler => "coupler",
+            PluginKind::Bridge => "bridge",
+            PluginKind::Widget => "widget",
+            PluginKind::Utility => "utility",
         }
     }
 
@@ -178,6 +191,12 @@ impl PluginKind {
                 Permission::ProcSpawnGame,
                 Permission::FsReadGameDirs,
             ],
+            // 桥接器只做协议翻译，不携带引擎，因此只需要本机回环 + 自身数据目录。
+            PluginKind::Bridge => &[Permission::NetConnectLocal, Permission::FsPluginData],
+            // 挂件向界面注入 UI，只需要通知能力与自身数据目录。
+            PluginKind::Widget => &[Permission::UiNotify, Permission::FsPluginData],
+            // 小工具默认不需要网络与游戏目录，只读写自身数据并推送通知。
+            PluginKind::Utility => &[Permission::FsPluginData, Permission::UiNotify],
         }
     }
 }

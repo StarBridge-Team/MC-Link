@@ -72,6 +72,18 @@ const facetRows = computed(() => {
   })).filter((row) => row.entries.length > 0);
 });
 
+/**
+ * kind 维度显示中文名（B7 扩到 6 类后不能只显示英文枚举值）。
+ * 其它维度保持原值——方法/平台/标签本身可读，且取值可能自定义。
+ * `t()` 对缺失 key 返回 key 本身，据此判断是否命中翻译。
+ */
+function facetLabel(key: string, value: string): string {
+  if (key !== "kinds") return value;
+  const path = `plugins.kindName.${value}`;
+  const label = t(path);
+  return label === path ? value : label;
+}
+
 async function load() {
   loading.value = true;
   error.value = null;
@@ -240,7 +252,7 @@ onUnmounted(() => {
               type="button"
               @click="toggleFacet(row.key, value)"
             >
-              {{ value }}
+              {{ facetLabel(row.key, value) }}
               <span class="chip__count mono">{{ count }}</span>
             </button>
           </div>

@@ -292,6 +292,12 @@ pub fn required_for(kind: PluginKind, method: &str) -> Permission {
             coupler_method::ATTACH | coupler_method::DETACH => Permission::NetConnectLocal,
             _ => Permission::FsReadGameDirs,
         },
+        // 桥接器不携带引擎，只做协议兼容：默认只需本机回连。
+        PluginKind::Bridge => Permission::NetConnectLocal,
+        // 挂件向界面注入 UI：需要通知能力。
+        PluginKind::Widget => Permission::UiNotify,
+        // 小工具默认只读写自身数据目录。
+        PluginKind::Utility => Permission::FsPluginData,
     }
 }
 
@@ -308,6 +314,12 @@ pub fn kind_baseline(kind: PluginKind) -> Permission {
         PluginKind::Detector => Permission::GameScan,
         // 耦合器要拉起游戏进程
         PluginKind::Coupler => Permission::ProcSpawnGame,
+        // 桥接器只做协议翻译，不需要额外高风险能力
+        PluginKind::Bridge => Permission::NetConnectLocal,
+        // 挂件要能把 UI 推送/渲染到界面
+        PluginKind::Widget => Permission::UiNotify,
+        // 小工具只需要读写自身数据
+        PluginKind::Utility => Permission::FsPluginData,
     }
 }
 

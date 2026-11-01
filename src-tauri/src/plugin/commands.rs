@@ -436,6 +436,9 @@ fn parse_kind(kind: &str) -> Result<PluginKind, String> {
         "adapter" => Ok(PluginKind::Adapter),
         "detector" => Ok(PluginKind::Detector),
         "coupler" => Ok(PluginKind::Coupler),
+        "bridge" => Ok(PluginKind::Bridge),
+        "widget" => Ok(PluginKind::Widget),
+        "utility" => Ok(PluginKind::Utility),
         other => Err(format!("未知插件种类: {}", other)),
     }
 }

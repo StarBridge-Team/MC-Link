@@ -4,7 +4,19 @@
 
 // ===== 插件系统（后端 plugin/**） =====
 
-export type PluginKind = "adapter" | "detector" | "coupler";
+/**
+ * 插件种类（B7 扩到 6 类）。
+ *
+ * 前三是联机链路核心；`bridge` 是纯协议兼容的桥接器（不携带引擎），
+ * `widget` 承载「窗口内挂件 / 窗口外页面」两种形态，`utility` 是不参与链路的小工具。
+ */
+export type PluginKind =
+  | "adapter"
+  | "detector"
+  | "coupler"
+  | "bridge"
+  | "widget"
+  | "utility";
 export type PluginSource = "builtin" | "external";
 export type PluginTrust = "official" | "verified" | "unsigned" | "blocked";
 
