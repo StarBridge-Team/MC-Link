@@ -58,15 +58,15 @@ pub fn open_room_window(
         .build()
         .map_err(|e| format!("创建房间窗口失败: {}", e))?;
 
-    // 与主窗口共用同一套材质设置：新窗口不继承，必须显式应用一次，
-    // 否则房间窗口在深色模式下会是一块不透明的白底。
+    crate::window::animation::show(&window);
+
+    // 材质必须在窗口**真正显示之后**应用：`visible(false)` 时 DWM 不接受
+    // 背景类型（表现为"主窗口有材质、子窗口是纯色"）。与主窗口共用同一套设置。
     if let Some(mgr) = app.try_state::<Arc<AppMgr>>() {
         let pers = mgr.read().personalization().unwrap_or_default();
         let dark = pers.theme_mode == "dark";
         crate::effect::apply_effect(&window, &pers.transparent_effect, pers.effect_tint, dark);
     }
-
-    crate::window::animation::show(&window);
     Ok(label)
 }
 
@@ -121,13 +121,13 @@ pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {
     .build()
     .map_err(|e| format!("创建设置窗口失败: {}", e))?;
 
-    // 与房间窗口同一套材质：新窗口不继承，必须显式应用一次。
+    crate::window::animation::show(&window);
+
+    // 与房间窗口同一套材质：必须在显示之后应用（`visible(false)` 时 DWM 不认）。
     if let Some(mgr) = app.try_state::<Arc<AppMgr>>() {
         let pers = mgr.read().personalization().unwrap_or_default();
         let dark = pers.theme_mode == "dark";
         crate::effect::apply_effect(&window, &pers.transparent_effect, pers.effect_tint, dark);
     }
-
-    crate::window::animation::show(&window);
     Ok(())
 }

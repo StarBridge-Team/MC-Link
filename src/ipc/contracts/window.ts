@@ -13,6 +13,13 @@
  * - `snap-click`：在按钮上完成了一次点击。最大化/还原**仍由前端执行**，
  *   不在原生侧再实现一份，否则同一个动作会有两套状态机。
  */
-export type WindowIntent =
+export type WindowIntent = (
   | { action: "snap-hover"; hovering: boolean }
-  | { action: "snap-click" };
+  | { action: "snap-click" }
+) & {
+  /**
+   * 目标窗口 label。后端 `emit_to` 已经定向，这里再带一份用于前端二次过滤：
+   * 多窗口共用同一个事件主题，任何一处退化成广播都会让悬停态跨窗口串。
+   */
+  window?: string;
+};

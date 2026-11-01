@@ -7,8 +7,18 @@
  */
 import { ref } from "vue";
 import { defineStore } from "pinia";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { WindowIntent } from "../ipc/contracts/window";
+
+/** 当前窗口 label；浏览器预览（无 Tauri 注入）时为空串。 */
+function currentLabel(): string {
+  try {
+    return getCurrentWindow().label;
+  } catch {
+    return "";
+  }
+}
 
 export const useWindowChromeStore = defineStore("windowChrome", () => {
   /** 原生覆盖层报告的"鼠标在最大化按钮上"。 */
@@ -18,6 +28,10 @@ export const useWindowChromeStore = defineStore("windowChrome", () => {
 
   /** 事件桥只负责收，落到哪个字段由这里决定。 */
   function apply(intent: WindowIntent) {
+    // 二次过滤：不属于本窗口的外壳事件一律忽略（防止多窗口共用同一事件主题时串态）。
+    const label = currentLabel();
+    if (intent.window && label && intent.window !== label) return;
+
     switch (intent.action) {
       case "snap-hover":
         snapHovered.value = intent.hovering;

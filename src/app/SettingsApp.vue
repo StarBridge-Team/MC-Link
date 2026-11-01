@@ -20,6 +20,10 @@ const { settings, colorScheme, themeEl, scheme, color, variant, contrast } = use
 onMounted(async () => {
   settings.bindSystemTheme(() => void settings.applyAll());
   await settings.load();
+  // 必须把设置**落到当前窗口**：`load()` 只填充状态，材质（`set_window_effect`）
+  // 与背景都在 `applyAll()` 里。漏掉这一步，设置窗口就只剩 CSS 底色——
+  // 看起来就是"子窗口没有窗口材质"。
+  await settings.applyAll();
   // 配色元素要挂载后才存在；绑定后由 useColorScheme 自己决定何时重算。
   colorScheme.attach(themeEl.value);
 });

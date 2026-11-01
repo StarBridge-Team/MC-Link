@@ -65,8 +65,19 @@ const allNavItems = computed<NavItem[]>(() => [
   { id: "connect", icon: "broadcast_on_home", label: t("nav.connect") },
   { id: "rooms", icon: "meeting_room", label: t("nav.rooms") },
   { id: "game", icon: "sports_esports", label: t("nav.game") },
-  { id: "setting", icon: "tune", label: t("nav.setting") },
 ]);
+
+/**
+ * 导航栏底部菜单：账号 / 个性化 / 设置。
+ *
+ * 三者都是**设置独立窗口的入口**（只是直达的分区不同），所以主导航里不再单独放「设置」。
+ * 账号相关内容（玩家名、离线 UUID）在 `general` 分区，个性化在 `personalization`。
+ */
+const bottomNavItems: NavItem[] = [
+  { id: "account", icon: "account_circle", label: "账号" },
+  { id: "personalization", icon: "palette", label: "个性化" },
+  { id: "settings", icon: "settings", label: "设置" },
+];
 
 /**
  * 受地区限制的功能**入口**：**只有中国大陆**命中时隐藏（判定见 `stores/region.ts`）。
@@ -112,6 +123,19 @@ const activeSecondary = computed(() =>
 function onNavSelect(id: string) {
   // 设置已抽成**独立窗口**（B7）：主窗口只负责把它叫出来，不再切自己的路由。
   // `/setting` 路由仍保留，作为深链/兜底入口。
+  // 底部菜单三项都落到设置窗口，只是直达的分区不同。
+  if (id === "account" || id === "settings") {
+    void openSettingsWindow("general").catch((e) =>
+      console.warn("[app] 打开设置窗口失败:", e),
+    );
+    return;
+  }
+  if (id === "personalization") {
+    void openSettingsWindow("personalization").catch((e) =>
+      console.warn("[app] 打开设置窗口失败:", e),
+    );
+    return;
+  }
   if (id === "setting") {
     void openSettingsWindow().catch((e) => console.warn("[app] 打开设置窗口失败:", e));
     return;
@@ -219,6 +243,7 @@ onMounted(async () => {
         v-if="!hideNav"
         :items="navItems"
         :active="String(route.name ?? 'home')"
+        :bottom-items="bottomNavItems"
         @select="onNavSelect"
       />
       <NavList
