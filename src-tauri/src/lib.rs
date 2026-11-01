@@ -4,9 +4,11 @@ mod build_channel;
 mod commands;
 mod core;
 mod domain;
+mod hmcl;
 mod persist;
 mod state;
 mod utils;
+use hmcl::*;
 use commands::*;
 mod asset_server;
 mod assets;
@@ -454,6 +456,8 @@ pub fn run() {
             plugin_reload,
             market_list,
             market_install,
+            hmcl_list_themes,
+            hmcl_theme_seed,
             room_prepare,
             room_start_host,
             room_join,

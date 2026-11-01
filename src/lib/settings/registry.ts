@@ -36,6 +36,7 @@ export interface SettingEntry {
 }
 
 import PersonalizationSection from "../../views/settings/PersonalizationSection.vue";
+import HmclSection from "../../views/settings/HmclSection.vue";
 import HomepageSection from "../../views/settings/HomepageSection.vue";
 import GeneralSection from "../../views/settings/GeneralSection.vue";
 import UpdateSection from "../../views/settings/UpdateSection.vue";
@@ -52,6 +53,16 @@ export const NATIVE_ENTRIES: SettingEntry[] = [
     group: "外观",
     priority: 100,
     keywords: ["外观", "主题", "颜色", "背景", "语言", "地区", "字体"],
+  },
+  {
+    id: "hmcl-theme",
+    label: "HMCL 主题",
+    icon: "palette",
+    kind: "native",
+    component: HmclSection,
+    group: "外观",
+    priority: 100,
+    keywords: ["HMCL", "主题", "配色", "导入", "启动器", "种子色"],
   },
   {
     id: "homepage",
