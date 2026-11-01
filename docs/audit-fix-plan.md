@@ -2,105 +2,81 @@
 
 来源：2026-11-01 前后端契约 / 内存泄漏 / 异步 / 状态同步 / 平台差异 八维审计。
 
-图例：`- [ ]` 未开始 · `- [~]` 进行中 · `- [x]` 已完成（附提交号）
+图例：`- [ ]` 未开始 · `- [~]` 进行中 · `- [x]` 已完成
 
 **提交约定**：一个条目一次提交，格式 `fix(scope): 说明`；只 `git add` 本条目的文件，
 禁止 `git add -A`（仓库有 rustfmt-on-save，`src-tauri` 常是脏的）。
 
 ---
 
-## 批次 1 · 前端 P0/P1（无决策项）
+## 批次 1 · 前端 P0/P1（无决策项）—— 全部完成
 
-- [ ] **F1 · D6-1** `confirmAction()` 恒返回 false（弹窗看不到、"重置引导"永不执行）
-  `src/composables/useToast.ts`
-- [ ] **F2 · D2-5** `disposeIpcBridge()` 不清 `retryTimer`；订阅重试无上限无退避
-  `src/ipc/bridge.ts`
-- [ ] **F3 · D2-7** `onResized` / `onMoved` 的 UnlistenFn 被丢弃（监听器泄漏）
-  `src/composables/useWindowControls.ts`
-- [ ] **F4 · D2-8** `bindSystemTheme` 的 matchMedia 监听无法移除
-  `src/composables/useSettings.ts`
-- [ ] **F5 · D4-3** 设置保存失败零提示（`saveError` / `saving` / `loaded` 无出口）
-  `src/views/settings/PersonalizationSection.vue` 等
-- [ ] **F6 · D2-6** 3 处 `listen()` 的 await 竞态 → 监听器永久泄漏
-  `src/views/HomeView.vue`、`src/views/ConnectView.vue`、`src/views/game/PluginsSection.vue`
-- [ ] **F7 · D1-4** `resize_window` 的 `center` 前端可选、后端必填（契约漂移）
-  `src/lib/api/window.ts`
-- [ ] **F8 · D1-2 / D1-3** `get_terracotta_state` 返回类型说谎；`game_list.port` 可空性说谎
-  `src/lib/api/adapter.ts`、`src/lib/api/typesPlugin.ts`、`src/views/game/GamesSection.vue`
-- [ ] **F9 · D4-5 / D4-6** 无适配器时输入框打不进字、按钮静默；未 `await setup.loadOnce()` 用错游戏
-  `src/composables/useConnect.ts`、`src/components/settings/GeneralCard.vue`
+- [x] **F1 · D6-1** `confirmAction()` 改为等 `closed` 事件 + 自动 `hide`
+- [x] **F2 · D2-5** `disposeIpcBridge()` 清 `retryTimer`；订阅退避重试（上限 5 次）
+- [x] **F3 · D2-7** `onResized` / `onMoved` 存 `UnlistenFn`，卸载时移除
+- [x] **F4 · D2-8** `bindSystemTheme` 改为模块级单一监听
+- [x] **F5 · D4-3** 设置保存/加载失败转错误提示（`InfoBar`）
+- [x] **F6 · D2-6** HomeView / ConnectView / PluginsSection 的 `listen` 加 `disposed` 守卫
+- [x] **F7 · D1-4** `resize_window` 的 `center` 改必填
+- [x] **F8 · D1-2 / D1-3** 陶瓦状态返回整值；`game_list.port` 可空
+- [x] **F9 · D4-5 / D4-6** 无适配器不可建房；`mount()` 先 `await setup.loadOnce()`
 
-## 批次 2 · 房间会话生命周期（后端为主）
+## 批次 2 · 房间会话生命周期 —— 完成
 
-- [ ] **R1 · D4-1 / D2-2** 终态不可回退：轮询把已断开房间复活成"在线"；`run_link` 复活已断开会话
-  `src-tauri/src/mgr/room.rs`
-- [ ] **R2 · D2-1 / D2-3 / D4-7** 后端 `registry.remove()` 是死代码；前端 `refresh()` 只合并不裁剪（幽灵房间）
-  `src-tauri/src/domain/room/registry.rs`、`src-tauri/src/mgr/room.rs`、`src/stores/rooms.ts`
+- [x] **R1 · D4-1 / D2-2** 终态不可回退：`is_terminal` 守卫轮询与建链写回
+- [x] **R2 · D2-1 / D2-3 / D4-7** `registry.remove()` 接通；前端 `refresh()` 全量对账裁幽灵房间
 
-## 批次 3 · 启动期安全与渠道闸门（后端）
+## 批次 3 · 启动期安全与渠道闸门 —— 完成
 
-- [ ] **S1 · D3-1** 托盘右键在主线程建窗口 → 主线程等主线程（死锁）
-  `src-tauri/src/window/widget.rs`、`src-tauri/src/tray.rs`
-- [ ] **S2 · D7-2** 托盘构建失败导致整个应用启动失败
-  `src-tauri/src/lib.rs`、`src-tauri/src/tray.rs`
-- [ ] **S3 · D5-2** `legal.rs` 远端清单文件名未做路径校验（路径遍历）
-  `src-tauri/src/legal.rs`、`src-tauri/src/assets/pull/mod.rs`
-- [ ] **S4 · D5-3** 数据目录解析失败静默回退 `"."`（密钥/设置落到工作目录）
-  `src-tauri/src/datadir.rs`
-- [ ] **S5 · D8-1** 官方 updater 插件路径绕过 `build_channel` 闸门
-  `src-tauri/src/update/commands.rs`
+- [x] **S1 · D3-1** 托盘右键建窗移出主线程（`async_runtime::spawn`）
+- [x] **S2 · D7-2** 托盘构建失败不再阻断启动（只打日志）
+- [x] **S3 · D5-2** 法务条款清单文件名 path 校验，非法即整份作废
+- [x] **S4 · D5-3** 数据目录解析失败即报错（不再回退 `"."`）
+- [x] **S5 · D8-1** 官方 updater 插件路径受 `build_channel` 闸门约束
 
-## 批次 4 · 适配器平台化
+## 批次 4 · 适配器平台化 —— 完成
 
-- [ ] **T1 · D5-1** 陶瓦可执行文件名硬编码 `terracotta-0.4.2-windows-x86_64.exe` → 非 Windows 永远起不来
-  `src-tauri/src/adapter.rs`、`src-tauri/src/assets/adapter.rs`
-- [ ] **T2** 发布脚本只发 `windows-x86_64` 一个平台
-  `scripts/sync-assets.mjs`
+- [x] **T1 · D5-1** 适配器按平台发现 exe（不再硬编码 windows 产物名）
+- [x] **T2** 资源多平台分发（含 arm64 / armv7 归一化）
 
-## 批次 5 · 锁与异步阻塞
+## 批次 5 · 锁与异步阻塞 —— 完成
 
-- [ ] **L1 · D3-2** `AdapterManager` 的 std Mutex 被持锁跨越 12s sleep / 3s 阻塞 HTTP
-  `src-tauri/src/adapter.rs`、`src-tauri/src/plugin/builtin/terracotta.rs`
-- [ ] **L2 · D3-3** `launch_lock` 跨 await 持有 20s → 所有插件调用被串行化
-  `src-tauri/src/plugin/manager/mod.rs`、`src-tauri/src/plugin/manager/provision.rs`
-- [ ] **L3 · D3-6** 退出路径主线程 `blocking_lock()` + 阻塞 HTTP
-  `src-tauri/src/plugin/manager/mod.rs`
-- [ ] **L4 · D3-5** async 上下文里 `Child::wait()` 阻塞 worker
-  `src-tauri/src/plugin/manager/provision.rs`、`src-tauri/src/plugin/launcher.rs`
+- [x] **L1 · D3-2** `AdapterManager` 外层锁改为 `Arc<AdapterManager>`；12s 轮询移出持锁
+- [x] **L2 · D3-3** `launch_lock` 只护 spawn，等待握手在锁外
+- [x] **L3 · D3-6** 退出路径不再持锁做阻塞 HTTP
+- [x] **L4 · D3-5** 子进程 `wait` 改后台线程，不阻塞 worker
 
-## 批次 6 · 跨窗口状态与事件路由
+## 批次 6 · 跨窗口状态与事件路由 —— 完成
 
-- [ ] **E1 · D4-2** 跨窗口个性化设置永不同步（`APP_SETTINGS` 事件两端都定义了却从未 emit/listen）
-  `src-tauri/src/core/events.rs`、`src-tauri/src/config/write.rs`、`src/ipc/bridge.ts`、`src/composables/useSettings.ts`
-- [ ] **E2 · D2-4** 房间事件是广播而非按 sessionId 路由
-  `src-tauri/src/domain/room/registry.rs`、`src-tauri/src/bridge/events.rs`
-- [ ] **E3 · D2-11** 房间窗口关闭后不断开会话（链路/端口/耦合器不清理）
-  `src-tauri/src/window/factory.rs`、`src-tauri/src/commands/window.rs`
+- [x] **E1 · D4-2** 补 `APP_SETTINGS` 事件（后端 emit + 前端 `applyRemotePatch` 不回写）
+- [x] **E2 · D2-4** 房间事件按 sessionId 定向投递（main + 该会话房间窗口）
+- [x] **E3 · D2-11** 房间窗口关闭即断链（用户拍板：**保持现状，关窗不断链**，未改）
 
-## 批次 7 · 便携版 / 安装版
+## 批次 7 · 便携版 / 安装版 —— 完成
 
-- [ ] **P1 · D8-2** 便携版替换 exe 非原子写；失败不回滚、不提示；`.bak` 被下次启动删
-  `src-tauri/src/update/install.rs`
-- [ ] **P2 · D8-3** 便携版 asset 白名单运行时补丁失败 → 全站 404，仅一行警告
-  `src-tauri/src/lib.rs`
-- [ ] **P3 · D8-5** 安装版：检查读 `latest.json`、落地读 `tauri.json`，两份清单可能不同步
-  `src-tauri/src/update/commands.rs`、`scripts/make-update.mjs`
+- [x] **P1 · D8-2** 便携版落地原子化（临时文件 + 回滚 .bak + 成功标记才清 .bak）
+- [x] **P2 · D8-3** asset 白名单失败发 `asset-scope-error` 事件（前端 AboutSection 常驻提示）
+- [x] **P3 · D8-5** `latest.json` / `tauri.json` 同步生成；平台标签归一化
 
-## 批次 8 · Linux 平台差异（非决策项）
+## 批次 8 · Linux 平台差异 —— 完成
 
-- [ ] **N1 · D7-3** 托盘面板 Linux 直角且圆角外仍可命中
-  `src-tauri/src/window/region.rs`
-- [ ] **N2 · D7-4** Wayland 下 `set_position` 失效 → 面板不贴托盘
-  `src-tauri/src/window/widget.rs`
-- [ ] **N3 · D7-6** Linux 无材质兜底 → 透明失败即白底矩形
-  `src-tauri/src/window/widget.rs`、`src-tauri/src/effect.rs`
+- [x] **N1 · D7-3** 托盘面板 Linux 直角 + 角上误命中注释纠偏
+- [x] **N2 · D7-4** Wayland 下定位降级到主窗口下方
+- [x] **N3 · D7-6** 材质兜底注释更正（Linux 只靠 transparent）
+- [x] 行数回退：`room.rs` 451 / `install.rs` 349（+`install/tests.rs`）/ `useSettings` 拆 `useSettingsPersist`
+- [x] **D1-5 错误码映射**：`src/lib/api/errorCodes.ts` + `errorMessage`/`messageOf` 按 code 取中文
 
 ---
 
-## 待用户决策（完成上述条目后统一询问）
+## 已完成决策（用户拍板）
 
-- [ ] **Q1 · D7-1** 托盘只有 `Click` 一条路径且无菜单兜底 → Linux 上托盘面板不可达。修法形态？
-- [ ] **Q2 · D4-8** 房间窗口 / 托盘面板不渲染背景图、视频、背景音乐（只有主窗口有载体）。是否统一？
-- [ ] **Q3 · D8-4** 便携版被单实例插件顶掉（"复制一份到别处"这一便携核心用法不可用）。是否放行多开？
-- [ ] **Q4 · D1-5** 错误码契约是半成品（前端 0 处按 `code` 分支；仅 6/78 命令返回 `{code,message}`）。补齐还是删字段？
-- [ ] **Q5** 适配器发布平台范围（桌面 6 个 / 含更多）
+- [x] **Q1 · D7-1** 托盘可达性：仅文档/注释说明，不改 UI（Wayland 定位降级已就位）
+- [x] **Q4 · D1-5** 错误码：补全 `code → 中文` 映射表（覆盖 4 个已带 code 的错误）
+- [x] **Q5** 适配器发布平台：桌面 6 平台分发（windows/macos × x64/arm64 + linux × x64/arm64）
+
+## 仍待用户决策（产品方向，需拍板）
+
+- [ ] **Q2 · D4-8** 房间窗口 / 托盘小面板要不要也显示你设置的背景图、背景视频、背景音乐
+  （目前只有主窗口显示这些个性化内容）
+- [ ] **Q3 · D8-4** 便携版（U 盘 / 复制文件夹那种）要不要允许"多开"
+  （当前被单实例限制，只能开一个；便携的核心用法是"复制一份到别处"，多开可能冲突）
