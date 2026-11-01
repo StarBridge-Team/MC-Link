@@ -9,6 +9,7 @@ import OobeOverlay from "./components/oobe/OobeOverlay.vue";
 import { useSetup } from "./composables/useSetup";
 import { useWindowControls } from "./composables/useWindowControls";
 import { adapterStartupInit } from "./lib/api/adapter";
+import { openSettingsWindow } from "./lib/api/window";
 import { DEFAULT_SETTING_TAB, SETTING_TABS, isSettingTab } from "./router";
 import { useIntentStore } from "./stores/intent";
 import { useRegionStore } from "./stores/region";
@@ -108,6 +109,12 @@ const activeSecondary = computed(() =>
 );
 
 function onNavSelect(id: string) {
+  // 设置已抽成**独立窗口**（B7）：主窗口只负责把它叫出来，不再切自己的路由。
+  // `/setting` 路由仍保留，作为深链/兜底入口。
+  if (id === "setting") {
+    void openSettingsWindow().catch((e) => console.warn("[app] 打开设置窗口失败:", e));
+    return;
+  }
   if (route.name === id) return;
   void router.push({ name: id });
 }

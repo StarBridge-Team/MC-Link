@@ -62,6 +62,16 @@ export async function showMainWindow() {
   return invoke<void>("show_main_window");
 }
 
+/**
+ * 打开（或唤出）**设置独立窗口**（B7）。
+ *
+ * 设置已从主窗口的 Tab 抽成独立窗口：主窗口导航点「设置」走这里，不再 `router.push`。
+ * 后端是单例窗口（label = `settings`），重复调用只做 show + focus。
+ */
+export async function openSettingsWindow() {
+  return invoke<void>("settings_window_open");
+}
+
 /** 窗口边缘方向，与 `commands/window.rs::resize_drag` 的字符串一一对应。 */
 export type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 

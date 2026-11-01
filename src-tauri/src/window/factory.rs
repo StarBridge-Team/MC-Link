@@ -88,3 +88,46 @@ pub fn close_room_window(app: &AppHandle, session_id: &str) {
         let _ = window.close();
     }
 }
+
+/// 设置独立窗口的 label（单例，全局只有一个）。
+const SETTINGS_LABEL: &str = "settings";
+
+/// 打开（或唤出）设置窗口。
+///
+/// 已存在时只 `show + focus`：设置是单例窗口，重复点「设置」不该重建——
+/// 那会丢掉用户调过的尺寸，也会让正在编辑的字段被重新挂载清空。
+pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window(SETTINGS_LABEL) {
+        let _ = existing.unminimize();
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    let window = WebviewWindowBuilder::new(
+        app,
+        SETTINGS_LABEL,
+        WebviewUrl::App("settings.html".into()),
+    )
+    .title("MC Link · 设置")
+    .inner_size(880.0, 640.0)
+    .min_inner_size(720.0, 520.0)
+    .decorations(false)
+    .transparent(true)
+    .resizable(true)
+    // 先不显示：由 `animation::show` 决定用系统动画还是瞬时显示。
+    .visible(false)
+    .center()
+    .build()
+    .map_err(|e| format!("创建设置窗口失败: {}", e))?;
+
+    // 与房间窗口同一套材质：新窗口不继承，必须显式应用一次。
+    if let Some(mgr) = app.try_state::<Arc<AppMgr>>() {
+        let pers = mgr.read().personalization().unwrap_or_default();
+        let dark = pers.theme_mode == "dark";
+        crate::effect::apply_effect(&window, &pers.transparent_effect, pers.effect_tint, dark);
+    }
+
+    crate::window::animation::show(&window);
+    Ok(())
+}

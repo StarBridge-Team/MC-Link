@@ -462,6 +462,7 @@ pub fn run() {
             room_window_open,
             room_window_focus,
             room_window_close,
+            settings_window_open,
             snap_set_bounds,
             app_show_connect,
             connect_scan,
