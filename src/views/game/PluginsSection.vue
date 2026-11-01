@@ -57,6 +57,8 @@ const filter = reactive({
 
 let unlisten: UnlistenFn | null = null;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
+/** 组件是否已卸载：订阅句柄回来时若已卸载，必须就地退订。 */
+let disposed = false;
 
 const FACET_KEYS = ["kinds", "methods", "platforms", "tags"] as const;
 
@@ -172,13 +174,21 @@ onMounted(async () => {
   // 避免插件频繁重连时界面不断重排。
   // 订阅失败（非 Tauri 环境）不影响列表本身，忽略即可。
   try {
-    unlisten = await onPluginEvent(() => void loadGateway());
+    const off = await onPluginEvent(() => void loadGateway());
+    // `await` 期间组件可能已卸载：句柄还没赋给 `unlisten`，
+    // `onUnmounted` 清不到它 → 监听器永久泄漏。必须就地退订。
+    if (disposed) {
+      off();
+      return;
+    }
+    unlisten = off;
   } catch (e) {
     console.warn("[plugins] 订阅插件事件失败:", e);
   }
 });
 
 onUnmounted(() => {
+  disposed = true;
   if (searchTimer) clearTimeout(searchTimer);
   unlisten?.();
   unlisten = null;
