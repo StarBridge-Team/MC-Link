@@ -97,7 +97,7 @@ onUnmounted(() => {
 
             <div class="game-card__meta">
               <span class="tag mono">{{ game.transport }}</span>
-              <span class="tag mono">{{ t("game.port") }} {{ game.port }}</span>
+              <span v-if="game.port !== null" class="tag mono">{{ t("game.port") }} {{ game.port }}</span>
               <span v-for="method in game.methods" :key="method" class="tag">{{ method }}</span>
             </div>
 

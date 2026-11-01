@@ -88,7 +88,8 @@ export interface GameInfo {
   id: string;
   name: string;
   aliases: string[];
-  port: number;
+  /** 游戏监听端口（后端 `Option<u16>`，没有默认端口时为 null）。 */
+  port: number | null;
   transport: string;
   traits: string[];
   processNames: string[];
