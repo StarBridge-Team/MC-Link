@@ -94,6 +94,10 @@ export interface PersonalizationSettings {
   theme_from_background: boolean;
   /** 种子色来源，见 {@link ThemeSeedSource}。 */
   theme_seed_source: ThemeSeedSource;
+  /** 界面缩放百分比（80–150，100 = 原始大小）。 */
+  ui_scale: number;
+  /** 背景音乐音量（0–100）。 */
+  music_volume: number;
 }
 
 /**

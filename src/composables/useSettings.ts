@@ -110,6 +110,18 @@ function syncWindowEffect() {
 function applyChrome() {
   const root = document.documentElement;
   root.setAttribute("data-theme-mode", state.theme_mode);
+
+  // 界面缩放：Chromium 的 `zoom` 会整体缩放（含 100vw/100vh 的换算），
+  // 是本项目唯一的全局缩放手段——字号令牌是 px，改 rem 基准对它们无效。
+  const scale = Math.min(150, Math.max(80, state.ui_scale));
+  root.style.zoom = String(scale / 100);
+
+  // 背景音乐音量直接落到 `#bg-music`：音量不属于材质/背景链路，不必走 IPC。
+  // 房间/设置窗口没有这个元素，取不到就跳过。
+  const music = document.getElementById("bg-music") as HTMLAudioElement | null;
+  if (music) {
+    music.volume = Math.min(100, Math.max(0, state.music_volume)) / 100;
+  }
   root.classList.toggle("dark", isDark.value);
   root.classList.toggle("no-animations", !state.animation_enabled);
   root.style.setProperty(

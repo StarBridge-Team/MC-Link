@@ -90,6 +90,20 @@ pub struct PersonalizationSettings {
     /// 这样降级回旧版本时行为不会突变。
     #[serde(default)]
     pub theme_seed_source: String,
+    /// 界面缩放百分比（80–150，100 = 原始大小）。
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: f64,
+    /// 背景音乐音量（0–100）。
+    #[serde(default = "default_music_volume")]
+    pub music_volume: f64,
+}
+
+fn default_ui_scale() -> f64 {
+    100.0
+}
+
+fn default_music_volume() -> f64 {
+    60.0
 }
 
 impl Default for PersonalizationSettings {
@@ -133,6 +147,8 @@ impl Default for PersonalizationSettings {
             // 空字符串表示"老配置"：前端据此按旧布尔迁移，不在这里预置 `manual`，
             // 否则无法区分"用户选过 manual"和"这个字段本来是空的"。
             theme_seed_source: String::new(),
+            ui_scale: default_ui_scale(),
+            music_volume: default_music_volume(),
         }
     }
 }

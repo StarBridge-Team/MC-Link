@@ -81,6 +81,25 @@ function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
+
+/** 界面缩放：80–150%，拖动时只改观感，松手落盘。 */
+function onUiScale(e: Event) {
+  const value = Math.min(150, Math.max(80, Math.round(valueOf(e))));
+  settings.patch({ ui_scale: value }, { silent: true });
+}
+
+function onUiScaleCommit() {
+  void settings.saveNow();
+}
+
+/** 背景音乐音量：0–100%，落到 `#bg-music` 由 `applyChrome` 统一处理。 */
+function onMusicVolume(e: Event) {
+  settings.patch({ music_volume: clampPercent(valueOf(e)) }, { silent: true });
+}
+
+function onMusicVolumeCommit() {
+  void settings.saveNow();
+}
 </script>
 
 <template>
@@ -143,6 +162,39 @@ function clampPercent(value: number): number {
           <m3e-slider-thumb :value="state.animation_speed" />
         </m3e-slider>
         <span class="slider-row__value mono">{{ state.animation_speed }}x</span>
+      </div>
+    </FieldRow>
+  </SettingCard>
+
+  <SettingCard
+    :icon="'zoom_in'"
+    :title="t('appearance.interface')"
+    :desc="t('appearance.interfaceDesc')"
+    wide
+  >
+    <FieldRow :label="t('appearance.uiScale')">
+      <div class="slider-row">
+        <m3e-slider class="slider-row__slider" :min="80" :max="150" :step="5">
+          <m3e-slider-thumb
+            :value="state.ui_scale"
+            @input="onUiScale"
+            @change="onUiScaleCommit"
+          />
+        </m3e-slider>
+        <span class="slider-row__value mono">{{ Math.round(state.ui_scale) }}%</span>
+      </div>
+    </FieldRow>
+
+    <FieldRow :label="t('appearance.musicVolume')">
+      <div class="slider-row">
+        <m3e-slider class="slider-row__slider" :min="0" :max="100" :step="5">
+          <m3e-slider-thumb
+            :value="state.music_volume"
+            @input="onMusicVolume"
+            @change="onMusicVolumeCommit"
+          />
+        </m3e-slider>
+        <span class="slider-row__value mono">{{ Math.round(state.music_volume) }}%</span>
       </div>
     </FieldRow>
   </SettingCard>
