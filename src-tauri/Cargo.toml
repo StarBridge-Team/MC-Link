@@ -99,6 +99,8 @@ windows-sys = { version = "0.61", features = [
     # 托盘面板的圆角裁剪：`CreateRoundRectRgn` + `SetWindowRgn`
     "Win32_Graphics_Gdi",
     "Win32_UI_WindowsAndMessaging",
+    # 贴靠覆盖层的鼠标离开检测：`TrackMouseEvent` + `TME_LEAVE`/`TME_NONCLIENT`
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -96,6 +96,14 @@ core/       基础设施：events / ids / error / http / lock / cache / persist
   （`window::widget`：位置由托盘图标的 `rect` 推算并夹进工作区，尺寸按行数计算）。
 - **非主窗口不铺背景**：房间窗口与小组件只用「材质 + 纯色」，不加载背景图/视频。
   这是刻意的取舍——多窗口同步背景需要每个窗口各跑一遍取色与缓存，收益不抵成本。
+- **窗口圆角归 DWM**：主窗口/房间窗口的 `transparent(true)` 不影响 Win11 原生圆角
+  （实测 `DWMWA_WINDOW_CORNER_PREFERENCE` 生效），因此**前端不得**给窗口外壳加
+  `border-radius`，否则会和 DWM 圆角叠成两层。托盘面板是例外：它是工具窗口
+  （`skip_taskbar`），系统不给圆角，由 `window::region` 用 `SetWindowRgn` 硬裁。
+- **贴靠布局（Snap Layouts）**：自绘的最大化键在 Windows 上被一个不绘制的原生子窗口
+  盖住（`window::snap`），由它的窗口过程返回 `HTMAXBUTTON`；按钮位置由前端按
+  `id="snap-maximize"` 跟随上报，hover/click 通过 `mclink://window` 回传。
+  **那个 id 是跨层契约**，改名会让贴靠失效（表现为按钮位置错位或完全不弹菜单）。
 
 ### 组件系统的两半
 

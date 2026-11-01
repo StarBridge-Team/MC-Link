@@ -198,6 +198,10 @@ pub fn run() {
             // 主窗口一旦被销毁，进程会活着但托盘左键找不到它——用户看到"应用还在，
             // 但怎么点都叫不出来"。CloseRequested 覆盖标题栏关闭键、Alt+F4、
             // 任务栏右键关闭，统一改成隐藏。
+            // 贴靠布局覆盖层：记录每个窗口上报过的按钮矩形（用于去重）。
+            // 真正的原生子窗口在第一次收到矩形时创建，见 `window::snap`。
+            app.manage(Arc::new(window::snap::SnapTracker::default()));
+
             if let Some(main) = app.get_webview_window("main") {
                 let window = main.clone();
                 main.on_window_event(move |event| {
@@ -392,6 +396,7 @@ pub fn run() {
             room_window_open,
             room_window_focus,
             room_window_close,
+            snap_set_bounds,
             app_show_connect,
             connect_scan,
             connect_local_games,

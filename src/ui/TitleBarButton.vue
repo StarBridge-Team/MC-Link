@@ -13,6 +13,13 @@ defineProps<{
   title: string;
   danger?: boolean;
   disabled?: boolean;
+  /**
+   * 强制悬停态。
+   *
+   * Windows 上贴靠布局需要一个原生覆盖窗口盖在这个按钮上，鼠标因此不再进入
+   * `<button>` —— 浏览器不会触发 `:hover`，由原生侧回传状态后通过这个 prop 体现。
+   */
+  active?: boolean;
 }>();
 
 const emit = defineEmits<{ (e: "click"): void }>();
@@ -22,7 +29,7 @@ const emit = defineEmits<{ (e: "click"): void }>();
   <!-- `@mousedown.stop`：标题栏整体是拖拽区，按钮上按下鼠标不能触发拖动 -->
   <button
     class="tb-btn"
-    :class="{ 'tb-btn--danger': danger }"
+    :class="{ 'tb-btn--danger': danger, 'tb-btn--active': active }"
     type="button"
     :title="title"
     :disabled="disabled"
@@ -51,7 +58,8 @@ const emit = defineEmits<{ (e: "click"): void }>();
   font-size: inherit;
 }
 
-.tb-btn:hover:not(:disabled) {
+.tb-btn:hover:not(:disabled),
+.tb-btn--active:not(:disabled) {
   background: color-mix(in srgb, var(--on-surface) 10%, transparent);
   color: var(--text-primary);
 }

@@ -17,8 +17,10 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { useIntentStore, type AppIntent } from "../stores/intent";
 import { useRoomsStore } from "../stores/rooms";
-import { APP_INTENT, ROOM_PROGRESS, ROOM_STATE } from "./events";
+import { useWindowChromeStore } from "../stores/windowChrome";
+import { APP_INTENT, ROOM_PROGRESS, ROOM_STATE, WINDOW } from "./events";
 import type { RoomProgressEvent, RoomStateEvent } from "./contracts/room";
+import type { WindowIntent } from "./contracts/window";
 
 let installed = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -38,6 +40,10 @@ async function install(): Promise<void> {
     // 跨窗口意图：由消费方（App.vue / ConnectView）决定怎么落地，桥只负责收。
     registered.push(
       await listen<AppIntent>(APP_INTENT, (e) => useIntentStore().push(e.payload)),
+    );
+    // 窗口外壳的原生事件（贴靠覆盖层的 hover/click）：同样只收，落地在 store。
+    registered.push(
+      await listen<WindowIntent>(WINDOW, (e) => useWindowChromeStore().apply(e.payload)),
     );
     unlisten = registered;
     installed = true;

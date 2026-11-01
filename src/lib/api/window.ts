@@ -57,5 +57,17 @@ export async function showMainWindow() {
   return invoke<void>("show_main_window");
 }
 
+/**
+ * 上报最大化按钮矩形（CSS 逻辑像素），供 Windows 贴靠布局覆盖层跟随。
+ *
+ * 传 `null` 表示按钮不在了，覆盖层隐藏。贴靠布局是**增强**功能：调用失败只影响
+ * "最大化键不弹贴靠菜单"，不该抛出到 UI，调用方自行吞掉错误。
+ */
+export async function snapSetBounds(
+  bounds: { x: number; y: number; width: number; height: number } | null,
+) {
+  return invoke<void>("snap_set_bounds", { bounds });
+}
+
 // `setTraySize` 已删除：托盘面板的尺寸由后端按行数计算（`window::widget::panel_height`），
 // 前端不再参与，`tray-resize` 事件也随之取消。

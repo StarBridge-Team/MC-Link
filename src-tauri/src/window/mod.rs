@@ -13,4 +13,5 @@
 pub mod animation;
 pub mod factory;
 pub mod region;
+pub mod snap;
 pub mod widget;
