@@ -10,14 +10,30 @@
 //!
 //! 顺序即正确性：前端靠 `rev` 去重与判序。若先解锁再发事件，两个并发更新可能
 //! 以相反顺序到达。Tauri 的 `emit` 只是投递（不阻塞、不回调），持锁发是安全的。
+//!
+//! # 为什么事件是**定向**投递而不是广播
+//!
+//! 房间事件过去一律 `emit`（广播给所有窗口），于是开三个房间时，
+//! 任一房间的成员变化都会让**所有**窗口（含隐藏的托盘面板与另外两个房间窗口）
+//! 全部 `apply`、全部重渲染——而它们对那个会话一无所知。
+//!
+//! 现在按 `sessionId` 路由：
+//!
+//! - **房间窗口**只收自己那个会话的（label 是 `room-<sessionId>`）；
+//! - **主窗口**与**托盘面板**要的是房间**列表**，所以全都要收；
+//! - 其它房间窗口不收——那正是要消除的开销。
+//!
+//! 目标窗口不存在时 `emit_to` 是 no-op（Tauri v2 对未知 label 不报错），
+//! 所以"房间窗口还没开"不需要特殊处理。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::core::error::{AppError, AppResult};
-use crate::core::events::{topic, EventSink};
+use crate::core::events::{target, topic, EventSink};
+use crate::core::ids::SessionId;
 
 use super::model::{RoomSession, RoomSnapshot};
 
@@ -177,8 +193,9 @@ impl RoomRegistry {
             };
             (session.next_seq(), session.role)
         };
-        self.sink.emit(
+        self.emit_room(
             topic::ROOM_PROGRESS,
+            session_id,
             json!({
                 "sessionId": session_id,
                 "seq": seq,
@@ -201,14 +218,40 @@ impl RoomRegistry {
     }
 
     fn emit_state(&self, snapshot: &RoomSnapshot) {
-        self.sink.emit(
+        self.emit_room(
             topic::ROOM_STATE,
+            &snapshot.session_id,
             json!({
                 "sessionId": snapshot.session_id,
                 "rev": snapshot.rev,
                 "snapshot": snapshot,
             }),
         );
+    }
+
+    /// 房间事件的投递目标。
+    ///
+    /// - **房间窗口**：只收自己那个会话的（label 由 `SessionId::window_label` 生成，
+    ///   与窗口创建处一致）；
+    /// - **主窗口**与**托盘面板**：要房间**列表**，所以全都要收。
+    fn emit_targets(session_id: &str) -> Vec<String> {
+        let mut targets = Vec::with_capacity(3);
+        if let Some(id) = SessionId::parse(session_id) {
+            targets.push(id.window_label());
+        }
+        targets.push(target::MAIN.to_string());
+        targets.push(target::TRAY.to_string());
+        targets
+    }
+
+    /// 定向投递房间事件（**不广播**）。
+    ///
+    /// 负载对每个目标都是同一份：房间事件的语义是"这个会话变了"，
+    /// 收件方自己判断要不要用（前端按 `sessionId` / `rev` 幂等处理）。
+    fn emit_room(&self, topic: &str, session_id: &str, payload: Value) {
+        for label in Self::emit_targets(session_id) {
+            self.sink.emit_to(&label, topic, payload.clone());
+        }
     }
 }
 
@@ -217,6 +260,7 @@ mod tests {
     use super::*;
     use crate::core::events::NoopSink;
     use crate::domain::room::model::{Phase, Role};
+    use std::sync::Mutex as StdMutex;
 
     fn registry() -> Arc<RoomRegistry> {
         RoomRegistry::new(Arc::new(NoopSink))
@@ -224,6 +268,37 @@ mod tests {
 
     fn session(adapter: &str) -> RoomSession {
         RoomSession::new(Role::Host, adapter.to_string(), None)
+    }
+
+    /// 记录型 sink：断言"发给了谁"（`NoopSink` 什么都不记，验不了目标）。
+    #[derive(Default)]
+    struct Recorder {
+        events: StdMutex<Vec<(String, String, Value)>>,
+    }
+
+    impl EventSink for Recorder {
+        fn emit(&self, topic: &str, payload: Value) {
+            self.events
+                .lock()
+                .unwrap()
+                .push((topic.to_string(), "*".to_string(), payload));
+        }
+        fn emit_to(&self, target: &str, topic: &str, payload: Value) {
+            self.events
+                .lock()
+                .unwrap()
+                .push((topic.to_string(), target.to_string(), payload));
+        }
+    }
+
+    fn targets_of(recorder: &Recorder) -> Vec<String> {
+        recorder
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, target, _)| target.clone())
+            .collect()
     }
 
     #[test]
@@ -285,5 +360,71 @@ mod tests {
         assert!(reg.remove(&snap.session_id));
         assert!(reg.snapshot(&snap.session_id).is_err());
         assert!(reg.list().is_empty());
+    }
+
+    #[test]
+    fn state_event_goes_to_the_session_window_main_and_tray() {
+        let recorder = Arc::new(Recorder::default());
+        let reg = RoomRegistry::new(recorder.clone());
+        let snap = reg.insert(session("a")).unwrap();
+
+        let events = recorder.events.lock().unwrap();
+        assert!(!events.is_empty());
+        let mut targets: Vec<String> = Vec::new();
+        for (event_topic, label, payload) in events.iter() {
+            assert_eq!(event_topic, &topic::ROOM_STATE);
+            // 房间窗口只收自己那个会话的。
+            assert!(
+                label == &format!("room-{}", snap.session_id)
+                    || label == &target::MAIN
+                    || label == &target::TRAY,
+                "不该投递到 {}",
+                label
+            );
+            // 负载必须保留 sessionId 与 rev：前端靠它们路由与去重。
+            assert_eq!(payload["sessionId"], json!(snap.session_id));
+            assert_eq!(payload["rev"], json!(snap.rev));
+            targets.push(label.clone());
+        }
+        drop(events);
+        assert!(targets.contains(&format!("room-{}", snap.session_id)));
+        assert!(targets.contains(&target::MAIN.to_string()));
+        assert!(targets.contains(&target::TRAY.to_string()));
+    }
+
+    #[test]
+    fn events_of_one_session_are_not_delivered_to_another_room_window() {
+        let recorder = Arc::new(Recorder::default());
+        let reg = RoomRegistry::new(recorder.clone());
+        let a = reg.insert(session("a")).unwrap();
+        let b = reg.insert(session("b")).unwrap();
+        recorder.events.lock().unwrap().clear();
+
+        reg.update(&a.session_id, |s| s.phase = Phase::Online).unwrap();
+
+        let targets = targets_of(&recorder);
+        assert!(!targets.is_empty());
+        assert!(
+            !targets.contains(&format!("room-{}", b.session_id)),
+            "别的房间窗口不该收到这个会话的事件: {:?}",
+            targets
+        );
+    }
+
+    #[test]
+    fn progress_event_is_routed_the_same_way() {
+        let recorder = Arc::new(Recorder::default());
+        let reg = RoomRegistry::new(recorder.clone());
+        let snap = reg.insert(session("a")).unwrap();
+        recorder.events.lock().unwrap().clear();
+
+        reg.progress(&snap.session_id, "linking", "正在连接");
+
+        let events = recorder.events.lock().unwrap();
+        assert!(!events.is_empty());
+        for (event_topic, _, payload) in events.iter() {
+            assert_eq!(event_topic, &topic::ROOM_PROGRESS);
+            assert_eq!(payload["sessionId"], json!(snap.session_id));
+        }
     }
 }

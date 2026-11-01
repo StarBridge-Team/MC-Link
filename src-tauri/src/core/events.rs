@@ -13,6 +13,7 @@
 //! 历史事件名（`connect-event` 等）没有这两个字段，正是多房间做不到的原因。
 
 use serde_json::Value;
+use std::sync::{Arc, OnceLock, RwLock};
 
 /// 事件主题常量。新增主题先加在这里，不要在调用点写裸字符串。
 pub mod topic {
@@ -33,6 +34,24 @@ pub mod topic {
     pub const WINDOW: &str = "mclink://window";
 }
 
+/// 事件投递目标（窗口 label）。
+///
+/// 房间事件按 `sessionId` 路由：**只有该会话自己的房间窗口**需要它的状态，
+/// 而**主窗口**与**托盘面板**要的是房间**列表**，所以它们也要收。
+/// 其它房间窗口不收——广播会让每个房间窗口都为与自己无关的会话重渲染一遍。
+///
+/// # 常量必须与窗口创建处一致
+///
+/// - `MAIN`：主窗口（`tauri.conf.json` 未写 label，Tauri 默认即 `main`）；
+/// - `TRAY`：托盘面板（对应 `crate::window::widget::TRAY_LABEL`）；
+/// - 房间窗口：见 [`crate::core::ids::SessionId::window_label`]。
+pub mod target {
+    /// 主窗口 label。
+    pub const MAIN: &str = "main";
+    /// 托盘面板 label。与 `crate::window::widget::TRAY_LABEL` 必须一致。
+    pub const TRAY: &str = "widget-tray";
+}
+
 /// 发事件的唯一出口。
 pub trait EventSink: Send + Sync {
     /// 广播给所有窗口。
@@ -47,6 +66,41 @@ pub struct NoopSink;
 impl EventSink for NoopSink {
     fn emit(&self, _topic: &str, _payload: Value) {}
     fn emit_to(&self, _target: &str, _topic: &str, _payload: Value) {}
+}
+
+/// 进程级事件出口。
+///
+/// # 为什么需要它
+///
+/// 个性化设置的写盘路径（`config::write::write_personalization`）只拿到数据目录，
+/// 拿不到 `AppHandle`——但保存成功后**必须**让其它窗口知道设置变了。
+/// 于是把 sink 登记在这里：`bridge::events::TauriSink` 创建时登记一次，
+/// 需要发事件的模块按需取用。
+///
+/// 单测里不登记 → 取不到 sink → 不发事件。这不影响正确性：
+/// 事件只是**通知**，权威状态在 Rust，窗口挂载时本来就会自己拉一次。
+static GLOBAL_SINK: OnceLock<RwLock<Option<Arc<dyn EventSink>>>> = OnceLock::new();
+
+fn global_sink_slot() -> &'static RwLock<Option<Arc<dyn EventSink>>> {
+    GLOBAL_SINK.get_or_init(|| RwLock::new(None))
+}
+
+/// 登记进程级事件出口。
+///
+/// 后登记的覆盖先登记的：应用只应该有一个 sink。
+pub fn register_global_sink(sink: Arc<dyn EventSink>) {
+    let mut slot = global_sink_slot()
+        .write()
+        .unwrap_or_else(|e| e.into_inner());
+    *slot = Some(sink);
+}
+
+/// 取进程级事件出口。没登记过时返回 `None`（调用方跳过发事件即可）。
+pub fn global_sink() -> Option<Arc<dyn EventSink>> {
+    global_sink_slot()
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 #[cfg(test)]

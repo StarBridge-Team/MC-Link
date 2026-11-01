@@ -368,6 +368,54 @@ async function load(): Promise<PersonalizationSettings> {
 }
 
 /**
+ * 最近一次应用的**远端**设置版本号。
+ *
+ * 同一条设置事件可能被同一窗口收到多次（重复投递、重试），
+ * **同一个 `rev` 不该应用两次**——所以这里按 `rev` 去重。
+ *
+ * 注意：这是**远端**事件的版本号，与本地 `patch()` 无关。本地改动是自己写盘的，
+ * 不需要（也不应该）参与这里的判序。
+ */
+let lastRemoteRev = 0;
+
+/**
+ * 应用别的窗口推过来的设置变更（`mclink://app/settings`）。
+ *
+ * # 为什么**绝不能**回写
+ *
+ * `patch()` 会调 `scheduleSave()`，而这里不能：回写会形成
+ * "收到事件 → 写盘 → 发事件"的回环，设置会被反复写盘、事件反复飞。
+ * 权威状态在 Rust，前端只是投影——收到通知**应用**即可。
+ *
+ * # 为什么只合并 `patch`
+ *
+ * 后端给的是"本次实际改动的字段"（`Partial`），不是整份设置。
+ * 整份会让每个窗口把背景与材质都重算一遍。
+ *
+ * # 为什么跳过已经一致的值
+ *
+ * 发起改动的那个窗口会收到**自己**那条事件，而它的值早就改好了。
+ * 再应用一次等于白跑一次背景重算与材质 IPC。
+ */
+function applyRemotePatch(rev: number, patch: Partial<PersonalizationSettings>): void {
+  if (rev <= lastRemoteRev) return;
+  lastRemoteRev = rev;
+
+  const effective: Partial<PersonalizationSettings> = {};
+  let changed = false;
+  for (const [key, value] of Object.entries(patch)) {
+    if (state[key as keyof PersonalizationSettings] === value) continue;
+    Object.assign(effective, { [key]: value });
+    changed = true;
+  }
+  if (!changed) return;
+
+  // 合并进状态后照常走一遍外观/背景/材质的生效链路（与 `patch()` 同一套）。
+  Object.assign(state, effective);
+  applyChanged(effective);
+}
+
+/**
  * 修改设置并立即生效。
  *
  * `options.save === false` 用于"连续拖动滑块"这类高频改动：先只改观感，
@@ -462,6 +510,7 @@ export function useSettings() {
     // 动作
     load,
     patch,
+    applyRemotePatch,
     saveNow,
     applyAll,
     bindSystemTheme,

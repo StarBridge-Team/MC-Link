@@ -15,12 +15,32 @@
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+import { useSettings } from "../composables/useSettings";
 import { useIntentStore, type AppIntent } from "../stores/intent";
 import { useRoomsStore } from "../stores/rooms";
 import { useWindowChromeStore } from "../stores/windowChrome";
-import { APP_INTENT, ROOM_PROGRESS, ROOM_STATE, WINDOW } from "./events";
+import type { PersonalizationSettings } from "../lib/api/types";
+import { APP_INTENT, APP_SETTINGS, ROOM_PROGRESS, ROOM_STATE, WINDOW } from "./events";
 import type { RoomProgressEvent, RoomStateEvent } from "./contracts/room";
 import type { WindowIntent } from "./contracts/window";
+
+/**
+ * `mclink://app/settings` 的负载。
+ *
+ * 契约见 `src-tauri/src/core/events.rs` 的 `topic::APP_SETTINGS`：`{ rev, patch }`。
+ *
+ * - `rev` 单调递增：同一窗口内按它去重（重复投递不重复应用）。
+ * - `patch` 只含**本次实际改动的字段**，不是整份设置——整份会让每个窗口
+ *   把背景与材质重算一遍。
+ *
+ * `patch` 的 key 是设置项的字段名（snake_case）：那正是 `personalization.yml` 里的
+ * key，也是前端 `PersonalizationSettings` 的字段名（**冻结契约**）。
+ * camelCase 风格只适用于事件负载的**外层**字段名（`rev` / `patch`）。
+ */
+interface AppSettingsEvent {
+  rev: number;
+  patch: Partial<PersonalizationSettings>;
+}
 
 let installed = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -53,6 +73,13 @@ async function install(): Promise<void> {
     // 窗口外壳的原生事件（贴靠覆盖层的 hover/click）：同样只收，落地在 store。
     registered.push(
       await listen<WindowIntent>(WINDOW, (e) => useWindowChromeStore().apply(e.payload)),
+    );
+    // 个性化设置：别的窗口改了主题/背景/明暗/材质，这里立刻跟上。
+    // **只应用、不回写**——回写会形成"收到事件 → 写盘 → 发事件"的回环。
+    registered.push(
+      await listen<AppSettingsEvent>(APP_SETTINGS, (e) =>
+        useSettings().applyRemotePatch(e.payload.rev, e.payload.patch),
+      ),
     );
     unlisten = registered;
     installed = true;
