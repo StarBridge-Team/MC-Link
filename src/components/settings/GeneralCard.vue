@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import SettingCard from "../ui/SettingCard.vue";
+import InfoBar from "../ui/InfoBar.vue";
 import { showError, showSuccess } from "../../composables/useToast";
 import { useDisplayNames } from "../../composables/useDisplayNames";
 import { useSetup } from "../../composables/useSetup";
@@ -55,9 +56,23 @@ onMounted(async () => {
   playerName.value = (await account.load())?.name ?? "";
 });
 
+/**
+ * 语言与地区必须成对提交：后端命令的签名就是 `(language, region)`。
+ *
+ * 缺一个时不能静默返回——用户会以为保存成功了，重启后回退。
+ */
+const LOCALE_INCOMPLETE = "语言与地区必须成对提交：请先补全缺失的一项";
+
+/** 缺字段时持续提示（InfoBar），不只靠一次性 toast。 */
+const localeIncomplete = computed(() => !language.value || !region.value);
+
 /** 语言与地区必须一起提交：命令的签名就是 `(language, region)`。 */
 async function persistLocale() {
-  if (!language.value || !region.value) return;
+  if (!language.value || !region.value) {
+    // 缺字段时**必须给反馈**：此前直接 return，用户以为存上了，重启回退。
+    showError(LOCALE_INCOMPLETE);
+    return;
+  }
   savingLocale.value = true;
   try {
     await setup.chooseLanguage(language.value, region.value);
@@ -99,6 +114,8 @@ function onRegionChange(e: Event) {
 <template>
   <SettingCard :icon="'translate'" :title="t('general.title')" :desc="t('general.desc')" wide>
     <div class="locale">
+      <!-- 必须成对提交：缺一个就没法调后端命令，明确说出来而不是静默吞掉 -->
+      <InfoBar v-if="localeIncomplete" kind="warning" :text="LOCALE_INCOMPLETE" />
       <!--
         选择器必须包在 `m3e-form-field` 里。
         裸 `<m3e-select>` 没有表单字段容器提供宽度与排版上下文，实测只渲染出右侧箭头、
