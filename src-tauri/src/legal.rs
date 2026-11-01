@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::asset_server::{assets_server_url, join};
+use crate::assets::pull::is_safe_relative;
 
 /// 拉不到条款时，界面上"请同意软件最终许可协议（EULA）"指向的官网。
 ///
@@ -134,7 +135,32 @@ pub async fn fetch_manifest(
         .text()
         .await
         .map_err(|e| format!("读取法务清单失败: {e}"))?;
-    serde_json::from_str::<LegalManifest>(&text).map_err(|e| format!("解析法务清单失败: {e}"))
+    let manifest = serde_json::from_str::<LegalManifest>(&text)
+        .map_err(|e| format!("解析法务清单失败: {e}"))?;
+    // 清单里的文件名会被拼进本地缓存路径与下载 URL，必须逐个校验（fail-closed）。
+    validate_manifest_files(&manifest)?;
+    Ok(manifest)
+}
+
+/// 校验清单里声明的所有文件名都是安全的相对路径。
+///
+/// 清单来自资源服务器。若不校验就 `join`，被劫持或失陷的服务器可以让客户端
+/// 把条款正文写到数据目录之外（例如 `../../../../.config/autostart/evil.desktop`）。
+///
+/// 与资源清单（[`crate::assets::pull::is_safe_relative`]）用同一份判定，
+/// 保证口径一致；任一条不合法即**整份清单作废**，不做"跳过这条继续找别的"。
+fn validate_manifest_files(manifest: &LegalManifest) -> Result<(), String> {
+    for doc in &manifest.documents {
+        for (language, file) in &doc.files {
+            if !is_safe_relative(file) {
+                return Err(format!(
+                    "条款清单里的文件名不合法：文档 {} 的语言 {language} 指向 {file}",
+                    doc.id
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 取某文档某语言的正文。
@@ -152,6 +178,15 @@ pub async fn fetch_document_text(
         .get(language)
         .or_else(|| doc.files.get("en-US"))
         .ok_or_else(|| format!("条款 {} 没有可用语言（{language}）", doc.id))?;
+    // 纵深防御：清单已在 `fetch_manifest` 里整份校验过，但本函数也可能被
+    // 直接传入某个文档（测试、将来的其它调用方）。文件名会同时进入
+    // 本地缓存路径与下载 URL，两处都必须用校验通过的值。
+    if !is_safe_relative(file) {
+        return Err(format!(
+            "条款清单里的文件名不合法：文档 {} 的语言 {language} 指向 {file}",
+            doc.id
+        ));
+    }
     let expected = doc
         .sha256
         .get(language)
@@ -281,5 +316,72 @@ mod tests {
                 .and_then(|d| d.files.get("zh-CN").map(String::as_str)),
             Some("EULA-zh-CN.md")
         );
+    }
+
+    /// 清单里的文件名必须是不越界的相对路径。
+    ///
+    /// 文件名会同时进入本地缓存路径（`cache_dir(...).join(file)`）与下载 URL，
+    /// 失陷或被劫持的资源服务器可以用 `../` 让客户端把文件写到数据目录之外。
+    /// 与资源清单同一口径：**整份清单作废**，不跳过问题条目继续用。
+    #[test]
+    fn rejects_path_traversal_in_manifest_file_names() {
+        let manifest = LegalManifest {
+            documents: vec![LegalDocument {
+                id: "eula".into(),
+                version: "1.0".into(),
+                title: "EULA".into(),
+                requires_acceptance: true,
+                files: BTreeMap::from([(
+                    "zh-CN".to_string(),
+                    "../../../../.config/autostart/evil.desktop".to_string(),
+                )]),
+                sha256: BTreeMap::new(),
+            }],
+        };
+        let err = validate_manifest_files(&manifest).unwrap_err();
+        assert!(
+            err.contains("文件名不合法"),
+            "报错要说明是文件名不合法: {err}"
+        );
+    }
+
+    /// 绝对路径与 Windows 盘符同样必须被拒（判定与平台无关）。
+    #[test]
+    fn rejects_absolute_and_drive_letter_file_names() {
+        for bad in ["/etc/passwd", "C:/Windows/system32/evil.dll", "..", ""] {
+            let manifest = LegalManifest {
+                documents: vec![LegalDocument {
+                    id: "eula".into(),
+                    version: "1.0".into(),
+                    title: "EULA".into(),
+                    requires_acceptance: true,
+                    files: BTreeMap::from([("en-US".to_string(), bad.to_string())]),
+                    sha256: BTreeMap::new(),
+                }],
+            };
+            assert!(
+                validate_manifest_files(&manifest).is_err(),
+                "文件名 {bad} 必须被拒绝"
+            );
+        }
+    }
+
+    /// 正常清单必须放行（别把合法文件名也拦了）。
+    #[test]
+    fn accepts_ordinary_file_names() {
+        let manifest = LegalManifest {
+            documents: vec![LegalDocument {
+                id: "eula".into(),
+                version: "1.0".into(),
+                title: "EULA".into(),
+                requires_acceptance: true,
+                files: BTreeMap::from([
+                    ("zh-CN".to_string(), "EULA-zh-CN.md".to_string()),
+                    ("en-US".to_string(), "EULA-en-US.md".to_string()),
+                ]),
+                sha256: BTreeMap::new(),
+            }],
+        };
+        assert!(validate_manifest_files(&manifest).is_ok());
     }
 }
