@@ -1,5 +1,17 @@
 // 无边框窗口的控制：拖动、最小化、最大化、关闭、退出，以及窗口位置记忆。
 //
+// # 没有退场动画
+//
+// 最小化/关闭前**不再**先播一段 CSS 淡出再等 200ms 才调系统 API。理由：
+//
+// - 最小化本身就有系统动画（DWM 直接对窗口抓帧缩放），前置一段内容淡出等于把一个
+//   动作拆成两段，还白白多出 200ms 的迟滞——用户点了没反应的那 200ms 就是这个；
+// - 关闭 = 隐藏到托盘，窗口是原地消失，没有"退场过程"可看，淡出期间窗口还停在原处；
+// - 房间窗口（`RoomApp.vue`）一直是即时关闭，去掉后两个窗口的行为才一致。
+//
+// 窗口内部的 CSS 过渡仍然保留在 `App.vue`（`.win-enter-*`）：那是在窗口已经显示
+// 之后播放的内容淡入，不延迟任何系统动作。
+//
 // 位置记忆的存储键是 `KEYS.windowState`（冻结），因为它是纯前端数据，
 // 丢了只是窗口回到默认位置，不会造成功能缺失。
 
@@ -17,16 +29,9 @@ interface WindowState {
 
 const DEFAULT_SIZE = { width: 960, height: 680, minWidth: 720, minHeight: 520 };
 
-/** 关闭/最小化前播放的退场动画时长，需与 CSS 中 --motion-medium 对齐（0.2s）。 */
-const EXIT_MS = 200;
-
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 export function useWindowControls() {
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const isDragging = ref(false);
-  /** 退场动画进行中：App 根容器据此播放淡出/缩放，动画结束后再真正执行窗口操作。 */
-  const isExiting = ref(false);
 
   async function saveWindowState() {
     try {
@@ -94,15 +99,12 @@ export function useWindowControls() {
     setTimeout(() => (isDragging.value = false), 200);
   }
 
+  /** 直接最小化：系统自带动画，见文件头的「没有退场动画」。 */
   async function handleMinimize() {
     try {
-      isExiting.value = true;
-      await wait(EXIT_MS);
       await getCurrentWindow().minimize();
     } catch (e) {
       console.warn("[window] 最小化失败:", e);
-    } finally {
-      isExiting.value = false;
     }
   }
 
@@ -125,13 +127,9 @@ export function useWindowControls() {
   async function handleClose() {
     await saveWindowState();
     try {
-      isExiting.value = true;
-      await wait(EXIT_MS);
       await hideSelfWindow();
     } catch (e) {
       console.warn("[window] 隐藏窗口失败:", e);
-    } finally {
-      isExiting.value = false;
     }
   }
 
@@ -155,7 +153,6 @@ export function useWindowControls() {
 
   return {
     isDragging,
-    isExiting,
     saveWindowState,
     restoreWindowState,
     setDefaultWindowSize,

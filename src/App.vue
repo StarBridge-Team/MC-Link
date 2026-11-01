@@ -168,7 +168,7 @@ onMounted(async () => {
     motion="standard"
   >
     <Transition name="win" appear>
-    <div class="shell" :class="{ 'is-exiting': windowCtl.isExiting.value }">
+    <div class="shell">
     <!-- 背景层：图片背景走 CSS 变量，视频走 <video>（CSS 背景不支持视频） -->
     <div class="shell__bg" />
     <video id="bg-video" class="shell__video" autoplay loop playsinline muted />
@@ -311,21 +311,18 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* 窗口过渡：打开时由 <Transition appear> 播放淡入 + 轻微放大（.win-enter-*），
-   关闭/最小化时由 .shell.is-exiting 播放淡出 + 缩小。仅用 transition，不写 @keyframes。 */
+/* 窗口过渡：打开时由 <Transition appear> 播放淡入 + 轻微放大（.win-enter-*）。
+   仅用 transition，不写 @keyframes。
+ *
+ * **只有进场，没有退场**：最小化/关闭由系统自己处理（DWM 对窗口抓帧缩放），
+ * 之前那套"先播 200ms 淡出再调 minimize()"已经删掉——它只是把动作拆成两段、
+ * 多出 200ms 迟滞，并不能让窗口真的缩进任务栏。理由见 `useWindowControls.ts` 文件头。 */
 .win-enter-from {
   opacity: 0;
   transform: scale(0.96);
 }
 
 .win-enter-active {
-  transition: opacity var(--motion-medium) var(--ease-standard),
-    transform var(--motion-medium) var(--ease-standard);
-}
-
-.shell.is-exiting {
-  opacity: 0;
-  transform: scale(0.98);
   transition: opacity var(--motion-medium) var(--ease-standard),
     transform var(--motion-medium) var(--ease-standard);
 }
