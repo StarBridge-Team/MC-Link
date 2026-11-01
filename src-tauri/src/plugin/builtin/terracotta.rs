@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::sync::{Arc, Mutex as SyncMutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::adapter::AdapterManager;
@@ -26,7 +26,6 @@ use crate::plugin::capability::BuiltinCapability;
 use crate::plugin::manifest::{PluginKind, PluginManifest, RuntimeKind};
 use crate::plugin::permission::PermissionSet;
 use crate::plugin::protocol::{adapter_method, error_code, ErrorInfo};
-use crate::plugin::utils::lock_or_err;
 
 /// 插件 ID。
 pub const PLUGIN_ID: &str = "dev.mclink.builtin.terracotta";
@@ -103,14 +102,23 @@ pub fn manifest() -> PluginManifest {
 }
 
 /// 内置适配器提供者。
+///
+/// # 为什么不再持有一把外层锁
+///
+/// 旧实现是 `Arc<Mutex<AdapterManager>>`，每次调用都先 `lock()` 再用管理器。
+/// 那把锁不保护任何可变状态，却把"拉起陶瓦 + 12 秒端口探测"整体排他化了：
+/// 一次探测期间所有适配器调用都被堵住，而调用方既有 tokio worker 也有主线程。
+///
+/// 现在直接持有 [`AdapterManager`]：会变的端口值由它内部的锁保护，
+/// 端口探测在后台线程进行。
 pub struct TerracottaProvider {
-    manager: Arc<SyncMutex<AdapterManager>>,
+    manager: Arc<AdapterManager>,
     http: reqwest::blocking::Client,
     permissions: PermissionSet,
 }
 
 impl TerracottaProvider {
-    pub fn new(manager: Arc<SyncMutex<AdapterManager>>) -> Result<Self, String> {
+    pub fn new(manager: Arc<AdapterManager>) -> Result<Self, String> {
         let http = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(3))
             .timeout(Duration::from_secs(10))
@@ -127,8 +135,8 @@ impl TerracottaProvider {
 
     /// 确保陶瓦已安装并运行，返回其本地 HTTP 端口。
     fn port(&self) -> Result<u16, ErrorInfo> {
-        let mgr = lock_or_err(&self.manager, "AdapterManager")?;
-        mgr.ensure_running()
+        self.manager
+            .ensure_running()
             .map_err(|e| ErrorInfo::new(error_code::UNAVAILABLE, e))
     }
 
@@ -274,10 +282,7 @@ impl TerracottaProvider {
 
     /// 汇总状态：既有供前端直接消费的字段，也带上陶瓦自身状态。
     fn status(&self) -> Result<Value, ErrorInfo> {
-        let status = {
-            let mgr = lock_or_err(&self.manager, "AdapterManager")?;
-            mgr.get_status()
-        };
+        let status = self.manager.get_status();
 
         let state = match status.port {
             Some(_) => self.get_json("/state").unwrap_or(Value::Null),
@@ -349,9 +354,8 @@ impl BuiltinCapability for TerracottaProvider {
     fn invoke(&self, method: &str, params: Value) -> Result<Value, ErrorInfo> {
         match method {
             adapter_method::INIT => {
-                let mgr = lock_or_err(&self.manager, "AdapterManager")?;
                 Ok(json!({
-                    "ready": mgr.get_status().running,
+                    "ready": self.manager.get_status().running,
                     "protocol": "terracotta",
                     "version": env!("CARGO_PKG_VERSION"),
                     // 房主侧字段：仅需房间码，且由适配器自动生成（`generated: true`），
@@ -384,8 +388,7 @@ impl BuiltinCapability for TerracottaProvider {
             adapter_method::JOIN => self.start_guest(params),
             adapter_method::HOST_STOP | adapter_method::LEAVE => self.panic_peaceful(),
             adapter_method::INSTALL => {
-                let mgr = lock_or_err(&self.manager, "AdapterManager")?;
-                mgr.launch_terracotta_after_download();
+                self.manager.launch_terracotta_after_download();
                 self.status()
             }
             other => Err(ErrorInfo::not_supported(format!(
@@ -396,9 +399,8 @@ impl BuiltinCapability for TerracottaProvider {
     }
 
     fn shutdown(&self) {
-        if let Ok(mgr) = self.manager.lock() {
-            mgr.shutdown_all();
-        }
+        // 不再取锁：管理器内部的端口锁只在读写端口值时短暂持有。
+        self.manager.shutdown_all();
     }
 }
 

@@ -12,12 +12,12 @@
 //! 换句话说：管理器只做**编排**，任何实际动作都必须由插件以能力方法的形式提供，
 //! 并在核心侧通过权限校验。
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as SyncMutex, RwLock};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tokio::sync::mpsc;
 
 use crate::adapter::AdapterManager;
@@ -30,11 +30,12 @@ use crate::plugin::game::GameRegistry;
 use crate::plugin::gateway::{self, AuthTable, Gateway};
 use crate::plugin::manifest::PluginKind;
 use crate::plugin::permission::{required_for, Permission};
-use crate::plugin::protocol::{detector_method, error_code, event_topic, ErrorInfo, LocalGameFound};
-use crate::plugin::registry::{PluginRecord, PluginRegistry, PluginSource};
-use crate::plugin::router::{self, RoutePlan};
+use crate::plugin::protocol::{error_code, ErrorInfo};
+use crate::plugin::registry::{PluginRegistry, PluginSource};
 use crate::plugin::localgames::LocalGamesCache;
 use crate::plugin::session::{Inbound, InboundTx};
+
+use self::launch::{LaunchAwait, LaunchTicket};
 
 /// 插件管理器。
 pub struct PluginManager {
@@ -52,11 +53,18 @@ struct Inner {
     /// **必须持有 `Child`**：只记 pid 的话，既无法 `wait` 回收（Unix 上留下僵尸进程），
     /// 也无法在退出或握手超时时 `kill`（Windows 上应用退了插件还在跑）。
     children: RwLock<HashMap<String, std::process::Child>>,
-    /// "拉起插件 + 等握手"的串行锁。
+    /// "拉起插件进程"这一小段的串行锁。
+    ///
+    /// **只覆盖 `launch_external`**：等待握手（最多 20 秒）在锁外进行，
+    /// 否则一个握手失败的插件会把**所有**插件调用都堵住（见 `launch` 模块）。
     ///
     /// 两个并发 invoke 若各自 spawn，会得到两个进程：后者覆盖 `providers` 里的前者，
     /// 前者就成了没人管的孤儿。加锁后重查一次缓存即可（双检），不必引入更重的东西。
     launch_lock: tokio::sync::Mutex<()>,
+    /// 正在拉起中的外部插件（插件 ID → 拉起票据）。
+    ///
+    /// 让同一个插件的并发请求复用同一次拉起，而不是各拉各的进程互相 kill。
+    launching: RwLock<HashMap<String, Arc<LaunchTicket>>>,
     gateway: RwLock<Option<Arc<Gateway>>>,
     auth: AuthTable,
     /// 最近一次扫描到的本地游戏，供前端主动拉取（事件补发不了，见 `plugin::localgames`）。
@@ -65,14 +73,19 @@ struct Inner {
     inbound_rx: SyncMutex<Option<mpsc::UnboundedReceiver<Inbound>>>,
     shutdown: Arc<AtomicBool>,
     app: RwLock<Option<AppHandle>>,
-    adapter: Arc<SyncMutex<AdapterManager>>,
+    /// 内置适配器管理器。
+    ///
+    /// **不再套全局锁**：管理器内部只有端口值会变（它有自己的锁），
+    /// 拉起任务由 `adapter::probe::LaunchSlot` 去重。旧实现那把锁把
+    /// "拉起进程 + 12 秒端口探测"整体排他化了，探测期间所有适配器调用都被堵住。
+    adapter: Arc<AdapterManager>,
     warnings: RwLock<Vec<String>>,
 }
 
 impl PluginManager {
     /// 同步构造：加载注册表、内置插件与游戏画像，但不启动网络。
     pub fn new(data_dir: &Path) -> Result<Arc<Self>, String> {
-        let adapter = Arc::new(SyncMutex::new(AdapterManager::new(data_dir)));
+        let adapter = Arc::new(AdapterManager::new(data_dir));
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
 
         let mut registry = PluginRegistry::new(data_dir);
@@ -102,6 +115,7 @@ impl PluginManager {
             providers: RwLock::new(providers),
             children: RwLock::new(HashMap::new()),
             launch_lock: tokio::sync::Mutex::new(()),
+            launching: RwLock::new(HashMap::new()),
             gateway: RwLock::new(None),
             auth: Arc::new(RwLock::new(HashMap::new())),
             local_games: LocalGamesCache::new(),
@@ -216,168 +230,17 @@ impl PluginManager {
         }
     }
 
-    // ---------------------------------------------------------------- 注册表
-
-    pub fn reload(&self) -> Vec<String> {
-        let mut registry = match self.inner.registry.write() {
-            Ok(r) => r,
-            Err(_) => return vec!["插件注册表锁不可用".to_string()],
-        };
-        let builtins = builtin::builtin_records().unwrap_or_default();
-        let mut warnings = registry.reload(builtins);
-        if let Ok(mut w) = self.inner.warnings.write() {
-            warnings.extend(w.drain(..));
-        }
-        drop(registry);
-        let _ = self.refresh_auth();
-        warnings
-    }
-
-    pub fn list(&self) -> Vec<PluginRecord> {
-        match self.inner.registry.read() {
-            Ok(r) => r.list().into_iter().cloned().collect(),
-            Err(_) => {
-                // 静默返回空列表会让"插件全都不见了"变成一个无迹可查的谜
-                eprintln!("[插件] 注册表读锁已中毒，无法列出插件");
-                Vec::new()
-            }
-        }
-    }
-
-    pub fn get(&self, plugin_id: &str) -> Option<PluginRecord> {
-        self.inner
-            .registry
-            .read()
-            .ok()
-            .and_then(|r| r.get(plugin_id).cloned())
-    }
-
-    pub fn set_enabled(&self, plugin_id: &str, enabled: bool) -> Result<(), String> {
-        {
-            let mut registry = self
-                .inner
-                .registry
-                .write()
-                .map_err(|_| "插件注册表锁不可用".to_string())?;
-            registry.set_enabled(plugin_id, enabled)?;
-        }
-        self.refresh_auth()?;
-        if !enabled {
-            if let Ok(mut providers) = self.inner.providers.write() {
-                if let Some(p) = providers.get(plugin_id) {
-                    p.close("插件已被停用");
-                }
-                providers.remove(plugin_id);
-            }
-            // 进程也要收掉：只关会话时插件可以选择不理会，进程会继续跑
-            self.reap_child(plugin_id, "插件已被停用");
-        }
-        Ok(())
-    }
-
-    pub fn set_grants(
-        &self,
-        plugin_id: &str,
-        granted: Option<Vec<Permission>>,
-    ) -> Result<(), String> {
-        // 用块限界先放掉注册表写锁：`refresh_auth` 内部要读同一把锁，
-        // 持有写锁时调用会死锁（RwLock 不可重入）。
-        {
-            let mut registry = self
-                .inner
-                .registry
-                .write()
-                .map_err(|_| "插件注册表锁不可用".to_string())?;
-            registry.set_grants(plugin_id, granted)?;
-        }
-        // 必须刷新准入表：握手用的是准入表里的权限快照。不刷新的话"撤销权限"
-        // 对重连无效——插件只要重启自身进程就能拿回已被撤销的权限。
-        self.refresh_auth()
-    }
-
-    pub fn set_blocked(&self, plugin_id: &str, blocked: bool) -> Result<(), String> {
-        {
-            let mut registry = self
-                .inner
-                .registry
-                .write()
-                .map_err(|_| "插件注册表锁不可用".to_string())?;
-            registry.set_blocked(plugin_id, blocked)?;
-        }
-        if blocked {
-            if let Ok(mut providers) = self.inner.providers.write() {
-                if let Some(p) = providers.remove(plugin_id) {
-                    p.close("插件已被拉黑");
-                }
-            }
-        }
-        self.refresh_auth()
-    }
-
-    /// 网关运行状态（不回传令牌）。
-    pub fn gateway_info(&self) -> Value {
-        let gateway = self.inner.gateway.read().ok().and_then(|g| g.clone());
-        match gateway {
-            Some(g) => json!({
-                "running": true,
-                "port": g.port(),
-                "endpoint": g.endpoint(),
-                "externalPlugins": self
-                    .inner
-                    .providers
-                    .read()
-                    .map(|m| m.values().filter(|p| matches!(p, Provider::Remote(_))).count())
-                    .unwrap_or(0),
-            }),
-            None => json!({ "running": false, "port": Value::Null }),
-        }
-    }
-
-    pub fn warnings(&self) -> Vec<String> {
-        self.inner
-            .warnings
-            .read()
-            .map(|w| w.clone())
-            .unwrap_or_default()
-    }
-
-    // ---------------------------------------------------------------- 游戏画像
-
-    pub fn games(&self) -> Vec<crate::plugin::game::GameProfile> {
-        self.inner
-            .games
-            .read()
-            .map(|g| g.all().into_iter().cloned().collect())
-            .unwrap_or_default()
-    }
-
-    // ---------------------------------------------------------------- 路由
-
-    pub fn plan(&self, kind: PluginKind, game_id: Option<&str>) -> RoutePlan {
-        let registry = match self.inner.registry.read() {
-            Ok(r) => r,
-            Err(_) => {
-                return RoutePlan {
-                    kind,
-                    game_id: game_id.map(|s| s.to_string()),
-                    candidates: Vec::new(),
-                }
-            }
-        };
-        let games = match self.inner.games.read() {
-            Ok(g) => g,
-            Err(_) => {
-                return RoutePlan {
-                    kind,
-                    game_id: game_id.map(|s| s.to_string()),
-                    candidates: Vec::new(),
-                }
-            }
-        };
-        router::plan(&registry, &games, kind, game_id)
-    }
+    // ---------------------------------------------------------------- 路由与调用
 
     /// 获取指定插件的提供者，必要时启动外部进程并等待握手完成。
+    ///
+    /// # 两段式：拉起与握手分开
+    ///
+    /// - **拉起段**（持 `launch_lock`）：只保护"拉起进程"，避免并发 spawn 出两个进程；
+    /// - **握手等待段**（不持锁）：最长 20 秒，期间其它插件的调用照常进行。
+    ///
+    /// 旧实现把两段串在一起（持锁等握手），一个握手失败的插件会把所有插件
+    /// 调用都堵住 20 秒。
     pub async fn provider(&self, plugin_id: &str) -> Result<Provider, ErrorInfo> {
         if let Some(existing) = self.cached_provider(plugin_id) {
             return Ok(existing);
@@ -411,18 +274,48 @@ impl PluginManager {
             ));
         }
 
-        // 串行化"拉起 + 等握手"：并发 invoke 各自 spawn 的话，后来的会覆盖
-        // providers 里的前一个，前一个即成为无人管理的孤儿进程。
-        let _launch_guard = self.inner.launch_lock.lock().await;
-        // 双检：等锁期间可能已有别的调用把它拉起来并握手完成了
-        if let Some(existing) = self.cached_provider(plugin_id) {
-            return Ok(existing);
+        // 同一个插件若已有拉起在进行中，复用它（见 `launch` 模块）：
+        // 否则并发请求会各拉各的进程，互相 kill，最后谁都握手不成。
+        let (ticket, owner) = self.acquire_launch(plugin_id);
+        if !owner {
+            return match self.await_launch(plugin_id, &ticket).await {
+                LaunchAwait::Ready(provider) => Ok(provider),
+                LaunchAwait::Failed(error) => Err(error),
+                LaunchAwait::Timeout => Err(ErrorInfo::new(
+                    error_code::TIMEOUT,
+                    format!(
+                        "等待插件 {} 握手超时（{} 秒）",
+                        plugin_id,
+                        launch::LAUNCH_WAIT_TIMEOUT.as_secs()
+                    ),
+                )),
+            };
         }
 
-        self.launch_external(&record).await?;
+        // ---- 拉起段：只有这一小段持锁 ----
+        {
+            let _launch_guard = self.inner.launch_lock.lock().await;
+            // 双检：等锁期间可能已有别的调用把它拉起来并握手完成了
+            if let Some(existing) = self.cached_provider(plugin_id) {
+                self.complete_launch(plugin_id, None);
+                return Ok(existing);
+            }
+            if let Err(e) = self.launch_external(&record).await {
+                self.complete_launch(plugin_id, Some(e.clone()));
+                self.reap_child(plugin_id, "拉起失败");
+                return Err(e);
+            }
+        }
+
+        // ---- 握手等待段：不持锁 ----
+        // 20 秒的等待期间，其它插件的调用不会被堵住。
         match self.wait_ready(plugin_id).await {
-            Ok(provider) => Ok(provider),
+            Ok(provider) => {
+                self.complete_launch(plugin_id, None);
+                Ok(provider)
+            }
             Err(e) => {
+                self.complete_launch(plugin_id, Some(e.clone()));
                 // 握手没成功就把刚拉起的进程收掉，否则它会一直挂着等一个不会来的连接
                 self.reap_child(plugin_id, "握手未完成");
                 Err(e)
@@ -518,165 +411,6 @@ impl PluginManager {
         provider.invoke_checked(required, method, params).await
     }
 
-    /// 应用打开时调用：遍历所有【已启用且可运行】的检测类(detector)插件，
-    /// 逐个触发 `detector.scan`，把发现的本地游戏回传前端首页。
-    ///
-    /// 没有实现扫描能力的检测器时返回空列表——这是正常的：扫描能力本就由插件提供，
-    /// 核心只负责编排（见模块文档的职责边界）。
-    pub async fn scan_local_games(&self) -> Vec<LocalGameFound> {
-        // 先收集检测器清单（释放读锁后再逐个 invoke，避免持锁调用）。
-        let detectors: Vec<(String, String)> = match self.inner.registry.read() {
-            Ok(reg) => reg
-                .by_kind(PluginKind::Detector)
-                .iter()
-                .map(|r| (r.manifest.id.clone(), r.manifest.name.clone()))
-                .collect(),
-            Err(_) => Vec::new(),
-        };
-
-        let mut found = Vec::new();
-        for (id, name) in detectors {
-            // 定向调用**这个**检测器。
-            //
-            // 不能走 `invoke(Detector, ..)`：那会重新算路由计划并对**全部候选**依次
-            // 尝试，N 个检测器就退化成 N² 次扫描（每次扫描含 3 秒 UDP 多播）。
-            // 这里已经拿到确切的插件 id，直接用它。
-            match self
-                .invoke_plugin(
-                    &id,
-                    required_for(PluginKind::Detector, detector_method::SCAN),
-                    detector_method::SCAN,
-                    json!({}),
-                )
-                .await
-            {
-                Ok(raw) => {
-                    // `detector.scan` 的契约是返回**数组**（可能有多台服务器），
-                    // 这里逐个展开。早期版本按对象取字段，于是 `process` 实际拿到的是
-                    // `id`（`minecraft-java`）而不是 MOTD——首页与联机页显示的会是同一个
-                    // 游戏却写出两个不同的名字。
-                    let entries = match raw {
-                        Value::Array(a) => a,
-                        other => vec![other],
-                    };
-                    for value in entries {
-                        let game_id = value
-                            .get("id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let process = value
-                            .get("process")
-                            .and_then(|v| v.as_str())
-                            .or_else(|| value.get("id").and_then(|v| v.as_str()))
-                            .unwrap_or("")
-                            .to_string();
-                        let game_name = value
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let adapter = self.recommended_adapter_name(&game_id);
-                        let item = LocalGameFound {
-                            process,
-                            game_name,
-                            scanner: name.clone(),
-                            adapter,
-                        };
-                        found.push(item.clone());
-                        // 同时走既有 detector.found 契约通道，保持插件事件一致。
-                        self.emit(json!({
-                            "topic": event_topic::DETECTOR_FOUND,
-                            "plugin": id,
-                            "game": serde_json::to_value(&item).unwrap_or(serde_json::Value::Null),
-                        }));
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[动作] 检测器 {} 扫描失败: {}", id, e.message);
-                }
-            }
-        }
-
-        // 记下这次结果，供前端主动拉取（事件是一次性广播，补发不了）。
-        self.remember_local_games(&found);
-        found
-    }
-
-    /// 记录最近一次扫描结果，供前端主动拉取。
-    pub(super) fn remember_local_games(&self, games: &[LocalGameFound]) {
-        self.inner.local_games.set(games);
-    }
-
-    /// 读取最近一次扫描结果（**不重新扫描**）。
-    pub fn local_games(&self) -> Vec<LocalGameFound> {
-        self.inner.local_games.get()
-    }
-
-    /// 给定游戏 ID，返回路由计划首选的适配器展示名（无则空串）。
-    fn recommended_adapter_name(&self, game_id: &str) -> String {
-        let plan = self.plan(
-            PluginKind::Adapter,
-            if game_id.is_empty() { None } else { Some(game_id) },
-        );
-        if let Some(pid) = plan.primary() {
-            if let Ok(reg) = self.inner.registry.read() {
-                if let Some(rec) = reg.get(pid) {
-                    return rec.manifest.name.clone();
-                }
-            }
-        }
-        String::new()
-    }
-
-    /// 向所有已就绪插件广播上下文（游戏信息 / 房间信息 / 其他插件信息）。
-    pub fn broadcast_context(&self, context: &crate::plugin::protocol::PluginContext) {
-        let peers = self.peer_summaries();
-        let payload = json!({
-            "role": context.role,
-            "game": context.game,
-            "room": context.room,
-            "peers": peers,
-        });
-        let providers: Vec<Provider> = self
-            .inner
-            .providers
-            .read()
-            .map(|m| m.values().cloned().collect())
-            .unwrap_or_default();
-        for provider in providers {
-            if let Provider::Remote(session) = &provider {
-                let _ = session.notify(
-                    crate::plugin::protocol::core_method::CONTEXT_UPDATE,
-                    payload.clone(),
-                );
-            }
-        }
-    }
-
-    /// 汇总其他插件的能力信息，供适配类插件决定如何协作。
-    pub fn peer_summaries(&self) -> Vec<crate::plugin::protocol::PeerPluginInfo> {
-        self.list()
-            .into_iter()
-            .filter(|r| r.enabled && r.trust.is_runnable())
-            .map(|r| crate::plugin::protocol::PeerPluginInfo {
-                plugin_id: r.manifest.id.clone(),
-                kind: r.manifest.kind.as_str().to_string(),
-                games: r.manifest.games.clone(),
-                endpoints: Vec::new(),
-            })
-            .collect()
-    }
-
-    // ---------------------------------------------------------------- 前端事件
-
-    /// 向前端广播 `plugin-event`（未绑定 AppHandle 时静默丢弃）。
-    pub fn emit(&self, payload: Value) {
-        let app = self.inner.app.read().ok().and_then(|g| g.clone());
-        if let Some(app) = app {
-            let _ = app.emit("plugin-event", payload);
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -689,7 +423,10 @@ impl PluginManager {
 
 mod adapter;
 mod builtin;
+mod frontend;
 mod inbound;
+mod launch;
 mod provision;
+mod registry_ops;
 #[cfg(test)]
 mod tests;
