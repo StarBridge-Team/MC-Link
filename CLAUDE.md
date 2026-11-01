@@ -112,17 +112,23 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 
 0.6.x 按批次推进，**完成到哪一步以 `docs/ARCHITECTURE.md` 第 8 节为准**，不要按本节的记忆做假设。
 
-- **B0–B6 已完成**：
+- **B0–B7 已完成**：
   - B0–B4：`core/` + `bridge/`、`domain/room` 多会话、房间窗口（`room.html`）、
     Pinia（`stores/rooms.ts`）+ 唯一事件桥（`ipc/bridge.ts`）
   - B5：离线账号（`domain/account`，UUID 与 Java 离线模式同值）、代理池（`domain/proxy`，
     内置 3 + 远端按天缓存，已接进更新链路）
   - B6：托盘面板改为 Vue 入口（`widget.html`）+ 预建常驻 + 位置夹取 + 系统窗口动画
     （`window/animation.rs`，Windows `AnimateWindow`，失败退化为瞬时显隐）
+  - B7：设置级联（`lib/settings/registry.ts`：原生+服务端分区同表、左树/搜索/优先级去重）、
+    设置独立窗口（`settings.html` + `settings_window_open`）、`PluginKind` 扩到 6 类
+    （`bridge` / `widget` / `utility`）、插件市场（`plugin/market.rs`：清单+下载+SHA256+解压）、
+    HMCL 主题包导入（`hmcl.rs`：宽松提取强调色作种子）、窗口内挂件容器
+    （`ui/WidgetLayer.vue`）+ 背景音视频控制面板
 - 会话命令为 `room_prepare / room_start_host / room_join / room_leave / room_snapshot /
   room_refresh / room_list`；`connect_*` 只剩扫描与缓存查询
-- **待做**：设置级联、HMCL 主题、插件市场 6 类（B7）；窗口内**悬浮组件**（等有真实组件再做）
+- **待做**：`widget` 类插件的**运行时**（第三方挂件/页面注入与沙箱）、插件市场的服务器清单
+  与真实插件包、设置级联的"跨分区字段继承"（当前只到优先级去重）、`zh-TW` 文案
 - 已就绪、可直接复用：插件系统后端（8 命令 + 回环网关 + 权限）、自动更新全链路、
   OOBE 后端与界面、i18n 基础设施（现有 `zh-CN` / `en-US`，0.6.x 要补 `zh-TW`）、
   `@m3e/web` 前端外壳
-- 已知缺口：插件**安装器**仍无后端实现；检测类/耦合类插件只有接口与路由，无内置实现
+- 已知缺口：第三方 `widget` / `page` 插件尚无沙箱运行时；检测类/耦合类插件只有接口与路由，无内置实现
