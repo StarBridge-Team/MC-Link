@@ -145,6 +145,8 @@ watch(filteredLocalGames, (games) => {
 });
 
 let unlistenDeep: (() => void) | null = null;
+/** 组件是否已卸载：`await listen()` 期间卸载 → 句柄必须就地退订，否则永久泄漏。 */
+let disposed = false;
 
 onMounted(async () => {
   // 先确认地区：受限时**什么都不启动**（扫描、状态轮询、深链监听都不必存在）。
@@ -153,16 +155,23 @@ onMounted(async () => {
   if (region.blocked) return;
 
   await mount();
-  unlistenDeep = await listen<{ action: string; params: string[] }>("deep-link", (e) => {
+  const off = await listen<{ action: string; params: string[] }>("deep-link", (e) => {
     if (e.payload.action === "join" && e.payload.params[0]) {
       tab.value = "member";
       applyInvite(e.payload.params[0]);
     }
   });
+  if (disposed) {
+    off();
+    return;
+  }
+  unlistenDeep = off;
 });
 
 onUnmounted(() => {
+  disposed = true;
   unlistenDeep?.();
+  unlistenDeep = null;
 });
 </script>
 
