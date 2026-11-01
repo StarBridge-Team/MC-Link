@@ -56,11 +56,25 @@ pub fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Erro
                 } => {
                     // 位置与尺寸由事件自带的 `position` / `rect` 决定，不自己查光标。
                     // 面板是**预建常驻**的（见 `window::widget`），这里只负责摆放与显隐。
-                    if let Err(e) =
-                        crate::window::widget::show_tray_panel(app_handle, position, rect)
-                    {
-                        eprintln!("[托盘] 显示面板失败: {}", e);
-                    }
+                    //
+                    // # 必须离开主线程
+                    //
+                    // `show_tray_panel` 在面板不存在时会去建窗口，而
+                    // `WebviewWindowBuilder::build()` 内部要 `run_on_main_thread` 并
+                    // **阻塞等待**它执行完。托盘事件回调跑在主线程上 → 主线程等主线程
+                    // → 死锁：托盘面板永远出不来，整个应用失去响应。
+                    // 放到运行时线程上，这次等待才有意义（同 `room_window_open` 必须
+                    // 写成 `async` 命令是同一个道理）。
+                    let app_handle = app_handle.clone();
+                    let position = position.clone();
+                    let rect = rect.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) =
+                            crate::window::widget::show_tray_panel(&app_handle, position, rect)
+                        {
+                            eprintln!("[托盘] 显示面板失败: {}", e);
+                        }
+                    });
                 }
                 _ => {}
             }
