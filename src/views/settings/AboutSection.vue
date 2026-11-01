@@ -6,6 +6,7 @@ import { version as vueVersion } from "vue";
 import InfoBar from "../../components/ui/InfoBar.vue";
 import SettingCard from "../../components/ui/SettingCard.vue";
 import { confirmAction, showError, showSuccess } from "../../composables/useToast";
+import { useSettings } from "../../composables/useSettings";
 import { useSetup } from "../../composables/useSetup";
 import { getAppVersion, getTauriVersion } from "../../lib/api/app";
 import { fetchCommunity } from "../../lib/api/community";
@@ -20,6 +21,19 @@ import type { Community, RuntimeInfo } from "../../lib/api/types";
  */
 const { t } = useI18n();
 const setup = useSetup();
+const settings = useSettings();
+
+/**
+ * 资源目录没能加入资源（asset）协议白名单（后端启动约 3 秒后延迟发出）。
+ *
+ * 它是**持续状态**：失败已经发生过了，重启前一直有效，所以存在 ref 里常驻显示，
+ * 而不是只在事件回调里弹一次 toast。后果是背景图 / 图标 / 字体可能加载不出来。
+ */
+const assetScopeErrorText = computed(() => {
+  const err = settings.assetScopeError.value;
+  if (!err) return "";
+  return `资源目录未能加入资源协议白名单，背景图 / 图标 / 字体可能加载不出来（${err.reason}；目录：${err.directory}）`;
+});
 
 const appVersion = ref("");
 const tauriVer = ref("");
@@ -148,6 +162,14 @@ onMounted(async () => {
         kind="info"
         icon="lock"
         :text="t('update.sandboxHint', { command: sandboxUpdateHint.command })"
+      />
+
+      <!-- 资源协议白名单缺失：背景图 / 图标 / 字体可能加载不出来（持续状态） -->
+      <InfoBar
+        v-if="settings.assetScopeError.value"
+        kind="warning"
+        icon="warning"
+        :text="assetScopeErrorText"
       />
 
       <!-- 版本信息：网格磁贴 -->

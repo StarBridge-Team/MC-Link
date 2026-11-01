@@ -15,12 +15,21 @@
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import { useSettings } from "../composables/useSettings";
+import { useSettings, type AssetScopeError } from "../composables/useSettings";
+import { useUpdater, type UpdateInstallError } from "../composables/useUpdater";
 import { useIntentStore, type AppIntent } from "../stores/intent";
 import { useRoomsStore } from "../stores/rooms";
 import { useWindowChromeStore } from "../stores/windowChrome";
 import type { PersonalizationSettings } from "../lib/api/types";
-import { APP_INTENT, APP_SETTINGS, ROOM_PROGRESS, ROOM_STATE, WINDOW } from "./events";
+import {
+  APP_ASSET_SCOPE_ERROR,
+  APP_INTENT,
+  APP_SETTINGS,
+  ROOM_PROGRESS,
+  ROOM_STATE,
+  UPDATE_INSTALL_ERROR,
+  WINDOW,
+} from "./events";
 import type { RoomProgressEvent, RoomStateEvent } from "./contracts/room";
 import type { WindowIntent } from "./contracts/window";
 
@@ -79,6 +88,19 @@ async function install(): Promise<void> {
     registered.push(
       await listen<AppSettingsEvent>(APP_SETTINGS, (e) =>
         useSettings().applyRemotePatch(e.payload.rev, e.payload.patch),
+      ),
+    );
+    // 上一次自动更新落地失败（便携版替换 exe 失败等）：交给更新流程负责提示与状态。
+    // 后端在启动约 3 秒后延迟发出，setup 阶段前端还没注册监听，立即发必被丢掉。
+    registered.push(
+      await listen<UpdateInstallError>(UPDATE_INSTALL_ERROR, (e) =>
+        useUpdater().reportInstallError(e.payload),
+      ),
+    );
+    // 资源（asset）协议白名单没加上：交给设置（外观/背景负责人）常驻提示。
+    registered.push(
+      await listen<AssetScopeError>(APP_ASSET_SCOPE_ERROR, (e) =>
+        useSettings().reportAssetScopeError(e.payload),
       ),
     );
     unlisten = registered;

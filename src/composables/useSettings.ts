@@ -13,70 +13,40 @@
 
 import { computed, reactive, ref } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { getPersonalization, savePersonalization } from "../lib/api/config";
 import { fetchRemoteBackground } from "../lib/api/datadir";
-import { getDefaultEffect, setWindowDarkMode, setWindowEffect } from "../lib/api/effect";
+import { setWindowDarkMode, setWindowEffect } from "../lib/api/effect";
 import type { PersonalizationSettings } from "../lib/api/types";
 import { applyBackground, isRemoteUrl, resolveMediaUrl } from "../lib/appearance/background";
-import { showError } from "./useToast";
+import { createSettingsPersist, defaultSettings } from "./useSettingsPersist";
 
-/** 后端 `config/mod.rs` 的默认值镜像（读不到配置时的兜底）。 */
-export function defaultSettings(): PersonalizationSettings {
-  return {
-    theme_color: "#0066cc",
-    theme_mode: "system",
-    theme_variant: "tonal-spot",
-    theme_contrast: "standard",
-    animation_enabled: true,
-    animation_speed: 1,
-    transparent_effect: "",
-    effect_tint: 0,
-    background_type: "default",
-    background_value: "",
-    background_fit: "scale-to-fill",
-    background_overlay: false,
-    background_overlay_opacity: 30,
-    background_opacity: 100,
-    background_opacity_dark: 100,
-    background_image_blur_light: 0,
-    background_image_blur_dark: 0,
-    background_video_blur_light: 0,
-    background_video_blur_dark: 0,
-    seed_blur_light: 0,
-    seed_blur_dark: 0,
-    background_overlay_opacity_dark: 30,
-    music_mode: "none",
-    music_value: "",
-    homepage_mode: "default",
-    homepage_value: "",
-    // 与后端默认一致：默认跟随手选的 theme_color。
-    theme_from_background: false,
-    theme_seed_source: "manual",
-  };
+/** 保持对外的 `defaultSettings` 导出（落盘模块是唯一拥有者）。 */
+export { defaultSettings };
+
+/**
+ * `mclink://app/asset-scope-error` 的负载。
+ *
+ * 事件名与后端保持一致（后端见 `src-tauri/src/lib.rs` 的 `ASSET_SCOPE_ERROR_EVENT`），
+ * 后端改了就收不到。
+ *
+ * - `reason`：人可读的中文原因。
+ * - `directory`：受影响的数据目录。
+ */
+export interface AssetScopeError {
+  reason: string;
+  directory: string;
 }
 
 // ---- 模块级单例状态 ----
 const state = reactive<PersonalizationSettings>(defaultSettings());
-const loaded = ref(false);
-const saving = ref(false);
-const saveError = ref<string | null>(null);
 
 /**
- * 初始读取是否失败。
+ * 数据目录没能加入资源（asset）协议白名单（后端启动约 3 秒后延迟发出）。
  *
- * 读失败时 `state` 停留在默认值，而 `savePersonalization` 是**全量覆盖**：
- * 此时任何一次 `patch()` 都会把一整套默认值写回后端，静默抹掉用户全部个性化配置。
- * 因此读失败后**禁止写入**，直到下一次 `load()` 成功。
+ * 后果：背景图 / 图标 / 字体可能加载不出来（403/404）。
+ * 它是**持续状态**：失败已经发生过了，重启前一直有效，所以放在这里而不只是一次提示。
+ * 对应「关于」页的常驻 InfoBar。
  */
-let loadFailed = false;
-
-/**
- * "读失败导致拒绝保存"是否已经提示过。
- *
- * 它是**持续状态**而不是瞬时事件：读失败后每次 `patch()` 都会被拒绝，
- * 逐次弹 toast 会变成刷屏。只提示一次，界面另有常驻提示条。
- */
-let loadFailureNotified = false;
+const assetScopeError = ref<AssetScopeError | null>(null);
 
 /** 后端返回的"本平台默认窗口材质"，仅用于解释空值。 */
 const platformDefaultEffect = ref("none");
@@ -99,10 +69,20 @@ const effect = computed(() =>
     : state.transparent_effect,
 );
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let windowDark: boolean | null = null;
-let appliedDark: boolean | null = null;
-let themeTransitionTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * 落盘（读盘 / 写盘）委托给 `useSettingsPersist`。
+ *
+ * 状态本体（`state`）仍在本模块，两边共享同一个对象，不会出现"两处各存一份、
+ * 互相覆盖"。依赖方向是单向的：`useSettings.ts` → `useSettingsPersist.ts`，
+ * 后者需要的"状态"与"生效动作"由这里注入（`PersistHost`），避免循环依赖。
+ */
+const persist = createSettingsPersist({
+  getState: () => state,
+  applyAll: () => applyAll(),
+  setPlatformDefaultEffect: (value: string) => {
+    platformDefaultEffect.value = value;
+  },
+});
 
 function syncWindowDark(dark: boolean) {
   if (windowDark === dark) return;
@@ -113,15 +93,11 @@ function syncWindowDark(dark: boolean) {
 /**
  * 顶栏透明、动画速度、明暗钩子类、窗口材质与 DWM 暗色。
  *
- * 组件库配色由 `<m3e-theme>` 的动态配色负责（`scheme` 绑定在 `App.vue`）；
- * 这里给 `<html>` 切 `.dark` 是为了 `tokens.css` 里字面量兜底段与非 m3e 组件。
- */
-/**
- * 窗口材质交给原生窗口。**只在材质相关字段真的变化时调用** —— 它是一次 IPC 往返，
- * 挂在每次配色变更上纯属浪费（拖动取色器时每秒几十次）。
+ * 组件库配色由 `<m3e-theme>` 负责（`scheme` 绑定在 `App.vue`）；这里给 `<html>`
+ * 切 `.dark` 是为了 `tokens.css` 字面量兜底段与非 m3e 组件。
  *
- * 染色浓度与明暗一并传：材质是"半透明纯色 + 染色层"，只传效果名的话，
- * 调浓度或切明暗都不会反映到窗口上。
+ * 窗口材质交给原生窗口，**只在材质相关字段真的变化时调用**（一次 IPC 往返，
+ * 挂在每次配色变更上纯属浪费）。染色浓度与明暗一并传：材质是"半透明纯色 + 染色层"。
  */
 function syncWindowEffect() {
   void setWindowEffect(
@@ -198,11 +174,8 @@ export function forceReloadRemote() {
 export const remoteBgLoading = ref(false);
 
 /**
- * 解析背景/音乐地址并应用到 DOM。
- *
- * **网络图的地址必须由后端给出**：前端直接把它交给浏览器的话，后端拿不到字节就无法
- * 取色；而且随机图片 API 每次返回的图不同，会出现"取色用 A 图、显示用 B 图"。
- * 后端下载并缓存后，两边读的是同一个文件。详见 `lib/api/datadir.ts`。
+ * 解析背景/音乐地址并应用到 DOM。**网络图地址必须由后端给出**（前端直连拿不到字节无法取色，
+ * 且随机图片 API 每次图不同会"取色用 A、显示用 B"）。后端缓存后两边读同一文件。
  */
 async function refreshBackground() {
   const token = ++bgToken;
@@ -263,14 +236,9 @@ async function applyAll() {
 }
 
 /**
- * 只有这些字段变化才需要重解析背景与背景音乐（每次都可能是一次 IPC）。
- *
- * `transparent_effect` 在这里是因为它决定了窗口材质，而材质与"背景不透明度"是**互斥的
- * 两种外观判断依据**（同一个 default 背景，底下垫的是系统材质还是桌面）。
- * 切材质后不重算，`--app-opacity` 就不会被重新下发。
- *
- * 新增「分深浅两档」的调节字段必须同时加进这里：否则切换明暗后不会重算，
- * 界面会停在换档前的值上，看起来像"深色档没保存"。
+ * 这些字段变化才重算背景/背景音乐（每次都可能是一次 IPC）。
+ * `transparent_effect` 决定窗口材质，切材质后不重算 `--app-opacity` 不会下发；
+ * 新增「分深浅两档」字段必须加进这里，否则切换明暗后停在原值（像"深色档没保存"）。
  */
 const BACKGROUND_KEYS = new Set<string>([
   "transparent_effect",
@@ -297,28 +265,16 @@ const BACKGROUND_KEYS = new Set<string>([
   "music_value",
 ]);
 
-/**
- * 材质相关的字段：改动它们要走一次 `set_window_effect` IPC。
- *
- * `effect_tint` 在这里而不是在 `BACKGROUND_KEYS`：它改的是原生窗口的材质染色，
- * 必须真的调一次官方 API 才生效——光刷新背景层会看到"滑块动了但窗口没变"。
- */
+/** 材质相关字段：改动要走一次 `set_window_effect` IPC（`effect_tint` 改染色，必须真调才生效）。 */
 const EFFECT_KEYS = new Set<string>(["transparent_effect", "effect_tint"]);
 
 /**
- * 需要重算背景/模糊的字段（不含材质 IPC）。
- *
- * 明暗翻转（`theme_mode`）也要算在内：模糊强度、遮罩各有深浅两档，
- * 不重算就会停在换档前的值上。系统主题变化走的是 `applyAll()`，不经过这里。
+ * 需要重算背景/模糊的字段（不含材质 IPC）。`theme_mode` 翻转也在内：
+ * 模糊/遮罩各有深浅两档，不重算会停在原值；系统主题变化走 `applyAll()`，不经过这里。
  */
 const NEEDS_BACKGROUND = new Set<string>([...BACKGROUND_KEYS, "theme_mode"]);
 
-/**
- * 只应用 `partial` 里真正相关的部分。
- *
- * 配色字段只影响 `applyChrome()`（写几个 class 与 CSS 变量，无 IPC）；窗口材质与背景
- * 各是一次 IPC，不该被拖色事件顺带触发 —— 那是纯粹白花的往返。
- */
+/** 只应用 `partial` 里真正相关的部分：配色走 `applyChrome`，材质/背景各是一次 IPC，不拖色事件顺带触发。 */
 function applyChanged(partial: Partial<PersonalizationSettings>) {
   applyChrome();
   const keys = Object.keys(partial);
@@ -326,76 +282,22 @@ function applyChanged(partial: Partial<PersonalizationSettings>) {
   if (keys.some((key) => NEEDS_BACKGROUND.has(key))) void refreshBackground();
 }
 
-/** 合并默认值，兼容老配置缺失字段。 */
-function withDefaults(data: Partial<PersonalizationSettings>): PersonalizationSettings {
-  const merged = { ...defaultSettings(), ...data };
-  // 老配置没有 `theme_seed_source`（后端存的是空串）：按原来的布尔迁移一次。
-  //
-  // 迁移**只在这里做**：后端存空串表示"这个字段本来不存在"，它要是自己填成
-  // `manual`，就再也分不清"用户选过手选"和"字段是空的"了。
-  if (!merged.theme_seed_source) {
-    merged.theme_seed_source = merged.theme_from_background ? "background" : "manual";
-  }
-  return merged;
-}
-
-/** 从后端读取设置并应用。读失败时保持当前（默认）值，只记录错误。 */
-async function load(): Promise<PersonalizationSettings> {
-  try {
-    platformDefaultEffect.value = await getDefaultEffect();
-  } catch {
-    // 取不到就退回 "none"：不应用材质好过应用一个未知材质。
-  }
-  try {
-    const data = await getPersonalization();
-    Object.assign(state, withDefaults(data));
-    loadFailed = false;
-    loadFailureNotified = false;
-    saveError.value = null;
-  } catch (e) {
-    // 读失败必须锁住写入：否则下一次 patch() 的防抖保存会把默认值整体覆盖用户配置。
-    loadFailed = true;
-    saveError.value = messageOf(e);
-    console.warn("[settings] 读取个性化设置失败，使用默认值", e);
-    // 读失败也要有人看得见：界面会一直停在默认值上，用户毫无察觉。
-    showError(`设置读取失败：${saveError.value}`);
-  } finally {
-    // 无论成败都算"尝试过加载"：首页据此不再先渲染默认态再突变。
-    loaded.value = true;
-  }
-  await applyAll();
-  return { ...state };
-}
+let windowDark: boolean | null = null;
+let appliedDark: boolean | null = null;
+let themeTransitionTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
- * 最近一次应用的**远端**设置版本号。
- *
- * 同一条设置事件可能被同一窗口收到多次（重复投递、重试），
- * **同一个 `rev` 不该应用两次**——所以这里按 `rev` 去重。
- *
- * 注意：这是**远端**事件的版本号，与本地 `patch()` 无关。本地改动是自己写盘的，
- * 不需要（也不应该）参与这里的判序。
+ * 最近一次应用的远端设置版本号：同一条事件可能重复投递，按 `rev` 去重
+ * （这是远端版本号，与本地 `patch()` 无关）。
  */
 let lastRemoteRev = 0;
 
 /**
  * 应用别的窗口推过来的设置变更（`mclink://app/settings`）。
  *
- * # 为什么**绝不能**回写
- *
- * `patch()` 会调 `scheduleSave()`，而这里不能：回写会形成
- * "收到事件 → 写盘 → 发事件"的回环，设置会被反复写盘、事件反复飞。
- * 权威状态在 Rust，前端只是投影——收到通知**应用**即可。
- *
- * # 为什么只合并 `patch`
- *
- * 后端给的是"本次实际改动的字段"（`Partial`），不是整份设置。
- * 整份会让每个窗口把背景与材质都重算一遍。
- *
- * # 为什么跳过已经一致的值
- *
- * 发起改动的那个窗口会收到**自己**那条事件，而它的值早就改好了。
- * 再应用一次等于白跑一次背景重算与材质 IPC。
+ * **绝不能**回写：`patch()` 会触发保存，回写会形成"事件→写盘→事件"回环，
+ * 权威状态在 Rust，前端只是投影。合并 `patch`（`Partial`，只含本次改动字段）后
+ * 照常走外观/背景/材质链路；值已一致则跳过，避免重复重算。按 `rev` 去重。
  */
 function applyRemotePatch(rev: number, patch: Partial<PersonalizationSettings>): void {
   if (rev <= lastRemoteRev) return;
@@ -429,55 +331,12 @@ function patch(partial: Partial<PersonalizationSettings>, options?: { silent?: b
     state.theme_from_background = partial.theme_seed_source === "background";
   }
   applyChanged(partial);
-  if (!options?.silent) scheduleSave();
-}
-
-/** 防抖保存（400ms），避免拖动滑块时把磁盘写满。 */
-function scheduleSave() {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => void saveNow(), 400);
-}
-
-/** 立即写盘。 */
-async function saveNow(): Promise<boolean> {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  // 读失败后写入等于用默认值覆盖用户配置：宁可报错也不落盘（见 loadFailed 的说明）。
-  if (loadFailed) {
-    saveError.value = "设置未能读取，已暂停保存以避免覆盖原有配置；请重启应用";
-    // 这是持续状态，只提示一次，避免每次拖滑块都弹 toast。
-    if (!loadFailureNotified) {
-      loadFailureNotified = true;
-      showError(saveError.value);
-    }
-    return false;
-  }
-  saving.value = true;
-  saveError.value = null;
-  try {
-    await savePersonalization({ ...state });
-    return true;
-  } catch (e) {
-    saveError.value = messageOf(e);
-    // 落盘失败必须有人看得见：否则界面照样变（`patch()` 先改内存），
-    // 用户以为存上了，重启后回退。
-    showError(`设置保存失败：${saveError.value}`);
-    return false;
-  } finally {
-    saving.value = false;
-  }
+  if (!options?.silent) persist.scheduleSave();
 }
 
 /**
- * 系统主题变化的回调（模块级，至多一个监听）。
- *
- * `useSettings` 是模块级单例，因此这个监听**整个进程只注册一次**：
- * 反复调用 `bindSystemTheme` 只是换掉回调，不会叠加监听器。
- *
- * 旧实现用内联箭头函数注册：既拿不到句柄也删不掉，`App.vue` 每次重挂载就多一个
- * 监听，系统主题切换时触发 N 次 `applyAll()`（每次还带一次 `setWindowEffect` 的 IPC）。
+ * 系统主题变化的回调（模块级，至多一个监听）：`useSettings` 是单例，整个进程只注册一次，
+ * 反复调用只换回调不叠加监听。旧实现用内联箭头，每次重挂载多一个监听。
  */
 let systemThemeOnChange: (() => void) | null = null;
 let systemThemeBound = false;
@@ -492,27 +351,35 @@ function bindSystemTheme(onChange: () => void) {
   });
 }
 
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+/**
+ * 记录"数据目录没能加入资源协议白名单"，并**常驻**（不弹一次就丢）。
+ * 由事件桥转交：后端启动约 3 秒后延迟发出 `mclink://app/asset-scope-error`；
+ * 它是持续状态（重启前一直有效），界面据此显示常驻 InfoBar。
+ */
+function reportAssetScopeError(payload: AssetScopeError): void {
+  assetScopeError.value = payload;
 }
 
 export function useSettings() {
   return {
     // 状态
     state,
-    loaded,
-    saving,
-    saveError,
+    loaded: persist.loaded,
+    saving: persist.saving,
+    saveError: persist.saveError,
+    assetScopeError,
     platformDefaultEffect,
     // 派生
     isDark,
     effect,
     // 动作
-    load,
+    load: persist.load,
     patch,
     applyRemotePatch,
-    saveNow,
+    saveNow: persist.saveNow,
     applyAll,
     bindSystemTheme,
+    /** 记录"资源目录未能加入白名单"（由事件桥转交，见 `reportAssetScopeError`） */
+    reportAssetScopeError,
   };
 }
