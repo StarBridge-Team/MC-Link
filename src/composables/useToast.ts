@@ -1,6 +1,9 @@
 import "@m3e/web/snackbar";
 import "@m3e/web/dialog";
 
+import { IpcError } from "../ipc/client";
+import { localizeErrorCode } from "../lib/api/errorCodes";
+
 /**
  * 轻量提示封装（基于 @m3e/web 的 Snackbar 与 Dialog）。
  *
@@ -140,6 +143,8 @@ export async function withErrorToast(
 }
 
 export function messageOf(e: unknown): string {
+  // 与 `client.ts::errorMessage` 保持一致：命中错误码固定文案时优先用它。
+  if (e instanceof IpcError) return localizeErrorCode(e.code, e.message);
   if (e instanceof Error) return e.message;
   if (typeof e === "string") return e;
   return String(e);

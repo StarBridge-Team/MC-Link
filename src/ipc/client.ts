@@ -10,6 +10,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 
+import { localizeErrorCode } from "../lib/api/errorCodes";
+
 export class IpcError extends Error {
   readonly code: string;
 
@@ -40,8 +42,14 @@ export async function call<T>(command: string, args?: Record<string, unknown>): 
   }
 }
 
-/** 取错误的展示文案（既有代码里的 `errMessage` 统一走这里）。 */
+/**
+ * 取错误的展示文案（既有代码里的 `errMessage` 统一走这里）。
+ *
+ * 命中 `IpcError.code` 的固定中文文案时优先用它；未登记的 code 或
+ * 非 `IpcError`（仍返回 `Result<_, String>` 的命令）回退到原始字符串。
+ */
 export function errorMessage(e: unknown): string {
+  if (e instanceof IpcError) return localizeErrorCode(e.code, e.message);
   if (e instanceof Error) return e.message;
   return String(e);
 }

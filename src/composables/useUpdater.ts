@@ -161,7 +161,8 @@ function reportInstallError(payload: UpdateInstallError): void {
   if (installErrorNotified) return;
   installErrorNotified = true;
   // 目标路径必须出现在提示里：用户据此知道自己该去看哪个文件。
-  showError(`上次自动更新没能完成：${payload.reason}（目标：${payload.target}）`);
+  // 落地失败时应用**不退出**（见后端 install.rs 的失败不退出策略），所以明确让用户手动重启。
+  showError(`上次自动更新没能完成，请手动重启应用：${payload.reason}（目标：${payload.target}）`);
 }
 
 /**
