@@ -9,6 +9,7 @@ import { useConnect } from "../composables/useConnect";
 import { runOpenActions } from "../lib/api/app";
 import { listLocalGames } from "../lib/api/connect";
 import type { LocalGameFound } from "../lib/api/types";
+import { useRegionStore } from "../stores/region";
 
 /**
  * 首页。
@@ -24,6 +25,8 @@ const { t } = useI18n();
 const settings = useSettings();
 const router = useRouter();
 const { requestEntry } = useConnect();
+/** 地区受限时隐藏联机入口（判定见 `stores/region.ts`）。 */
+const region = useRegionStore();
 
 const mode = computed(() => settings.state.homepage_mode || "default");
 const url = computed(() => (settings.state.homepage_value || "").trim());
@@ -191,8 +194,9 @@ function startCoop() {
       </div>
     </div>
 
-    <!-- 右下角：联机模式卡片（点击切换成员 / 房主；扫到局域网游戏自动变房主） -->
-    <m3e-card variant="elevated" clickable class="home__mode" @click="toggleMode">
+    <!-- 右下角：联机模式卡片（点击切换成员 / 房主；扫到局域网游戏自动变房主）。
+         地区受限时整张隐藏：它是进联机页的入口之一，留着就是死链接。 -->
+    <m3e-card v-if="!region.blocked" variant="elevated" clickable class="home__mode" @click="toggleMode">
       <div class="home__mode-head">
         <i class="material-symbols-rounded home__mode-icon">{{ hostMode ? 'crown' : 'group' }}</i>
         <div class="home__mode-text">

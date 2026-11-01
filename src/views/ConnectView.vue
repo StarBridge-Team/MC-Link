@@ -5,6 +5,8 @@ import { listen } from "@tauri-apps/api/event";
 import { useConnect } from "../composables/useConnect";
 import type { LocalGame } from "../lib/api/types";
 import { useIntentStore } from "../stores/intent";
+import { useRegionStore } from "../stores/region";
+import RegionNotice from "../components/region/RegionNotice.vue";
 import HostPanel from "./connect/HostPanel.vue";
 import MemberPanel from "./connect/MemberPanel.vue";
 import StartDialog from "./connect/StartDialog.vue";
@@ -16,6 +18,15 @@ import StartDialog from "./connect/StartDialog.vue";
  * 用户可以继续建第二个房间。会话状态不归本页所有（见 `useConnect` 的说明）。
  */
 const { t } = useI18n();
+
+/**
+ * 地区访问限制（只有中国大陆命中，见 `src-tauri/src/commands/region.rs`）。
+ *
+ * 命中时**整页替换**成提示页，并且不再启动扫描/状态拉取——把内容留在 DOM 里只是
+ * 藏起来的话，`useConnect().mount()` 起的后台轮询还在跑，等于"功能还在工作"。
+ */
+const region = useRegionStore();
+
 const {
   gameQuery,
   inviteValue,
@@ -136,6 +147,11 @@ watch(filteredLocalGames, (games) => {
 let unlistenDeep: (() => void) | null = null;
 
 onMounted(async () => {
+  // 先确认地区：受限时**什么都不启动**（扫描、状态轮询、深链监听都不必存在）。
+  // `ensure()` 在 App 启动时就已经发起过，这里通常只是等同一个 Promise 完成。
+  await region.ensure();
+  if (region.blocked) return;
+
   await mount();
   unlistenDeep = await listen<{ action: string; params: string[] }>("deep-link", (e) => {
     if (e.payload.action === "join" && e.payload.params[0]) {
@@ -151,7 +167,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="connect">
+  <RegionNotice v-if="region.blocked" />
+  <div v-else class="connect">
     <div class="connect__toolbar">
       <m3e-search-bar
         clearable

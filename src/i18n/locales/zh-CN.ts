@@ -236,6 +236,18 @@ export default {
     },
   },
 
+  /**
+   * 地区访问限制的提示页（只有中国大陆命中，规则见 `src-tauri/src/commands/region.rs`）。
+   *
+   * 正文是产品/法务口径的固定文案，**不要**为了"更友好"改词或加解释——
+   * 改的是合规措辞，不是文案风格。
+   */
+  // 命名空间叫 `regionGate` 而不是 `region`：`region` 已被"地区代码 → 显示名"占用。
+  regionGate: {
+    blockedTitle: "联机功能在当前地区不可用",
+    blockedBody: "为了符合当地法律法规要求，联机功能在您所在的地区不可用。",
+  },
+
   background: {
     // 卡片一：来源
     title: "背景来源",

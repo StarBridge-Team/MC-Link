@@ -232,6 +232,19 @@ export default {
     },
   },
 
+  /**
+   * Region-restriction notice (mainland China only; rules live in
+   * `src-tauri/src/commands/region.rs`). The body is fixed compliance wording —
+   * do not soften or expand it as a "copy tweak".
+   */
+  // Namespace is `regionGate`, not `region`: the latter is taken by the
+  // region-code → display-name table.
+  regionGate: {
+    blockedTitle: "Online features are unavailable in your region",
+    blockedBody:
+      "To comply with local laws and regulations, online features are not available in your region.",
+  },
+
   background: {
     // Card 1: source
     title: "Background source",

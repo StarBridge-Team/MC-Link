@@ -14,6 +14,20 @@ export interface IpInfo {
   isp: string;
 }
 
+/**
+ * 地区判定结果（`get_region_info`）。
+ *
+ * `mainland_china` 是后端算好的**唯一权威**：前端不要拿 `region` 再做一次判断，
+ * 两套规则迟早会不一致，而这类不一致的表现是"某些地区被误锁/漏锁"。
+ */
+export interface RegionInfo {
+  ip: string;
+  /** 原始地区串（`国家 省份 城市`），只用于排查。 */
+  region: string;
+  /** 是否为中国大陆。 */
+  mainland_china: boolean;
+}
+
 export interface AdapterStatus {
   installed: boolean;
   running: boolean;

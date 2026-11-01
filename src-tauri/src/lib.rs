@@ -337,6 +337,7 @@ pub fn run() {
             resize_window,
             system_wallpaper_seed,
             system_accent_seed,
+            get_region_info,
             get_ip_info,
             download_adapter,
             adapter_startup_init,

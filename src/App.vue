@@ -11,6 +11,7 @@ import { useWindowControls } from "./composables/useWindowControls";
 import { adapterStartupInit } from "./lib/api/adapter";
 import { DEFAULT_SETTING_TAB, SETTING_TABS, isSettingTab } from "./router";
 import { useIntentStore } from "./stores/intent";
+import { useRegionStore } from "./stores/region";
 import { useThemeBinding } from "./ui/themeBinding";
 import WindowResizeEdges from "./ui/WindowResizeEdges.vue";
 
@@ -32,6 +33,8 @@ const { t } = useI18n();
 const { settings, colorScheme, themeEl, scheme, color, variant, contrast } = useThemeBinding();
 const setup = useSetup();
 const windowCtl = useWindowControls();
+/** 地区判定：导航入口与联机页都读它，启动时查一次（见 `stores/region.ts`）。 */
+const region = useRegionStore();
 
 /** 把引导状态收敛成一个 ref，模板里不必写 `setup.needsOobe.value`。 */
 const needsOobe = computed(() => setup.needsOobe.value);
@@ -55,13 +58,25 @@ const pageTitle = computed(() => {
 });
 
 // ---- 导航 ----
-const navItems = computed<NavItem[]>(() => [
+const allNavItems = computed<NavItem[]>(() => [
   { id: "home", icon: "home", label: t("nav.home") },
   { id: "connect", icon: "broadcast_on_home", label: t("nav.connect") },
   { id: "rooms", icon: "meeting_room", label: t("nav.rooms") },
   { id: "game", icon: "sports_esports", label: t("nav.game") },
   { id: "setting", icon: "tune", label: t("nav.setting") },
 ]);
+
+/**
+ * 受地区限制的功能入口：**只有中国大陆**命中时隐藏（判定见 `stores/region.ts`）。
+ *
+ * `rooms` 与 `connect` 同属联机域——房间列表离开联机流程没有意义，房间窗口本身也由
+ * 联机流程创建。若要只拦联机页，把 `"rooms"` 从这里去掉即可。
+ */
+const REGION_GATED_NAV = new Set(["connect", "rooms"]);
+
+const navItems = computed<NavItem[]>(() =>
+  allNavItems.value.filter((item) => !(region.blocked && REGION_GATED_NAV.has(item.id))),
+);
 
 const SETTING_TAB_ICONS: Record<string, string> = {
   personalization: "brush",
@@ -77,6 +92,20 @@ const secondaryItems = computed<NavListItem[]>(() =>
     icon: SETTING_TAB_ICONS[id] ?? "circle",
     label: t(`setting.${id}`),
   })),
+);
+
+/**
+ * 判定结果回来后，如果人已经停在受限页面上（深链、后退、托盘意图都可能造成），
+ * 把**房间列表**送回首页。
+ *
+ * 联机页不在这里跳走：需求要的是"整个联机界面替换成提示页"，那一页由
+ * `ConnectView` 自己渲染提示，跳走反而看不到说明。
+ */
+watch(
+  () => region.blocked,
+  (blocked) => {
+    if (blocked && route.name === "rooms") void router.replace({ name: "home" });
+  },
 );
 
 /**
@@ -117,6 +146,8 @@ watch(
   () => intent.pending,
   (value) => {
     if (value?.action === "connect" && route.name !== "connect") {
+      // 受限地区不把人送进联机页：入口都藏了，托盘再把人送过去只会撞上提示页。
+      if (region.blocked) return;
       void router.push({ name: "connect" });
     }
   },
@@ -143,6 +174,9 @@ onMounted(async () => {
   // 但界面仍应能正常渲染，不能因为"窗口不存在"而中断启动流程。
   await Promise.all([
     setup.load(),
+    // 地区判定与引导并行：导航栏要等它出结果才知道该不该显示联机入口。
+    // 它内部失败即放行，因此这里不需要 catch（不会让启动流程中断）。
+    region.ensure(),
     (async () => {
       try {
         const restored = await windowCtl.restoreWindowState();
