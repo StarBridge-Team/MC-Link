@@ -67,10 +67,10 @@ const allNavItems = computed<NavItem[]>(() => [
 ]);
 
 /**
- * 受地区限制的功能入口：**只有中国大陆**命中时隐藏（判定见 `stores/region.ts`）。
+ * 受地区限制的功能**入口**：**只有中国大陆**命中时隐藏（判定见 `stores/region.ts`）。
  *
- * `rooms` 与 `connect` 同属联机域——房间列表离开联机流程没有意义，房间窗口本身也由
- * 联机流程创建。若要只拦联机页，把 `"rooms"` 从这里去掉即可。
+ * 注意范围：这里只隐藏入口，**路由一律保留**。用户可能从后退、深链或托盘进来，
+ * 把人强行弹走比让他看到说明更懵；联机页本身由 `ConnectView` 整页替换成提示页。
  */
 const REGION_GATED_NAV = new Set(["connect", "rooms"]);
 
@@ -92,20 +92,6 @@ const secondaryItems = computed<NavListItem[]>(() =>
     icon: SETTING_TAB_ICONS[id] ?? "circle",
     label: t(`setting.${id}`),
   })),
-);
-
-/**
- * 判定结果回来后，如果人已经停在受限页面上（深链、后退、托盘意图都可能造成），
- * 把**房间列表**送回首页。
- *
- * 联机页不在这里跳走：需求要的是"整个联机界面替换成提示页"，那一页由
- * `ConnectView` 自己渲染提示，跳走反而看不到说明。
- */
-watch(
-  () => region.blocked,
-  (blocked) => {
-    if (blocked && route.name === "rooms") void router.replace({ name: "home" });
-  },
 );
 
 /**
