@@ -1,19 +1,20 @@
 //! HMCL 主题包导入（B7）。
 //!
-//! # 为什么是"宽松提取"而不是精确解析
+//! # 最新版 HMCL（3.6.x）的主题形态
 //!
-//! HMCL 的自定义主题是 `<数据目录>/skins/<主题名>/` 目录，但不同版本的文件名与字段
-//! 并不统一（`skin.json` / `theme.properties` / `theme.css`，字段有 `accent` /
-//! `primary` / `color` 等多种写法）。按某个版本的精确结构写解析器，一旦上游改字段
-//! 就会整体导入失败。
+//! 3.6 起主题分为内置预设与**自定义主题**两类，自定义主题放在
+//! `<数据目录>/skins/<主题名>/`（目录），主题市场下载的则是同结构的**压缩包**（zip）。
+//! 主题本身是 JavaFX CSS + 若干资源，**没有跨版本稳定的"强调色"字段**：
+//! `skin.json` / `theme.json` / `theme.properties` / `theme.css` 在不同版本里都可能出现。
 //!
-//! 这里改为**宽松提取**：优先取键名含 accent/primary/seed/color 的 `#RRGGBB`，
-//! 否则取任意第一个非黑白颜色。最坏情况是取到主题里的某个颜色而不是完全失败，
-//! 而"取到颜色"正是本功能唯一需要的输入（M3 种子色）。
+//! 因此这里不按某个版本写死解析，而是**宽松提取**：优先取键名含
+//! accent/primary/seed/color 的 `#RRGGBB`，否则取任意第一个非黑白颜色。
+//! 目录与 zip 两种形态都支持——zip 只在内存里读文本，不落盘、不解压资源。
 //!
-//! 主题本身在客户端**不实现**（用户已定：主题走单独系统），这里只负责把 HMCL 主题
-//! 的颜色翻译成本程序的种子色。
+//! 主题本身在客户端**不实现**（用户已定：主题走单独系统），这里只负责把 HMCL 主题的
+//! 颜色翻译成本程序的种子色。
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -48,7 +49,15 @@ fn skins_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
-/// 列出 HMCL 已安装的主题。
+/// 是否是主题包文件（3.6.x 主题市场下载的 zip）。
+fn is_zip(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("zip"))
+        .unwrap_or(false)
+}
+
+/// 列出 HMCL 已安装的主题（目录与 zip 都算）。
 #[tauri::command]
 pub(crate) fn hmcl_list_themes() -> Vec<HmclTheme> {
     let mut out = Vec::new();
@@ -58,7 +67,7 @@ pub(crate) fn hmcl_list_themes() -> Vec<HmclTheme> {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_dir() {
+            if !path.is_dir() && !is_zip(&path) {
                 continue;
             }
             let name = entry.file_name().to_string_lossy().to_string();
@@ -74,26 +83,30 @@ pub(crate) fn hmcl_list_themes() -> Vec<HmclTheme> {
     out
 }
 
-/// 读取指定主题目录的种子色。
+/// 读取指定主题（目录或 zip）的种子色。
 #[tauri::command]
 pub(crate) fn hmcl_theme_seed(path: String) -> Result<Option<String>, String> {
-    let dir = PathBuf::from(&path);
-    if !dir.is_dir() {
-        return Err(format!("主题目录不存在: {path}"));
+    let target = PathBuf::from(&path);
+    if !target.exists() {
+        return Err(format!("主题不存在: {path}"));
     }
-    Ok(extract_seed(&dir))
+    Ok(extract_seed(&target))
 }
 
-/// 从主题目录提取种子色。
-fn extract_seed(dir: &Path) -> Option<String> {
+/// 从主题（目录或 zip）提取种子色。
+fn extract_seed(path: &Path) -> Option<String> {
     let mut preferred: Option<String> = None;
     let mut any: Option<String> = None;
-    scan(dir, 0, &mut preferred, &mut any);
+    if path.is_file() {
+        scan_zip(path, &mut preferred, &mut any);
+    } else {
+        scan_dir(path, 0, &mut preferred, &mut any);
+    }
     preferred.or(any)
 }
 
-/// 递归扫描（限深），收集"偏好颜色"与"任意颜色"。
-fn scan(
+/// 递归扫描目录（限深），收集"偏好颜色"与"任意颜色"。
+fn scan_dir(
     dir: &Path,
     depth: usize,
     preferred: &mut Option<String>,
@@ -109,34 +122,71 @@ fn scan(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            scan(&path, depth + 1, preferred, any);
+            scan_dir(&path, depth + 1, preferred, any);
             continue;
         }
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if !matches!(ext.as_str(), "json" | "properties" | "css" | "txt") {
+        if !is_text_asset(&path) {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            scan_text(&text, preferred, any);
+        }
+    }
+}
+
+/// 读取 zip 内的文本资源（不落盘、不解压图片等无关条目）。
+fn scan_zip(path: &Path, preferred: &mut Option<String>, any: &mut Option<String>) {
+    let Ok(file) = std::fs::File::open(path) else {
+        return;
+    };
+    let Ok(mut archive) = zip::ZipArchive::new(file) else {
+        return;
+    };
+    for i in 0..archive.len() {
+        let Ok(mut entry) = archive.by_index(i) else {
             continue;
         };
-        for line in text.lines() {
-            let Some(color) = first_hex(line) else {
-                continue;
-            };
-            if is_boring(&color) {
-                continue;
+        let name = entry.name().to_ascii_lowercase();
+        if !has_text_ext(&name) {
+            continue;
+        }
+        let mut text = String::new();
+        if entry.read_to_string(&mut text).is_err() {
+            continue;
+        }
+        scan_text(&text, preferred, any);
+    }
+}
+
+/// 目录里哪些文件值得读（只看可能含颜色的文本资源）。
+fn is_text_asset(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| has_text_ext(&format!(".{}", e.to_ascii_lowercase())))
+        .unwrap_or(false)
+}
+
+fn has_text_ext(name: &str) -> bool {
+    [".json", ".properties", ".css", ".txt", ".xml"]
+        .iter()
+        .any(|ext| name.ends_with(ext))
+}
+
+/// 从一段文本里收集颜色。
+fn scan_text(text: &str, preferred: &mut Option<String>, any: &mut Option<String>) {
+    for line in text.lines() {
+        let Some(color) = first_hex(line) else {
+            continue;
+        };
+        if is_boring(&color) {
+            continue;
+        }
+        if is_preferred_key(line) {
+            if preferred.is_none() {
+                *preferred = Some(color);
             }
-            if is_preferred_key(line) {
-                if preferred.is_none() {
-                    *preferred = Some(color);
-                }
-            } else if any.is_none() {
-                *any = Some(color);
-            }
+        } else if any.is_none() {
+            *any = Some(color);
         }
     }
 }
@@ -220,5 +270,26 @@ mod tests {
         // `#` 后跟中文不应 panic（切片越界而不是字符边界）。
         assert_eq!(first_hex("颜色#abc中文"), None);
         assert_eq!(first_hex("accent: #12AB34"), Some("#12ab34".to_string()));
+    }
+
+    #[test]
+    fn reads_colors_from_zip_pack() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!("mclink-hmcl-{nanos}.zip"));
+
+        // 构造一个最小主题包：zip 里放 theme.css。
+        let file = std::fs::File::create(&path).expect("创建 zip");
+        let mut writer = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        use std::io::Write;
+        writer.start_file("theme.css", options).unwrap();
+        writer.write_all(b".accent { -fx-accent: #ff8800; }").unwrap();
+        writer.finish().unwrap();
+
+        assert_eq!(extract_seed(&path), Some("#ff8800".to_string()));
+        let _ = std::fs::remove_file(&path);
     }
 }
