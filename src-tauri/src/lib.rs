@@ -69,8 +69,32 @@ use state::AppState;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
+
+/// 资源白名单补白失败时通知前端的事件名。
+///
+/// 资源加载降级不该让应用起不来，但必须**可诊断**：没有它，用户只看到一片空白的
+/// 背景图，却不知道是"文件丢了"还是"白名单没加上"。
+/// 载荷：`{ reason: string, directory: string }`。
+pub(crate) const ASSET_SCOPE_ERROR_EVENT: &str = "mclink://app/asset-scope-error";
+
+/// 更新落地失败时通知前端的事件名。
+///
+/// 载荷：`{ reason: string, target: string }`——`reason` 是人可读的中文原因。
+pub(crate) const UPDATE_INSTALL_ERROR_EVENT: &str = "update-install-error";
+
+/// 启动后延迟发事件：setup 阶段前端还没挂上监听，立即发会被丢掉。
+///
+/// 3 秒足够 webview 加载完并让前端注册监听；更稳的做法是前端另开一个查询命令。
+fn emit_after_startup(app: &AppHandle, event: &str, payload: serde_json::Value) {
+    let app = app.clone();
+    let event = event.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(3));
+        let _ = app.emit(&event, payload);
+    });
+}
 
 /// 初始化插件子系统。
 ///
@@ -164,12 +188,40 @@ pub fn run() {
                 use tauri::Manager;
                 let scope = app.asset_protocol_scope();
                 if let Err(e) = scope.allow_directory(&data_dir, true) {
-                    eprintln!("[资源] 加入 asset 白名单失败（{}）: {}", data_dir.display(), e);
+                    // 不阻断启动：资源降级不该让应用起不来。
+                    // 但必须**可诊断** —— 只写一行日志的话，用户看到的是"背景图/图标全没了"，
+                    // 而便携版的数据目录恰好在 exe 同目录，最容易踩到这条。
+                    let reason = format!(
+                        "无法把数据目录加入资源白名单（{}）：{}。背景图、图标与字体可能加载失败",
+                        data_dir.display(),
+                        e
+                    );
+                    eprintln!("[资源] {}", reason);
+                    emit_after_startup(
+                        app.handle(),
+                        ASSET_SCOPE_ERROR_EVENT,
+                        serde_json::json!({
+                            "reason": reason,
+                            "directory": data_dir.to_string_lossy(),
+                        }),
+                    );
                 }
             }
 
-            // 清理上一次自动更新留下的旧 exe 备份与下载残留；此时旧进程必然已退出
-            update::cleanup_leftovers(&data_dir);
+            // 清理上一次自动更新留下的旧 exe 备份与下载残留；此时旧进程必然已退出。
+            //
+            // 上一次落地失败时把原因告诉前端：否则用户只看到"应用退出后没更新，也没重启"。
+            if let Some(failure) = update::cleanup_leftovers(&data_dir) {
+                eprintln!("[更新] 上一次更新落地失败: {}", failure.reason);
+                emit_after_startup(
+                    app.handle(),
+                    UPDATE_INSTALL_ERROR_EVENT,
+                    serde_json::json!({
+                        "reason": failure.reason,
+                        "target": failure.target,
+                    }),
+                );
+            }
 
             let mgr = Arc::new(AppMgr::new(data_dir.clone())?);
             app.manage(mgr.clone());

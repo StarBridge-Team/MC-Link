@@ -11,17 +11,43 @@
  *   latest.json                              我们的更新清单（版本判定以此为准）
  *   tauri.json                               Tauri 官方更新插件的清单（需签名私钥）
  *
+ * 插件清单的格式与签名机制由插件自己规定（`platforms` + minisign `.sig`），
+ * 无法与我们的 latest.json 合并；但两者由同一次发布生成，版本与说明不会漂移。
+ * **没有 `TAURI_SIGNING_PRIVATE_KEY` 时不会生成 tauri.json**——插件的签名校验不可关闭，
+ * 生成一份通不过校验的清单只会让人误以为已经配好；此时 Windows 安装版走自研兜底。
+ *
+ * # 两份清单必须同步（否则用户先看到一次失败）
+ *
+ * 界面读的是 `latest.json`，官方插件读的是 `tauri.json`。两者一旦不同步，
+ * 用户就会先看到"有新版本"，点下去却失败：
+ *
+ * - **没有签名私钥** → 不生成 `tauri.json`。此时 `latest.json` 会带上
+ *   `official_plugin: false`，明确告诉界面"本次不走官方插件"，
+ *   免得让用户点一次注定失败的"一键更新"。
+ * - **`tauri.json` 的版本必须与 `latest.json` 一致**：残留的旧版本清单会让插件
+ *   报"未发现可用更新"（它比界面看到的版本旧），于是界面提示有更新、
+ *   插件却说没有 —— 这正是本次修掉的症状。发现版本对不上时直接删掉那份清单。
+ * - **平台必须被插件清单覆盖**：latest.json 里出现了某个平台、而 tauri.json 里
+ *   没有它时（例：x64 签了、arm64 没签），那个平台的官方插件路径不可用，
+ *   `official_plugin` 会置为 false。
+ *
+ * # 平台标识：两套命名，必须分清
+ *
+ * | 清单 | 平台键 | 架构命名 |
+ * |---|---|---|
+ * | `latest.json` | `windows-x86_64` | **客户端的** `current_platform()`：`aarch64 → arm64`、`arm → armv7` |
+ * | `tauri.json` | `windows-x86_64` | **插件的** `updater_arch()`：Rust 架构名 `aarch64` / `armv7` / `x86_64` |
+ *
+ * 命令行传的 `--platform` 按**客户端**那套归一化（`aarch64 → arm64`），
+ * 写进 latest.json 与产物文件名；写进 tauri.json 时再转回插件那套。
+ * 两边对不上会让 ARM 用户收不到更新（客户端按 `platform` 精确匹配资产）。
+ *
  * # 两条落地路径，两份清单
  *
  * | 场景 | 谁落地 | 读哪份清单 |
  * |---|---|---|
  * | Windows 便携版 | 本仓库自研（替换 exe） | latest.json |
  * | Windows 安装版 / Linux / macOS | Tauri 官方更新插件 | tauri.json |
- *
- * 插件清单的格式与签名机制由插件自己规定（`platforms` + minisign `.sig`），
- * 无法与我们的 latest.json 合并；但两者由同一次发布生成，版本与说明不会漂移。
- * **没有 `TAURI_SIGNING_PRIVATE_KEY` 时不会生成 tauri.json**——插件的签名校验不可关闭，
- * 生成一份通不过校验的清单只会让人误以为已经配好；此时 Windows 安装版走自研兜底。
  *
  * 为什么便携版要出两份：
  *   - 自动更新只需要**单个 exe**：客户端把它覆盖到自己的路径上即可，无需解压；
@@ -34,6 +60,9 @@
  *
  * 用法：
  *   node scripts/make-update.mjs [--platform windows-x86_64] [--mandatory]
+ *   --platform 的架构名按**客户端**的命名写：`x86_64` / `aarch64`（= arm64） / `arm`（= armv7）。
+ *   写成 `--platform windows-aarch64` 也会被自动归一化成 `windows-arm64`，
+ *   与客户端 `current_platform()` 完全一致（详见上面"平台标识"一节）。
  * 环境变量：
  *   TAURI_SIGNING_PRIVATE_KEY  插件签名私钥（不设则跳过 tauri.json）
  *   GITHUB_RELEASE_BASE        插件清单下载地址前缀（默认 GitHub 发行版直链）
@@ -74,11 +103,40 @@ const valueOf = (name) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-/** 与客户端 `assets::adapter::current_platform()` 的取值保持一致。 */
-const PLATFORM = valueOf("--platform") || "windows-x86_64";
+/**
+ * 命令行传入的平台标识（未归一化）。
+ *
+ * 历史上这里写的是 `--platform windows-aarch64`，而客户端
+ * `src-tauri/src/assets/adapter.rs` 的 `current_platform()` 用的是上游产物的架构命名
+ * （`aarch64 → arm64`、`arm → armv7`）。客户端按 `platform` **精确匹配**资产，
+ * 两边对不上 → ARM 用户在清单里永远找不到自己的平台，收不到更新。
+ */
+const PLATFORM_RAW = valueOf("--platform") || "windows-x86_64";
+/** 归一化后的平台标识：与客户端 `current_platform()` 同一套命名。 */
+const PLATFORM = normalizePlatform(PLATFORM_RAW);
+if (PLATFORM !== PLATFORM_RAW) {
+  console.log(
+    `[make-update] 平台标识已归一化: ${PLATFORM_RAW} → ${PLATFORM}` +
+      "（与客户端 current_platform() 一致，否则该平台匹配不到更新）",
+  );
+}
 const MANDATORY = flag("--mandatory");
 /** GitHub 仓库（`owner/repo`），与客户端 `update/fetch.rs` 的常量一致。 */
 const GITHUB_REPO = "StarBridge-Team/MC-Link";
+
+/**
+ * 把平台标识归一化成**客户端使用的形式**（`aarch64 → arm64`、`arm → armv7`）。
+ *
+ * 纯函数：命令行怎么写都能落到客户端认得的键上，避免"脚本写一种、客户端认另一种"。
+ */
+function normalizePlatform(platform) {
+  const parts = String(platform).split("-");
+  const os = parts.shift() || "";
+  let arch = parts.join("-");
+  if (arch === "aarch64") arch = "arm64";
+  else if (arch === "arm") arch = "armv7";
+  return [os, arch].filter(Boolean).join("-");
+}
 
 /**
  * 插件清单（tauri.json）的下载地址：指向 GitHub 发行版直链。
@@ -146,10 +204,31 @@ if (produced.length === 0) {
   process.exit(1);
 }
 
-writeManifest(produced);
+// 合并同版本的资产：多次执行（x64 / arm64 各跑一次）会按平台增量追加。
+const merged = mergeAssets(describeAssets(produced));
+
+// 插件清单先写：latest.json 里要带上"本次能不能走官方插件"的标记。
 writePluginManifest(produced);
+const plugin = pluginAvailability(merged);
+
+// 插件装不上的资产（只有插件能装的那些）必须从清单里剔掉：
+// 留着只会让界面给出一次注定失败的"一键更新"。
+const assets = dropUninstallableAssets(merged, plugin);
+
+writeManifest(assets, plugin);
 pruneLocalOldVersions();
 console.log(`[make-update] 清单已更新: ${MANIFEST_PATH}`);
+if (plugin.available) {
+  console.log(
+    "[make-update] 官方插件清单可用：tauri.json 与 latest.json 版本一致" +
+      `（平台：${plugin.coveredPlatforms.join(", ")}）`,
+  );
+} else {
+  console.warn(
+    `[make-update] 官方插件清单不可用：${plugin.reason}；` +
+      "latest.json 已标记 official_plugin=false（界面据此不要提供注定失败的“一键更新”）",
+  );
+}
 console.log("[make-update] 下一步: pnpm sync:assets（上传到资源服务器并回收旧包）");
 
 // ------------------------------------------------------------------
@@ -317,8 +396,9 @@ function releaseNotes() {
   return existsSync(notesPath) ? readFileSync(notesPath, "utf8").trim() : "";
 }
 
-function writeManifest(items) {
-  const fresh = items.map(({ file, kind }) => {
+/** 把本次产出的包转成清单里的资产条目（算 sha256 与大小）。 */
+function describeAssets(items) {
+  return items.map(({ file, kind }) => {
     const full = join(OUT_DIR, file);
     return {
       platform: PLATFORM,
@@ -328,8 +408,15 @@ function writeManifest(items) {
       size: statSync(full).size,
     };
   });
+}
 
-  // 同版本的多次执行（x64 / arm64）合并进同一份清单
+/**
+ * 合并同版本的资产：读旧清单 → 覆盖"同平台 + 同类型"的条目 → 排序。
+ *
+ * 多次执行（x64 与 arm64 各跑一次）会把同一版本的资产合并进同一份清单，
+ * 因此 CI 里可以分平台增量追加。
+ */
+function mergeAssets(fresh) {
   let assets = [];
   if (existsSync(MANIFEST_PATH)) {
     try {
@@ -351,13 +438,32 @@ function writeManifest(items) {
       ? a.kind.localeCompare(b.kind)
       : a.platform.localeCompare(b.platform),
   );
+  return assets;
+}
 
+/**
+ * 写我们的更新清单（`latest.json`）。
+ *
+ * `official_plugin` 告诉界面"本次发布能不能走官方插件路径"：
+ * 为 false 时，界面应当只给手动下载（或干脆不提示"一键更新"），
+ * 免得用户点一次注定失败的更新 —— 那正是两份清单不同步时的症状。
+ *
+ * 老客户端不认识这些字段会直接忽略（serde 默认忽略未知字段），
+ * 因此 `manifest_version` 保持 1 不变：客户端见到更高的版本号会**直接拒绝**这份清单。
+ */
+function writeManifest(assets, plugin) {
   const manifest = {
     manifest_version: 1,
     version,
     release_date: new Date().toISOString().slice(0, 10),
     release_notes: releaseNotes(),
     mandatory: MANDATORY,
+    // 本次发布能否走官方插件路径（见 pluginAvailability）。
+    official_plugin: plugin.available,
+    // 被 tauri.json 覆盖的平台（客户端平台标识）。
+    official_plugin_platforms: plugin.coveredPlatforms,
+    // 不可用时的原因（人可读）。
+    official_plugin_reason: plugin.reason,
     assets,
   };
 
@@ -369,14 +475,16 @@ function writeManifest(items) {
  *
  * 没有 `TAURI_SIGNING_PRIVATE_KEY` 时直接跳过：插件签名校验不可关闭，
  * 生成一份无法通过校验的清单只会造成"以为配好了却更新不了"。
+ *
+ * 返回值描述"这次插件清单怎么样"，供 latest.json 标注 `official_plugin`：
+ * `{ written: boolean, reason: string, platforms: string[] }`。
  */
 function writePluginManifest(items) {
   if (!signingConfigured()) {
-    console.log(
-      "[make-update] 未配置签名私钥（TAURI_SIGNING_PRIVATE_KEY 或 _PATH），跳过 tauri.json" +
-        "（官方插件路径不可用；Windows 安装版仍走自研兜底）",
-    );
-    return;
+    const reason = "未配置签名私钥（TAURI_SIGNING_PRIVATE_KEY 或 _PATH），没有生成 tauri.json";
+    console.log(`[make-update] ${reason}（官方插件路径不可用；Windows 安装版仍走自研兜底）`);
+    dropStalePluginManifest(reason);
+    return { written: false, reason, platforms: [] };
   }
   const env = signingEnv();
 
@@ -385,16 +493,20 @@ function writePluginManifest(items) {
     /-setup\.exe$|\.msi$|\.AppImage$|\.app\.tar\.gz$/.test(file),
   );
   if (!manageable) {
-    console.warn("[make-update] 没有可交给官方插件的产物，tauri.json 未生成");
-    return;
+    const reason = "没有可交给官方插件的产物，tauri.json 未生成";
+    console.warn(`[make-update] ${reason}`);
+    dropStalePluginManifest(reason);
+    return { written: false, reason, platforms: [] };
   }
 
   const full = join(OUT_DIR, manageable.file);
   try {
     signFile(full, env);
   } catch (e) {
-    console.warn(`[make-update] 签名失败，tauri.json 未生成: ${e.message}`);
-    return;
+    const reason = `签名失败，tauri.json 未生成：${e.message}`;
+    console.warn(`[make-update] ${reason}`);
+    dropStalePluginManifest(reason);
+    return { written: false, reason, platforms: [] };
   }
 
   const signature = readFileSync(`${full}.sig`, "utf8").trim();
@@ -434,15 +546,157 @@ function writePluginManifest(items) {
     "utf8",
   );
   console.log(`[make-update] 插件清单已生成: ${PLUGIN_MANIFEST_PATH}`);
+  return {
+    written: true,
+    reason: "",
+    platforms: Object.keys(manifest.platforms),
+  };
 }
 
 /**
- * 平台键转换：我们的平台标识用 `macos`，而插件要求 `darwin`。
+ * 删掉**版本对不上**的旧插件清单。
  *
- * 其余（`windows-*` / `linux-*`）两边一致。
+ * 残留的旧清单会让官方插件报"未发现可用更新"（它比界面看到的版本旧），
+ * 于是界面提示有更新、插件却说没有 —— 用户先看到一次失败/回退。
+ *
+ * 同版本的清单**保留**：它可能带着另一个平台（例如先跑的 x64）已经签好的条目。
+ */
+function dropStalePluginManifest(reason) {
+  if (!existsSync(PLUGIN_MANIFEST_PATH)) return;
+  let prev = null;
+  try {
+    prev = JSON.parse(readFileSync(PLUGIN_MANIFEST_PATH, "utf8"));
+  } catch {
+    // 读不出来就当它坏了：留着只会让插件拿到一份看不懂的清单
+  }
+  if (prev && prev.version === version) return;
+  const found = (prev && prev.version) || "无法解析";
+  rmSync(PLUGIN_MANIFEST_PATH, { force: true });
+  console.warn(
+    `[make-update] 已删除版本对不上的插件清单 tauri.json（${found} != ${version}）：${reason}`,
+  );
+}
+
+/**
+ * 官方插件路径是否真的可用。
+ *
+ * 判定依据是**清单文件的最终状态**（而不是"这次运行有没有写它"）：
+ * CI 里可能 x64 那次带签名密钥、arm64 那次没有，两次跑完磁盘上的
+ * tauri.json 才是发布出去的那一份。
+ *
+ * 两个条件都要满足，否则界面就不该给"一键更新"：
+ * 1. `tauri.json` 存在，且版本与 `latest.json` 一致
+ *    （版本旧了插件会报"未发现可用更新"）；
+ * 2. `tauri.json` 覆盖了清单里出现的**每一个**平台
+ *    （例：x64 签了、arm64 没签 → arm64 的插件路径不可用）。
+ */
+function pluginAvailability(assets) {
+  const plugin = readPluginManifest();
+  if (!plugin) {
+    return {
+      available: false,
+      reason: "没有 tauri.json（官方插件路径不可用）",
+      coveredPlatforms: [],
+      uncoveredPlatforms: [...new Set(assets.map((a) => a.platform))],
+    };
+  }
+  if (plugin.version !== version) {
+    return {
+      available: false,
+      reason: `tauri.json 的版本是 ${plugin.version}，与 latest.json（${version}）不一致`,
+      coveredPlatforms: [],
+      uncoveredPlatforms: [...new Set(assets.map((a) => a.platform))],
+    };
+  }
+
+  const keys = Object.keys(plugin.platforms || {});
+  // 插件键 → 客户端平台标识（反向映射：清单按客户端平台写）
+  const covered = [];
+  const uncovered = [];
+  for (const platform of new Set(assets.map((a) => a.platform))) {
+    if (keys.includes(pluginPlatformKey(platform))) covered.push(platform);
+    else uncovered.push(platform);
+  }
+  if (uncovered.length > 0) {
+    return {
+      available: false,
+      reason: `tauri.json 未覆盖平台：${uncovered.join(", ")}`,
+      coveredPlatforms: covered,
+      uncoveredPlatforms: uncovered,
+    };
+  }
+  return {
+    available: true,
+    reason: "",
+    coveredPlatforms: covered,
+    uncoveredPlatforms: [],
+  };
+}
+
+/** 读出磁盘上的插件清单（读不出来就当没有）。 */
+function readPluginManifest() {
+  if (!existsSync(PLUGIN_MANIFEST_PATH)) return null;
+  try {
+    return JSON.parse(readFileSync(PLUGIN_MANIFEST_PATH, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * **只能由官方插件安装**的资产类型。
+ *
+ * 与客户端 `update/model.rs` 的 `KIND_*` 对应：Linux 的 AppImage 与
+ * macOS 的 `.app.tar.gz` 只有官方插件能装（自研路径不支持它们）。
+ *
+ * `installer`（Windows 安装版）**不在其中**：它有自研兜底（安装器脚本），
+ * 便携版的 `portable` 同理（自研路径直接替换 exe）。
+ */
+const PLUGIN_ONLY_KINDS = new Set(["appimage", "macos-app"]);
+
+/**
+ * 剔除"插件装不上"的资产。
+ *
+ * 插件清单没覆盖某个平台时，那个平台上只有插件能装的包对客户端就是**废的**：
+ * 界面会照着 latest.json 提示"有新版本"，用户点下去却必然失败
+ * （官方插件报"未发现可用更新"，回退自研路径也装不了 AppImage / `.app`）。
+ *
+ * 剔除之后，客户端在这些平台上会落到"只能手动下载"——这才是诚实的表述。
+ */
+function dropUninstallableAssets(assets, plugin) {
+  if (plugin.available) return assets;
+  const dropped = [];
+  const kept = assets.filter((a) => {
+    if (PLUGIN_ONLY_KINDS.has(a.kind) && plugin.uncoveredPlatforms.includes(a.platform)) {
+      dropped.push(a);
+      return false;
+    }
+    return true;
+  });
+  if (dropped.length > 0) {
+    console.warn(
+      `[make-update] 已从清单中剔除 ${dropped.length} 个"插件装不上"的资产：` +
+        dropped.map((a) => `${a.platform}/${a.kind}`).join(", "),
+    );
+  }
+  return kept;
+}
+
+/**
+ * 平台键转换：插件清单用的是**插件自己的**平台键。
+ *
+ * 官方插件按 `{os}-{arch}` 查表，架构名取自 Rust 的 `std::env::consts::ARCH`
+ * （见 tauri-plugin-updater 的 `updater_arch()`）：`x86_64` / `aarch64` / `armv7`。
+ * 与我们的平台标识有两处差异：
+ *
+ * - 我们的 `macos` 对应插件的 `darwin`；
+ * - 我们的 `arm64`（上游命名）对应插件的 `aarch64`（Rust 架构名）。
+ *
+ * 写错的后果：插件在自己的清单里查不到这个平台 → 报"未发现可用更新"，
+ * 而界面（读 latest.json）已经提示"有新版本" —— 用户先看到一次失败。
  */
 function pluginPlatformKey(platform) {
-  return platform.replace(/^macos-/, "darwin-");
+  return platform.replace(/^macos-/, "darwin-").replace(/-arm64$/, "-aarch64");
 }
 
 /**
