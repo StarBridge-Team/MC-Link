@@ -21,10 +21,17 @@ tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-runtime = "2"
 # 读"当前系统壁纸是哪个文件"（配色种子 → 跟随系统背景）。
 #
-# 各平台都要碰系统接口：Windows 是 `SPI_GETDESKWALLPAPER` + 注册表，Linux 要按桌面
-# 环境分别读 gsettings / KDE / XFCE 配置。它是唯一把"读"也做了的跨平台 crate
+# **这里是刻意用 crate，而不是自己调系统 API —— 为了跨平台兼容性，自己动手代价更高。**
+#
+# 读壁纸路径没有跨平台统一接口：Windows 是 `SPI_GETDESKWALLPAPER` + 注册表；Linux 上
+# GNOME 在 gsettings、KDE 在 plasma 的嵌套配置、XFCE 在 xfconf、Wayland 下多数合成器
+# 还只写不读。自己写等于把"每个桌面环境 × 每个版本"的兼容性维护接过来 ——
+# 那是长期债，而 `wallpaper` 是唯一把"读"也做了的跨平台 crate
 # （9.6 万下载，覆盖 Windows/macOS/GNOME/KDE/Cinnamon/Unity/Budgie/XFCE/LXDE/MATE/Deepin）。
-# 2021 年后停更，但这里**只用 `get()` 读一个路径**，不碰写壁纸那条会随系统演进的分支。
+#
+# 已知代价（明确接受）：它会带进 15 个 crate（`rust-argon2`、`blake2b_simd`、
+# `redox_users`、`winreg`…），且 2021 年后停更。所以这里**只用 `get()` 读一个路径**，
+# 不碰它写壁纸那条真正会随系统演进失效的分支。
 # 取色不引新库：拿到路径后复用 `m3::extract`，与"跟随背景图"同一套流程。
 wallpaper = "3"
 tauri-plugin-opener = "2"

@@ -2,16 +2,24 @@
 //!
 //! 供"配色种子"的两个选项使用（`theme_seed_source` = `system_wallpaper` / `system_accent`）。
 //!
-//! # 壁纸：`wallpaper` crate 只负责"路径"，取色仍走自己的流程
+//! # 壁纸路径：**刻意用 `wallpaper` crate**（跨平台兼容性优先）
 //!
-//! 读"当前壁纸是哪个文件"各平台都得碰系统接口（Windows 是 `SPI_GETDESKWALLPAPER`
-//! 加注册表，Linux 要按桌面环境分别读 gsettings / KDE / XFCE 的配置）。`wallpaper`
-//! 是唯一把"读"也做了的跨平台 crate。它就是为这件事引的，**只用 `get()`**，
-//! 不碰它那套"设置壁纸"的写路径（那部分会随各桌面环境演进，而它 2021 年后停更）。
+//! 这不是"随手找个库"，也不是没查过：**自己直接动系统 API 的代价更高**。
 //!
-//! 取色不引新库：拿到路径后复用 [`super::extract::extract_seed_from_file`]，
-//! 与"跟随背景图"同一条流程（缩到 128px → Celebi 量化 → 打分）。两套取色逻辑
-//! 迟早会给出不同的主色，那是最难解释的一类 bug。
+//! 读"当前壁纸是哪个文件"没有跨平台统一接口——Windows 是 `SPI_GETDESKWALLPAPER`
+//! 加注册表；Linux 上 GNOME 在 gsettings、KDE 在 plasma 的嵌套配置、XFCE 在 xfconf、
+//! Wayland 下多数合成器还只写不读。自己写等于把"每个桌面环境 × 每个版本"的兼容性
+//! 维护接过来，而那是长期债；`wallpaper` 是唯一把"读"也做了的跨平台 crate。
+//!
+//! 它的已知代价**明确接受**：带进 15 个 crate（`rust-argon2`、`blake2b_simd`、
+//! `redox_users`、`winreg`…）、2021 年后停更。因此这里只用 `get()` 读一个路径，
+//! 不碰它写壁纸那条真正会随系统演进失效的分支。
+//!
+//! # 取色不新写，也不引新库
+//!
+//! 拿到路径后复用 [`super::extract::extract_seed_from_file`]，与"跟随背景图"同一条
+//! 流程（缩到 128px → Celebi 量化 → 打分）。两套取色逻辑迟早会给出不同的主色，
+//! 那是最难解释的一类 bug。
 //!
 //! # 强调色：两段 `cfg`，不引主题引擎
 //!
@@ -27,10 +35,7 @@ pub fn seed_from_wallpaper() -> Result<String, String> {
     let path = wallpaper::get().map_err(|e| format!("读取系统壁纸路径失败: {e}"))?;
     let path = std::path::PathBuf::from(path);
     if !path.is_file() {
-        return Err(format!(
-            "系统壁纸不是本地图片文件：{}",
-            path.display()
-        ));
+        return Err(format!("系统壁纸不是本地图片文件：{}", path.display()));
     }
     super::extract::extract_seed_from_file(&path)
 }
