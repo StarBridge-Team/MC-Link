@@ -39,9 +39,14 @@ const rooms = useRoomsStore();
 const account = useAccountStore();
 const gameId = computed(() => setup.state.value?.game || "minecraft-java");
 
-const canJoin = computed(() =>
-  joinFields.value.every((f) => !f.required || (form.value[f.key] ?? "").trim().length > 0),
-);
+const canJoin = computed(() => {
+  // 必须先有可用适配器：此前 `every` 对空数组恒为 true，"开始联机"按钮永远可点，
+  // 但 `join()` 会因 `!adapterId` 静默 return，用户什么都看不到。
+  if (!selectedId.value || adapters.value.length === 0) return false;
+  return joinFields.value.every(
+    (f) => !f.required || (form.value[f.key] ?? "").trim().length > 0,
+  );
+});
 
 /**
  * 按当前 `joinFields` 重建表单：**保留已填的值**（按 key 对齐）。
@@ -74,6 +79,8 @@ async function loadAdapters() {
       joinFields.value = [];
     }
     syncFormFields();
+    // 之前没有适配器时输入的内容留在暂存里：适配器就绪后回填。
+    if (inviteDraft.value) applyInvite(inviteDraft.value);
   } catch (e) {
     adapters.value = [];
     console.warn("[connect] 加载适配器失败", e);
@@ -160,8 +167,29 @@ const inviteField = computed<JoinField | undefined>(
   () => joinFields.value.find((f) => f.autofillFromInvite) ?? joinFields.value[0],
 );
 
+/**
+ * 没有可用适配器时的输入暂存。
+ *
+ * 此前 `inviteField` 缺失时 getter 恒返回 `""`、setter 直接 return，
+ * 输入框敲不进任何字符（用户完全不知道发生了什么）。先把内容留住，
+ * 等适配器就绪后再回填。
+ */
+const inviteDraft = ref("");
+
+/** 已经就"没有适配器"提示过一次：避免每敲一个字弹一次 toast。 */
+let warnedNoAdapter = false;
+
+/**
+ * 没有可用适配器时的统一提示。
+ *
+ * 组件层没有 i18n 上下文（`useConnect` 是模块级单例），错误文案直接用中文——
+ * 与后端返回的中文错误消息（`errorMessage(e)`）保持一致。
+ */
+const NO_ADAPTER_HINT = "没有可用的联机适配器：请先在「游戏」页启用适配器插件";
+
 const inviteValue = computed({
-  get: () => (inviteField.value ? form.value[inviteField.value.key] ?? "" : ""),
+  get: () =>
+    inviteField.value ? form.value[inviteField.value.key] ?? "" : inviteDraft.value,
   set: (value: string) => applyInvite(value),
 });
 
@@ -173,6 +201,10 @@ const formFields = computed<JoinField[]>(() => {
 // ---------------------------------------------------------------- 动作
 
 async function mount() {
+  // 引导状态必须先就绪：`gameId` 来自 `setup.state`，
+  // 拿不到时只会用默认游戏去拉适配器（拉错游戏的适配器清单）。
+  // `App.vue` 的 `setup.load()` 与本页的 `onMounted` 是并发的，这里补一次等待。
+  await setup.loadOnce();
   // 账号要在建房之前就绪：`player_name` 是适配器建链时就要用的参数，
   // 晚一步就会以 "Player" 的身份进房间。
   await account.load();
@@ -190,7 +222,11 @@ function selectAdapter(id: string) {
 
 /** 建房：命令返回即开房间窗口，主窗口立刻回到可继续操作的状态。 */
 async function startHost(adapterId: string, fields: Record<string, unknown>) {
-  if (!adapterId) return;
+  if (!adapterId) {
+    // 早退也要有反馈：此前静默 return，用户点了按钮什么都没有。
+    showError(NO_ADAPTER_HINT);
+    return;
+  }
   busy.value = true;
   try {
     await rooms.startHost(adapterId, gameId.value, fields, playerName());
@@ -203,7 +239,10 @@ async function startHost(adapterId: string, fields: Record<string, unknown>) {
 
 /** 加入房间：同上。 */
 async function join(adapterId: string, fields: Record<string, unknown>) {
-  if (!adapterId) return;
+  if (!adapterId) {
+    showError(NO_ADAPTER_HINT);
+    return;
+  }
   busy.value = true;
   try {
     await rooms.join(adapterId, gameId.value, fields, playerName());
@@ -216,10 +255,21 @@ async function join(adapterId: string, fields: Record<string, unknown>) {
 
 /** 从深链 / 粘贴文本里抽出房间码并填入对应字段。 */
 function applyInvite(code: string) {
+  const field = inviteField.value;
+  if (!field) {
+    // 没有字段可填：内容先留住，并说明原因（不再静默吞字符）。
+    inviteDraft.value = code;
+    if (!warnedNoAdapter) {
+      warnedNoAdapter = true;
+      showError(NO_ADAPTER_HINT);
+    }
+    return;
+  }
+  warnedNoAdapter = false;
+  inviteDraft.value = "";
   const extracted = extractInviteCode(code);
   if (!extracted) return;
-  const field = inviteField.value;
-  if (field) form.value = { ...form.value, [field.key]: extracted };
+  form.value = { ...form.value, [field.key]: extracted };
 }
 
 export function useConnect() {
