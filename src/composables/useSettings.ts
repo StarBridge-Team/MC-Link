@@ -18,6 +18,7 @@ import { fetchRemoteBackground } from "../lib/api/datadir";
 import { getDefaultEffect, setWindowDarkMode, setWindowEffect } from "../lib/api/effect";
 import type { PersonalizationSettings } from "../lib/api/types";
 import { applyBackground, isRemoteUrl, resolveMediaUrl } from "../lib/appearance/background";
+import { showError } from "./useToast";
 
 /** 后端 `config/mod.rs` 的默认值镜像（读不到配置时的兜底）。 */
 export function defaultSettings(): PersonalizationSettings {
@@ -68,6 +69,14 @@ const saveError = ref<string | null>(null);
  * 因此读失败后**禁止写入**，直到下一次 `load()` 成功。
  */
 let loadFailed = false;
+
+/**
+ * "读失败导致拒绝保存"是否已经提示过。
+ *
+ * 它是**持续状态**而不是瞬时事件：读失败后每次 `patch()` 都会被拒绝，
+ * 逐次弹 toast 会变成刷屏。只提示一次，界面另有常驻提示条。
+ */
+let loadFailureNotified = false;
 
 /** 后端返回的"本平台默认窗口材质"，仅用于解释空值。 */
 const platformDefaultEffect = ref("none");
@@ -340,14 +349,19 @@ async function load(): Promise<PersonalizationSettings> {
   try {
     const data = await getPersonalization();
     Object.assign(state, withDefaults(data));
-    loaded.value = true;
     loadFailed = false;
+    loadFailureNotified = false;
     saveError.value = null;
   } catch (e) {
     // 读失败必须锁住写入：否则下一次 patch() 的防抖保存会把默认值整体覆盖用户配置。
     loadFailed = true;
     saveError.value = messageOf(e);
     console.warn("[settings] 读取个性化设置失败，使用默认值", e);
+    // 读失败也要有人看得见：界面会一直停在默认值上，用户毫无察觉。
+    showError(`设置读取失败：${saveError.value}`);
+  } finally {
+    // 无论成败都算"尝试过加载"：首页据此不再先渲染默认态再突变。
+    loaded.value = true;
   }
   await applyAll();
   return { ...state };
@@ -385,6 +399,11 @@ async function saveNow(): Promise<boolean> {
   // 读失败后写入等于用默认值覆盖用户配置：宁可报错也不落盘（见 loadFailed 的说明）。
   if (loadFailed) {
     saveError.value = "设置未能读取，已暂停保存以避免覆盖原有配置；请重启应用";
+    // 这是持续状态，只提示一次，避免每次拖滑块都弹 toast。
+    if (!loadFailureNotified) {
+      loadFailureNotified = true;
+      showError(saveError.value);
+    }
     return false;
   }
   saving.value = true;
@@ -394,16 +413,34 @@ async function saveNow(): Promise<boolean> {
     return true;
   } catch (e) {
     saveError.value = messageOf(e);
+    // 落盘失败必须有人看得见：否则界面照样变（`patch()` 先改内存），
+    // 用户以为存上了，重启后回退。
+    showError(`设置保存失败：${saveError.value}`);
     return false;
   } finally {
     saving.value = false;
   }
 }
 
+/**
+ * 系统主题变化的回调（模块级，至多一个监听）。
+ *
+ * `useSettings` 是模块级单例，因此这个监听**整个进程只注册一次**：
+ * 反复调用 `bindSystemTheme` 只是换掉回调，不会叠加监听器。
+ *
+ * 旧实现用内联箭头函数注册：既拿不到句柄也删不掉，`App.vue` 每次重挂载就多一个
+ * 监听，系统主题切换时触发 N 次 `applyAll()`（每次还带一次 `setWindowEffect` 的 IPC）。
+ */
+let systemThemeOnChange: (() => void) | null = null;
+let systemThemeBound = false;
+
 /** 系统主题变化时，仅在"跟随系统"模式下重算。 */
 function bindSystemTheme(onChange: () => void) {
-  systemPrefersDark?.addEventListener("change", () => {
-    if (state.theme_mode === "system") onChange();
+  systemThemeOnChange = onChange;
+  if (systemThemeBound || !systemPrefersDark) return;
+  systemThemeBound = true;
+  systemPrefersDark.addEventListener("change", () => {
+    if (state.theme_mode === "system") systemThemeOnChange?.();
   });
 }
 
