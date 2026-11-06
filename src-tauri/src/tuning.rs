@@ -63,23 +63,19 @@ pub(crate) fn gateway_max_inflight() -> usize {
 mod tests {
     use super::*;
 
-    fn settings() -> PersonalizationSettings {
-        PersonalizationSettings::default()
-    }
-
+    /// 一个用例内依次验证默认值与夹取。
+    ///
+    /// **不能拆成两个 `#[test]`**：它们共享同一组 `static`，而测试是并行跑的，
+    /// 拆开会互相污染（先跑的那个把值改了，另一个读到的是别人的结果）。
     #[test]
-    fn defaults_match_previous_constants() {
-        let s = settings();
-        apply(&s);
+    fn defaults_then_clamp() {
+        apply(&PersonalizationSettings::default());
         assert_eq!(download_parallel(), 4);
         assert_eq!(download_idle_timeout(), Duration::from_secs(30));
         assert_eq!(plugin_handshake_timeout(), Duration::from_secs(15));
         assert_eq!(gateway_max_inflight(), 32);
-    }
 
-    #[test]
-    fn out_of_range_values_are_clamped() {
-        let mut s = settings();
+        let mut s = PersonalizationSettings::default();
         s.download_parallel = 999.0;
         s.download_idle_timeout = 1.0;
         s.plugin_handshake_timeout = 1.0;
@@ -91,6 +87,6 @@ mod tests {
         assert_eq!(gateway_max_inflight(), 128);
 
         // 复位，避免影响其它用例（静态变量是全局的）。
-        apply(&settings());
+        apply(&PersonalizationSettings::default());
     }
 }
