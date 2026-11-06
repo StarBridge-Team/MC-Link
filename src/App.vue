@@ -14,8 +14,9 @@ import { DEFAULT_SETTING_TAB, SETTING_TABS, isSettingTab } from "./router";
 import { useIntentStore } from "./stores/intent";
 import { useRegionStore } from "./stores/region";
 import { useThemeBinding } from "./ui/themeBinding";
+import AppQuickDock from "./components/layout/AppQuickDock.vue";
+import TaskCenterDialog from "./components/layout/TaskCenterDialog.vue";
 import WindowResizeEdges from "./ui/WindowResizeEdges.vue";
-import WidgetLayer from "./ui/WidgetLayer.vue";
 
 /**
  * 应用外壳：标题栏 + 导航 + 路由出口 + 背景层 + 引导浮层。
@@ -68,16 +69,12 @@ const allNavItems = computed<NavItem[]>(() => [
 ]);
 
 /**
- * 导航栏底部菜单：账号 / 个性化 / 设置。
+ * 任务中心浮层的开关。
  *
- * 三者都是**设置独立窗口的入口**（只是直达的分区不同），所以主导航里不再单独放「设置」。
- * 账号相关内容（玩家名、离线 UUID）在 `general` 分区，个性化在 `personalization`。
+ * 底部入口已移到右下角的 `AppQuickDock`：那里是**与左侧导航同级**的三个入口，
+ * 不占导航栏高度（小窗口下导航栏不再被挤得出现滚动条）。
  */
-const bottomNavItems: NavItem[] = [
-  { id: "account", icon: "account_circle", label: "账号" },
-  { id: "personalization", icon: "palette", label: "个性化" },
-  { id: "settings", icon: "settings", label: "设置" },
-];
+const tasksOpen = ref(false);
 
 /**
  * 受地区限制的功能**入口**：**只有中国大陆**命中时隐藏（判定见 `stores/region.ts`）。
@@ -243,7 +240,6 @@ onMounted(async () => {
         v-if="!hideNav"
         :items="navItems"
         :active="String(route.name ?? 'home')"
-        :bottom-items="bottomNavItems"
         @select="onNavSelect"
       />
       <NavList
@@ -273,8 +269,9 @@ onMounted(async () => {
       </main>
     </div>
 
-    <!-- 窗口内挂件层：内置背景音视频控制面板 + 未来的 widget 类插件挂件 -->
-    <WidgetLayer v-if="!hideNav" />
+    <!-- 右下角快捷入口：任务中心 / 账号（头像）/ 设置，与左侧导航同级 -->
+    <AppQuickDock v-if="!hideNav" @tasks="tasksOpen = true" />
+    <TaskCenterDialog :open="tasksOpen" @close="tasksOpen = false" />
 
     <OobeOverlay v-if="needsOobe" />
     <!-- 边缘缩放热区：Windows 由命中测试接管，组件内部只在 Linux 渲染 -->
