@@ -28,13 +28,6 @@ export interface RegionInfo {
   mainland_china: boolean;
 }
 
-export interface AdapterStatus {
-  installed: boolean;
-  running: boolean;
-  starting: boolean;
-  port: number | null;
-}
-
 // ===== 个性化设置（后端 config/mod.rs::PersonalizationSettings） =====
 //
 // 字段名即 `Setting/personalization.yml` 的 key，**冻结契约**。
@@ -275,47 +268,6 @@ export interface UpdateProgress {
   downloaded: number;
   /** 0 表示总长度未知 */
   total: number;
-}
-
-// ===== 陶瓦适配器 =====
-
-/**
- * 陶瓦自身的运行时状态（`/state` 的原始负载）。
- *
- * 字段由上游决定（`state` / `index` / `room` / `url` / 异常码 `type` …），
- * 因此这里只声明"是个对象"，不逐字段猜。
- */
-export type TerracottaRuntimeState = Record<string, unknown>;
-
-/** 房间成员（陶瓦 `profiles[]` 规范化后的形状，camelCase）。 */
-export interface TerracottaPlayer {
-  name: string;
-  kind: string;
-  machineId: string;
-  vendor: string;
-  /** 是否是本机。 */
-  self: boolean;
-}
-
-/**
- * `get_terracotta_state` 的返回值。
- *
- * 形状与后端 `plugin/builtin/terracotta.rs` 的 `status()` 输出**逐字对应**：
- * 适配器自身状态 + 陶瓦状态机 + 房间码 + 成员列表。
- */
-export interface TerracottaState {
-  installed: boolean;
-  running: boolean;
-  starting: boolean;
-  /** 适配器监听端口（未运行时为 null）。 */
-  port: number | null;
-  /** 陶瓦自身的状态（取不到时为 null）。 */
-  state: TerracottaRuntimeState | null;
-  /** 房间码（陶瓦的原始字段名）。 */
-  room: string;
-  /** 适配器自报的状态机取值，如 `host-ok` / `guest-ok` / `waiting`。 */
-  phase: string;
-  players: TerracottaPlayer[];
 }
 
 // ===== 窗口 / 托盘 =====

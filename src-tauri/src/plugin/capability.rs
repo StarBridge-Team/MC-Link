@@ -4,8 +4,8 @@
 //! [`Provider`] 就是这两者的联合体：
 //!
 //! - [`Provider::Builtin`]：官方实现，进程内直调。用同步 trait 是因为这类实现
-//!   本质上在跟外部进程/文件系统打交道（例如陶瓦适配器要拉起 exe 并轮询端口），
-//!   调度方在 `spawn_blocking` 里调用，避免阻塞异步运行时。
+//!   本质上在跟外部进程/文件系统打交道（例如内置适配器要拉起 EasyTier 进程、
+//!   轮询它的对端列表），调度方在 `spawn_blocking` 里调用，避免阻塞异步运行时。
 //! - [`Provider::Remote`]：第三方插件，通过 [`SessionHandle`] 走加密 WebSocket。
 
 use serde_json::Value;

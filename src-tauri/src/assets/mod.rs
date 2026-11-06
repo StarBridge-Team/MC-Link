@@ -1,4 +1,3 @@
-pub(crate) mod adapter;
 pub mod pull;
 
 use crate::cache::cache_path;

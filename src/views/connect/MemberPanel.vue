@@ -47,6 +47,15 @@ const passwordFields = computed<JoinField[]>(() =>
 );
 const hasPasswordStep = computed(() => passwordFields.value.length > 0);
 
+/**
+ * 当前选中的适配器是否已就绪（内置适配器首次使用要先下载 EasyTier 引擎）。
+ *
+ * 只影响提示文案，不禁用按钮：后端会在真正建链前等下载完成。
+ */
+const selectedReady = computed(
+  () => adapters.value.find((a) => a.pluginId === selectedId.value)?.ready ?? true,
+);
+
 function fieldLabel(f: JoinField): string {
   const known: Record<string, string> = {
     room_code: t("connect.field.roomCode"),
@@ -101,6 +110,7 @@ onMounted(() => void loadAdapters());
       <!-- 动态字段：控件放 m3e-form-field 的**默认** slot -->
       <m3e-card v-if="selectedId" variant="elevated">
         <div slot="content" class="member__form">
+          <p v-if="!selectedReady" class="hint">{{ t("connect.engineDownloading") }}</p>
           <m3e-form-field
             v-for="f in primaryFields"
             :key="f.key"

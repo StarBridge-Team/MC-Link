@@ -160,7 +160,7 @@ pub(crate) async fn check_update(
     let channel = crate::build_channel::channel();
     let allowed = crate::build_channel::update_allowed();
 
-    let platform = crate::assets::adapter::current_platform();
+    let platform = crate::core::platform::current_platform();
     let mode = install_mode();
 
     if channel == BuildChannel::Dev && !allowed {

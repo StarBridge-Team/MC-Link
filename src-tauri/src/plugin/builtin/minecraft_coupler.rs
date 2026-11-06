@@ -3,6 +3,12 @@
 //! 复用 WGP Core（`app_adapter/game_tcp.rs`）的局域网广播实现，把 Minecraft Java
 //! 接入 MC Link 的本地调度入口：attach 时在局域网广播游戏入口（让同网设备可发现），
 //! detach 时停止广播，launch 时按需拉起游戏进程。同样仅依赖标准库，内联于此。
+//!
+//! # 广播的端口是"玩家该连的那个端口"
+//!
+//! 房主侧是自己的游戏端口；**访客侧是引擎把房主端口接出来后的本机端口**。
+//! 报文格式与"哪些广播属于我们自己"由 [`super::lan`] 统一裁定——扫描器读的是同一份契约，
+//! 否则自己的广播会被自己当成一台局域网游戏发现出来。
 
 use std::net::{SocketAddr, UdpSocket};
 use std::process::Command;
@@ -17,6 +23,8 @@ use crate::plugin::capability::BuiltinCapability;
 use crate::plugin::manifest::{PluginKind, PluginManifest, RuntimeKind};
 use crate::plugin::permission::PermissionSet;
 use crate::plugin::protocol::{coupler_method, error_code, ErrorInfo};
+
+use super::lan;
 
 /// 插件 ID。
 pub const PLUGIN_ID: &str = "dev.mclink.builtin.minecraft-java-coupler";
@@ -81,7 +89,7 @@ fn lan_discovery_broadcaster(running: Arc<AtomicBool>, motd: String, port: u16) 
     if socket.set_broadcast(true).is_err() {
         return;
     }
-    let message = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
+    let message = lan::format_advert(&motd, port);
     let addr: SocketAddr = match MULTICAST_ADDR.parse() {
         Ok(a) => a,
         Err(_) => return,
@@ -131,9 +139,12 @@ impl MinecraftCouplerProvider {
         let motd = params
             .get("motd")
             .and_then(|v| v.as_str())
-            .unwrap_or("MC Link")
+            .unwrap_or(lan::MOTD)
             .to_string();
-        // 越界端口不静默截断，回退到默认值
+        // 端口缺失/非法时回退到 Minecraft 默认端口。
+        //
+        // 调用方（`mgr/room`）应当传入**适配器回报的接出端口**：访客侧那不是 25565，
+        // 用默认值兜底只会广播出一个连不上的入口。
         let port = port_from_params(params).unwrap_or(25565);
 
         // 若已在广播，先停掉旧的再起新的。

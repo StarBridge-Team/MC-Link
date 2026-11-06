@@ -8,7 +8,6 @@ import NavRail, { type NavItem } from "./components/layout/NavRail.vue";
 import OobeOverlay from "./components/oobe/OobeOverlay.vue";
 import { useSetup } from "./composables/useSetup";
 import { useWindowControls } from "./composables/useWindowControls";
-import { adapterStartupInit } from "./lib/api/adapter";
 import { openSettingsWindow } from "./lib/api/window";
 import { DEFAULT_SETTING_TAB, SETTING_TABS, isSettingTab } from "./router";
 import { useIntentStore } from "./stores/intent";
@@ -202,9 +201,6 @@ onMounted(async () => {
       }
     })(),
   ]);
-
-  // 适配器启动初始化：失败不影响界面，插件页里可以手动重试。
-  void adapterStartupInit().catch(() => undefined);
 });
 </script>
 

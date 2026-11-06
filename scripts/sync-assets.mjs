@@ -4,25 +4,22 @@
  * ------------------------------------------------------------------
  * 1. 从 node_modules 同步 Bootstrap Icons / Poppins 字体到 assets-server/Assets
  *    （镜像 Rust 侧 prepare_from_npm 的逻辑，使本地 Assets 始终最新）
- * 2. 准备适配器包：下载上游发布包到 Assets/adapter/，计算 SHA256 并生成
- *    adapter/manifest.json（客户端据此校验安装包，未通过校验不会安装）。
- *    该目录独立于 Assets 版本聚合，避免适配器升级触发客户端重下全部资源。
- * 3. 扫描 assets-server/Assets，重新生成 manifest.json：
- *      - version = 所有资源内容哈希（不含 adapter/ 与 update/，资源有变动才变）
+ * 2. 扫描 assets-server/Assets，重新生成 manifest.json：
+ *      - version = 所有资源内容哈希（不含 update/，资源有变动才变）
  *      - assets  = 完整文件清单（path + size）
- * 4. 通过资源服务器新增的 POST /upload 接口上传全部文件（各级 manifest 最后传）
+ * 3. 通过资源服务器新增的 POST /upload 接口上传全部文件（各级 manifest 最后传）
  *
  * 目录特例（都在 version 聚合之外，避免客户端因为发版而重下字体/图标）：
- *   - adapter/ 由 prepareAdapters() 生成，含第三方适配器包与其校验清单
  *   - update/  由 scripts/make-update.mjs 生成，含本应用的更新包与 latest.json
+ *
+ * 注意：`adapter/`（陶瓦安装包与校验清单）已随"内置陶瓦 exe"一起删除交给
+ * `engine/easytier/`；联机引擎由客户端直接从上游 GitHub 下载，发布流程不再分发它。
  *
  * 环境变量 / 参数：
  *   ASSET_SERVER_URL      目标资源服务器（默认 http://localhost:54789）
  *   ASSET_UPLOAD_TOKEN    上传令牌（与服务器 upload_token / ASSET_UPLOAD_TOKEN 一致）
  *   ASSET_UPLOAD_REQUIRED=1 上传失败时以非零码退出（CI 中强制校验）
  *   SKIP_ASSET_UPLOAD=1 | --no-upload  跳过上传（仅重新生成 manifest）
- *   ADAPTER_PLATFORMS     逗号分隔的适配器平台列表（默认见 ADAPTER_DEFAULT_PLATFORMS）
- *                         平台标签须与上游产物标签、客户端 current_platform() 逐字一致
  *   --prod               使用生产资源服务器地址
  */
 import {
@@ -44,55 +41,8 @@ import { request as httpsRequest } from "node:https";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const ASSETS_DIR = join(ROOT, "assets-server", "Assets");
-const ADAPTER_DIR = join(ASSETS_DIR, "adapter");
 
-// 适配器包来源与版本：升级时改这里，再执行 pnpm sync:assets 发布新清单
-const ADAPTER_VERSION = "0.4.2";
-const ADAPTER_RELEASE_BASE = "https://gitee.com/burningtnt/Terracotta/releases/download";
-
-/**
- * 默认分发的适配器平台（桌面平台）。
- *
- * 平台标签必须与**上游发布产物的标签**逐字相同（上游 v0.4.2 有
- * `windows-x86_64` / `windows-arm64` / `linux-x86_64` / `linux-arm64` /
- * `macos-x86_64` / `macos-arm64`），也必须与客户端
- * `src-tauri/src/assets/adapter.rs` 里 `current_platform()` 的输出逐字相同
- * —— 客户端按这个 key 选包，两边不一致就装不上。
- *
- * 注意架构命名：客户端把 Rust 的 `aarch64` / `arm` 映射成上游的
- * `arm64` / `armv7`，所以这里写 `arm64` 而不是 `aarch64`。
- *
- * 不包含 android（上游的 `.so` 是 native 库，不是桌面可执行文件），
- * 也不包含 freebsd / linux-riscv64 / linux-loongarch64（暂未验证可用性）。
- */
-const ADAPTER_DEFAULT_PLATFORMS = [
-  "windows-x86_64",
-  "windows-arm64",
-  "linux-x86_64",
-  "linux-arm64",
-  "macos-x86_64",
-  "macos-arm64",
-];
-
-/**
- * 本次要分发的平台列表。
- *
- * 可用环境变量 `ADAPTER_PLATFORMS` 覆盖（逗号分隔），便于 CI 限制下载量：
- *   ADAPTER_PLATFORMS="windows-x86_64,linux-x86_64" pnpm sync:assets
- */
-function adapterPlatforms() {
-  const raw = process.env.ADAPTER_PLATFORMS;
-  if (!raw || !raw.trim()) return [...ADAPTER_DEFAULT_PLATFORMS];
-  const list = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (list.length === 0) {
-    console.error("[sync-assets] ADAPTER_PLATFORMS 已设置但没有任何有效平台");
-    process.exit(1);
-  }
-  return [...new Set(list)];
-}
+// ------------------------------------------------------------------
 
 // ------------------------------------------------------------------
 // 法务文件（EULA 与许可证全文）
@@ -139,19 +89,15 @@ const REQUIRED = process.env.ASSET_UPLOAD_REQUIRED === "1";
 // 1) 从 npm 同步字体/图标，确保 Assets 是最新的
 syncFromNpm();
 
-// 2) 准备适配器包与校验清单（须在扫描前完成，否则不会被收集与上传）
-await prepareAdapters();
-// 法务文件必须在扫描 Assets 之前落盘，否则不会被收集进上传清单
+// 2) 法务文件必须在扫描 Assets 之前落盘，否则不会被收集进上传清单
 prepareLegal();
 
-// 3) 扫描并生成 manifest；adapter/ 独立维护，不参与 Assets 版本聚合
+// 3) 扫描并生成 manifest；update/ 独立维护，不参与 Assets 版本聚合
 const allFiles = [];
 collectFiles(ASSETS_DIR, ASSETS_DIR, allFiles);
 allFiles.sort((a, b) => a.rel.localeCompare(b.rel));
 
-// 适配器包与更新包都**独立于 Assets 版本聚合**：
-// 否则每次发版（或升级适配器）都会让所有客户端重下全部字体与图标。
-const isAdapter = (f) => f.rel.startsWith("adapter/");
+// 更新包**独立于 Assets 版本聚合**：否则每次发版都会让所有客户端重下全部字体与图标。
 const isUpdate = (f) => f.rel.startsWith("update/");
 // manifest.json 必须排除在资源集合之外，有两个原因：
 //   1. 它会被算进版本哈希，而版本号就写在它自己里面 → 版本永远无法收敛，
@@ -163,11 +109,10 @@ const isManifest = (f) => f.rel === "manifest.json";
 // 若把它算进资源集合，每天都会生成一个新版本号，逼所有客户端把字体、图标、适配器
 // 逐个重新校验一遍 —— 而那些内容一个字节都没变。
 const isCommunity = (f) => f.rel.startsWith("community/");
-const adapterFiles = allFiles.filter(isAdapter);
 const updateFiles = allFiles.filter(isUpdate);
 const communityFiles = allFiles.filter(isCommunity);
 const files = allFiles.filter(
-  (f) => !isAdapter(f) && !isUpdate(f) && !isManifest(f) && !isCommunity(f),
+  (f) => !isUpdate(f) && !isManifest(f) && !isCommunity(f),
 );
 
 const UPDATE_MANIFEST = join(ASSETS_DIR, "update", "latest.json");
@@ -209,9 +154,6 @@ const ordered = [
   ...communityFiles,
   // 更新包必须先于 update/latest.json 可见，否则客户端会拿到指向不存在文件的清单
   ...updateFiles.filter((f) => f.rel !== "update/latest.json"),
-  // 适配器包必须先于其清单可见，否则客户端会拿到指向不存在文件的清单
-  ...adapterFiles.filter((f) => f.rel !== "adapter/manifest.json"),
-  { rel: "adapter/manifest.json", full: join(ADAPTER_DIR, "manifest.json") },
   ...(existsSync(UPDATE_MANIFEST)
     ? [{ rel: "update/latest.json", full: UPDATE_MANIFEST }]
     : []),
@@ -416,123 +358,6 @@ function prepareLegal() {
   console.log(
     `[sync-assets] 法务清单已生成：${documents.map((d) => `${d.id}@${d.version}`).join("、") || "（空）"}`
   );
-}
-
-/**
- * 下载上游适配器发布包，计算 SHA256 并生成校验清单（客户端据此校验后才安装）。
- *
- * 多平台分发：逐平台下载 → 逐平台算哈希 → 写进清单的 `adapters` 数组。
- *
- * 失败策略：
- * - 单个平台下载失败 → 打印告警并跳过该平台，其余平台照常发布；
- * - **所有**平台都失败 → 以非零码退出。否则会发布一份空清单，
- *   把客户端的适配器安装彻底弄坏（客户端按平台选包，选不到就是"未安装"）。
- */
-async function prepareAdapters() {
-  mkdirSync(ADAPTER_DIR, { recursive: true });
-  const manifestPath = join(ADAPTER_DIR, "manifest.json");
-  const platforms = adapterPlatforms();
-
-  // 旧清单用于"包已存在且哈希一致就跳过下载"的缓存判断
-  let prev = null;
-  if (existsSync(manifestPath)) {
-    try {
-      prev = JSON.parse(readFileSync(manifestPath, "utf8"));
-    } catch {
-      prev = null; // 清单损坏：落到下面重新生成
-    }
-  }
-  const prevByPlatform = new Map(
-    (prev?.adapters || []).map((a) => [a.platform, a]),
-  );
-
-  const entries = [];
-  const failed = [];
-
-  for (const platform of platforms) {
-    const file = `terracotta-${ADAPTER_VERSION}-${platform}-pkg.tar.gz`;
-    const url = `${ADAPTER_RELEASE_BASE}/v${ADAPTER_VERSION}/${file}`;
-    const pkgPath = join(ADAPTER_DIR, file);
-
-    // 缓存（按平台分别判断）：包已存在且与旧清单记录的哈希一致 → 跳过下载
-    const rec = prevByPlatform.get(platform);
-    if (existsSync(pkgPath) && rec && rec.version === ADAPTER_VERSION) {
-      try {
-        const actual = createHash("sha256").update(readFileSync(pkgPath)).digest("hex");
-        if (actual === rec.sha256) {
-          console.log(`[sync-assets] 适配器包已是最新（${file}），跳过下载`);
-          entries.push({
-            platform,
-            version: ADAPTER_VERSION,
-            file,
-            sha256: rec.sha256,
-            size: statSync(pkgPath).size,
-            urls: rec.urls?.length ? rec.urls : [url],
-          });
-          continue;
-        }
-      } catch {
-        // 读包失败：落到下面重新下载
-      }
-    }
-
-    console.log(`[sync-assets] 下载适配器包 ${url} ...`);
-    let buf;
-    try {
-      buf = await httpGetBuffer(url);
-    } catch (e) {
-      // 单个平台失败不拖垮整个发布
-      console.warn(
-        `[sync-assets] 平台 ${platform} 下载失败（${e.message}），跳过该平台`,
-      );
-      failed.push(platform);
-      continue;
-    }
-    const sha256 = createHash("sha256").update(buf).digest("hex");
-    writeFileSync(pkgPath, buf);
-    entries.push({
-      platform,
-      version: ADAPTER_VERSION,
-      file,
-      sha256,
-      size: buf.length,
-      urls: [url],
-    });
-  }
-
-  if (entries.length === 0) {
-    console.error(
-      `[sync-assets] 所有平台下载失败（${failed.join(", ") || "无平台"}），拒绝发布空清单`,
-    );
-    process.exit(1);
-  }
-  if (failed.length > 0) {
-    console.warn(
-      `[sync-assets] 有 ${failed.length} 个平台未发布：${failed.join(", ")}`,
-    );
-  }
-
-  // 多平台时 version 取各平台 file+sha256 的聚合哈希（内容变了版本就变）；
-  // 单平台时保持原来的 "1"，不引入无谓的版本变动。
-  const version =
-    entries.length === 1 ? "1" : computeAdapterVersion(entries);
-
-  const manifest = { version, adapters: entries };
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
-  console.log(
-    `[sync-assets] 适配器清单已生成：${entries.length} 个平台（${entries
-      .map((e) => e.platform)
-      .join(", ")}），version=${version}`,
-  );
-}
-
-/** 适配器清单版本 = 各平台「file + sha256」的聚合哈希（与内容绑定）。 */
-function computeAdapterVersion(entries) {
-  const h = createHash("sha256");
-  for (const e of [...entries].sort((a, b) => a.platform.localeCompare(b.platform))) {
-    h.update(`${e.platform}\u0000${e.file}\u0000${e.sha256}\u0000`);
-  }
-  return h.digest("hex").slice(0, 16);
 }
 
 /**

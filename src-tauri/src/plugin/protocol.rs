@@ -373,8 +373,7 @@ pub struct PeerPluginInfo {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomMember {
-    /// 展示名（陶瓦的 `profiles[].name`）。
-    #[serde(default)]
+    /// 展示名（陶瓦的 `profiles[].name`）。    #[serde(default)]
     pub name: String,
     /// 适配器给的档案类型，如 `HOST` / `GUEST`。
     #[serde(default)]

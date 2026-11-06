@@ -82,7 +82,7 @@ pub struct UpdateManifest {
 /// 清单中的单个平台资产。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateAsset {
-    /// 平台标识，形如 `windows-x86_64`，与 [`crate::assets::adapter::current_platform`] 一致。
+    /// 平台标识，形如 `windows-x86_64`，与 [`crate::core::platform::current_platform`] 一致。
     pub platform: String,
     /// 资产类型，见本模块 `KIND_*` 常量。
     pub kind: String,

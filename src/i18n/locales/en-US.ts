@@ -108,6 +108,8 @@ export default {
     needPassword: "This network requires a password, please enter it",
     adapters: "Available adapters",
     noAdapters: "No available connect adapter",
+    engineDownloading:
+      "The connect engine is being prepared (a one-time download). You can start as soon as it is ready.",
     connecting: "Connecting…",
     connected: "Connected",
     copyCode: "Copy room code",

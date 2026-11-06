@@ -11,14 +11,17 @@
 //!        ├── CapabilityRouter ── 按「能力 + 游戏」选出可用插件
 //!        │
 //!        ├── SessionHandle ───── 外部插件：回环 WebSocket + AES-256-GCM
-//!        └── BuiltinProvider ─── 内置插件：进程内直调（陶瓦适配器走这条路）
+//!        └── BuiltinProvider ─── 内置插件：进程内直调（两个内置适配器走这条路）
 //! ```
+//!
+//! 内置适配器**不持有引擎**：EasyTier 进程的起停、下载与运行时管理都在
+//! [`crate::engine`]，插件层只描述房间语义。
 //!
 //! # 三类插件能力
 //!
 //! | 种类 | 职责 | 典型实现 |
 //! |---|---|---|
-//! | [`manifest::PluginKind::Adapter`] | 打洞/直连，屏蔽 NAT 差异 | 陶瓦联机、ZeroTier、自研打洞 |
+//! | [`manifest::PluginKind::Adapter`] | 打洞/直连，屏蔽 NAT 差异 | 陶瓦联机、EasyTier、ZeroTier、自研打洞 |
 //! | [`manifest::PluginKind::Detector`] | 扫描本机游戏实例并回传连接信息 | 进程枚举 + 端口探测 + 局域网嗅探 |
 //! | [`manifest::PluginKind::Coupler`] | 让游戏真正接入 MC Link 调度 | 启动器注入、servers.dat 改写、参数托管 |
 //!

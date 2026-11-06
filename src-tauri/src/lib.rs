@@ -1,9 +1,9 @@
-mod adapter;
 mod bridge;
 mod build_channel;
 mod commands;
 mod core;
 mod domain;
+mod engine;
 mod hmcl;
 mod persist;
 mod tuning;
@@ -407,12 +407,6 @@ pub fn run() {
             system_accent_seed,
             get_region_info,
             get_ip_info,
-            download_adapter,
-            adapter_startup_init,
-            get_adapter_status,
-            get_terracotta_state,
-            start_terracotta_host,
-            start_terracotta_guest,
             get_app_version,
             get_tauri_version,
             account_get,

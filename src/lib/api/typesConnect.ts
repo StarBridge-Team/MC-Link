@@ -57,11 +57,23 @@ export interface ConnectAdapter {
   name: string;
   /** 信任级别：official | verified | unsigned | blocked */
   trust: string;
+  /** 是否已就绪（引擎已安装、适配器可用）。 */
   ready: boolean;
   /** 房主侧需要的字段（generated 的由适配器生成，不收集输入）。 */
   hostFields: JoinField[];
   /** 访客侧需要的字段。 */
   joinFields: JoinField[];
+  /**
+   * 内置引擎状态（外部插件可能没有该字段）。
+   *
+   * `state === "downloading"` 表示首次使用正在下载引擎——前端据此提示
+   * "装好后即可开始联机"，而不是让用户点了按钮干等。
+   */
+  engine?: {
+    name: string;
+    version: string;
+    state: "ready" | "downloading" | "missing";
+  } | null;
 }
 
 // `ConnectEvent` / `ConnectStatus` / `RoomMember` 已随多房间重构移除：

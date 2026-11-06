@@ -20,10 +20,10 @@ use std::sync::{Arc, Mutex as SyncMutex, RwLock};
 use tauri::AppHandle;
 use tokio::sync::mpsc;
 
-use crate::adapter::AdapterManager;
 use crate::plugin::builtin::{
-    MinecraftCouplerProvider, MinecraftScannerProvider, TerracottaProvider,
-    MINECRAFT_COUPLER_PLUGIN_ID, MINECRAFT_DETECTOR_PLUGIN_ID, TERRACOTTA_PLUGIN_ID,
+    EasyTierProvider, MinecraftCouplerProvider, MinecraftScannerProvider, TerracottaProvider,
+    EASYTIER_PLUGIN_ID, MINECRAFT_COUPLER_PLUGIN_ID, MINECRAFT_DETECTOR_PLUGIN_ID,
+    TERRACOTTA_PLUGIN_ID,
 };
 use crate::plugin::capability::Provider;
 use crate::plugin::game::GameRegistry;
@@ -73,19 +73,12 @@ struct Inner {
     inbound_rx: SyncMutex<Option<mpsc::UnboundedReceiver<Inbound>>>,
     shutdown: Arc<AtomicBool>,
     app: RwLock<Option<AppHandle>>,
-    /// 内置适配器管理器。
-    ///
-    /// **不再套全局锁**：管理器内部只有端口值会变（它有自己的锁），
-    /// 拉起任务由 `adapter::probe::LaunchSlot` 去重。旧实现那把锁把
-    /// "拉起进程 + 12 秒端口探测"整体排他化了，探测期间所有适配器调用都被堵住。
-    adapter: Arc<AdapterManager>,
     warnings: RwLock<Vec<String>>,
 }
 
 impl PluginManager {
     /// 同步构造：加载注册表、内置插件与游戏画像，但不启动网络。
     pub fn new(data_dir: &Path) -> Result<Arc<Self>, String> {
-        let adapter = Arc::new(AdapterManager::new(data_dir));
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
 
         let mut registry = PluginRegistry::new(data_dir);
@@ -94,10 +87,16 @@ impl PluginManager {
         let mut games = GameRegistry::with_builtins();
         warnings.extend(games.load_dir(&data_dir.join("Games")));
 
+        // 内置适配器都只依赖数据目录（引擎安装、机器标识都落在它下面），
+        // 不再共享一个"适配器管理器"——那是陶瓦 exe 时代的载体，已随 exe 一起删除。
         let mut providers: HashMap<String, Provider> = HashMap::new();
         providers.insert(
             TERRACOTTA_PLUGIN_ID.to_string(),
-            Provider::Builtin(Arc::new(TerracottaProvider::new(adapter.clone())?)),
+            Provider::Builtin(Arc::new(TerracottaProvider::new(data_dir)?)),
+        );
+        providers.insert(
+            EASYTIER_PLUGIN_ID.to_string(),
+            Provider::Builtin(Arc::new(EasyTierProvider::new(data_dir)?)),
         );
         providers.insert(
             MINECRAFT_DETECTOR_PLUGIN_ID.to_string(),
@@ -123,7 +122,6 @@ impl PluginManager {
             inbound_rx: SyncMutex::new(Some(inbound_rx)),
             shutdown: Arc::new(AtomicBool::new(false)),
             app: RwLock::new(None),
-            adapter,
             warnings: RwLock::new(warnings),
         };
 

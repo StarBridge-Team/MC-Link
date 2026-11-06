@@ -112,6 +112,7 @@ export default {
     needPassword: "该网络需要密码，请输入",
     adapters: "可用适配器",
     noAdapters: "暂无可用的联机适配器",
+    engineDownloading: "联机引擎正在准备中（首次使用需要下载），装好后即可开始联机。",
     connecting: "连接中…",
     connected: "已连接",
     copyCode: "复制房间码",

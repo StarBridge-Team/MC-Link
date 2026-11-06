@@ -3,7 +3,6 @@
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-use crate::plugin::manifest::PluginManifest;
 use crate::plugin::permission::{PermissionSet, TrustLevel};
 use crate::plugin::registry::{PluginRecord, PluginSource};
 use crate::plugin::session::SessionHandle;
@@ -16,6 +15,7 @@ pub(super) fn builtin_records() -> Result<Vec<PluginRecord>, String> {
     let mut records = Vec::new();
     for manifest in [
         crate::plugin::builtin::terracotta::manifest(),
+        crate::plugin::builtin::easytier::manifest(),
         crate::plugin::builtin::minecraft_scanner::manifest(),
         crate::plugin::builtin::minecraft_coupler::manifest(),
     ] {
