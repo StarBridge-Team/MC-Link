@@ -100,6 +100,33 @@ function onMusicVolume(e: Event) {
 function onMusicVolumeCommit() {
   void settings.saveNow();
 }
+
+/** 侧边导航宽度：160–320px。 */
+function onNavWidth(e: Event) {
+  const value = Math.min(320, Math.max(160, Math.round(valueOf(e))));
+  settings.patch({ nav_width: value }, { silent: true });
+}
+
+function onNavWidthCommit() {
+  void settings.saveNow();
+}
+
+const fontOptions: ChipOption<string>[] = [
+  { value: "default", label: "Poppins", icon: "font_download" },
+  { value: "system", label: "跟随系统", icon: "computer" },
+];
+
+function setFont(value: string) {
+  settings.patch({ ui_font: value as "default" | "system" });
+}
+
+function onVideoLoop(e: Event) {
+  settings.patch({ video_loop: (e.target as HTMLInputElement).checked });
+}
+
+function onMusicLoop(e: Event) {
+  settings.patch({ music_loop: (e.target as HTMLInputElement).checked });
+}
 </script>
 
 <template>
@@ -196,6 +223,35 @@ function onMusicVolumeCommit() {
         </m3e-slider>
         <span class="slider-row__value mono">{{ Math.round(state.music_volume) }}%</span>
       </div>
+    </FieldRow>
+
+    <FieldRow :label="t('appearance.navWidth')">
+      <div class="slider-row">
+        <m3e-slider class="slider-row__slider" :min="160" :max="320" :step="8">
+          <m3e-slider-thumb
+            :value="state.nav_width"
+            @input="onNavWidth"
+            @change="onNavWidthCommit"
+          />
+        </m3e-slider>
+        <span class="slider-row__value mono">{{ Math.round(state.nav_width) }}px</span>
+      </div>
+    </FieldRow>
+
+    <FieldRow :label="t('appearance.uiFont')">
+      <ChipSelect
+        :model-value="state.ui_font"
+        :options="fontOptions"
+        @update:model-value="setFont"
+      />
+    </FieldRow>
+
+    <FieldRow :label="t('appearance.videoLoop')">
+      <m3e-switch :checked="state.video_loop" @change="onVideoLoop" />
+    </FieldRow>
+
+    <FieldRow :label="t('appearance.musicLoop')">
+      <m3e-switch :checked="state.music_loop" @change="onMusicLoop" />
     </FieldRow>
   </SettingCard>
 </template>

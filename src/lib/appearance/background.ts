@@ -254,6 +254,7 @@ export function applyBackground(
         video.src = wanted;
         void video.play().catch(() => undefined);
       }
+      video.loop = s.video_loop;
       video.style.display = "block";
     } else {
       video.pause();
@@ -310,7 +311,7 @@ function applyMusic(s: PersonalizationSettings, resolvedMusicUrl: string): void 
       audio.src = source;
       void audio.play().catch(() => undefined);
     }
-    audio.loop = true;
+    audio.loop = s.music_loop;
     audio.style.display = "";
   } else {
     audio.pause();

@@ -98,6 +98,14 @@ export interface PersonalizationSettings {
   ui_scale: number;
   /** 背景音乐音量（0–100）。 */
   music_volume: number;
+  /** 侧边导航宽度（px，160–320）。 */
+  nav_width: number;
+  /** 界面字体：`default`（Poppins）/ `system`。 */
+  ui_font: "default" | "system";
+  /** 视频背景是否循环播放。 */
+  video_loop: boolean;
+  /** 背景音乐是否循环播放。 */
+  music_loop: boolean;
 }
 
 /**

@@ -59,6 +59,10 @@ export function defaultSettings(): PersonalizationSettings {
     theme_seed_source: "manual",
     ui_scale: 100,
     music_volume: 60,
+    nav_width: 208,
+    ui_font: "default",
+    video_loop: true,
+    music_loop: true,
   };
 }
 

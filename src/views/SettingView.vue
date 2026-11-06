@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import NavList, { type NavListItem } from "../components/layout/NavList.vue";
-import { getSettingManifest } from "../lib/api/settingMeta";
+import { getSettingManifest, getSettingMeta } from "../lib/api/settingMeta";
 import type { SettingSection } from "../lib/api/types";
 import { filterEntries, mergeEntries, type SettingEntry } from "../lib/settings/registry";
 import { KEYS, local } from "../lib/persist";
@@ -11,31 +11,30 @@ import { DEFAULT_SETTING_TAB } from "../router";
 import SettingsManifestSection from "./settings/SettingsManifestSection.vue";
 
 /**
- * 设置页容器：左侧导航（复用 `NavList` 的 `m3e-nav-menu`）+ 右侧内容 + 顶部搜索。
+ * 设置页容器：左侧导航（`m3e-nav-menu`）+ 右侧内容 + 顶部搜索。
  *
- * # 为什么不用手写导航
+ * # 搜索能搜到什么
  *
- * 左侧曾是一组手写 `<button>` + 自定义 CSS，观感与主窗口的 M3 Navigation Drawer
- * 不一致，选中指示器/键盘导航也要自己维护。现在统一走 `@m3e/web` 的导航组件，
- * 只把「分区列表」喂给它。
+ * 不只是分区名：
+ * - 原生分区：`registry.ts` 的 `keywords` 覆盖该分区内**每个设置项**的名字；
+ * - 服务端分区：拉取 `get_setting_meta` 的字段 label，一并进索引。
  *
- * # 分区来源
- *
- * 全部来自 `lib/settings/registry.ts`：原生分区带组件，服务端下发分区带元配置 id。
- * 去重与优先级也在那里（原生优先于远程）。
+ * 搜「模糊」「对比度」「玩家名」都能定位到对应分区，而不是只有搜「个性化」才有结果。
  */
 const route = useRoute();
 const router = useRouter();
 
 const query = ref("");
 const remote = ref<SettingSection[]>([]);
+/** 远程分区的字段名索引（分区 id → 字段 label 列表）。 */
+const fieldIndex = ref<Record<string, string[]>>({});
 
 const entries = computed(() => mergeEntries(remote.value));
 const flat = computed(() => entries.value);
 
 /** 搜索过滤后喂给导航组件的项。 */
 const navItems = computed<NavListItem[]>(() =>
-  filterEntries(entries.value, query.value).map((e) => ({
+  filterEntries(entries.value, query.value, (id) => fieldIndex.value[id] ?? []).map((e) => ({
     id: e.id,
     icon: e.icon,
     label: e.label,
@@ -58,14 +57,28 @@ onMounted(async () => {
   if (fromRoute && flat.value.some((e) => e.id === fromRoute)) {
     activeId.value = fromRoute;
   } else {
-    // 不限定在原生 5 个 tab：服务端分区与 HMCL 主题等也允许被记住/从导航栏带入。
+    // 不限定在原生几个 tab：服务端分区与 HMCL 主题等也允许被记住。
     const saved = local.getString(KEYS.settingTab);
     if (saved && flat.value.some((e) => e.id === saved)) {
       activeId.value = saved;
     }
   }
+
   try {
-    remote.value = (await getSettingManifest()).sections;
+    const manifest = await getSettingManifest();
+    remote.value = manifest.sections;
+    // 远程分区的字段名也纳入搜索。后端 `get_setting_meta` 带缓存，成本很低；
+    // 单个分区失败不影响其它分区。
+    await Promise.all(
+      manifest.sections.map(async (section) => {
+        try {
+          const meta = await getSettingMeta(section.id);
+          fieldIndex.value[section.id] = meta.fields.map((f) => f.label || f.key);
+        } catch {
+          /* 忽略：这个分区只是搜不到字段名 */
+        }
+      }),
+    );
   } catch {
     remote.value = [];
   }
@@ -82,22 +95,23 @@ watch(
 <template>
   <div class="setting">
     <aside class="side">
-      <div class="search">
-        <m3e-form-field variant="outlined">
-          <input
-            :value="query"
-            type="search"
-            placeholder="搜索设置"
-            @input="(e: Event) => (query = (e.target as HTMLInputElement).value)"
-          />
-        </m3e-form-field>
-      </div>
+      <!-- 用组件库的搜索栏，而不是给 `form-field` 塞一个 input：
+           后者的圆角/高度/清除按钮都是"输入框"语义，与搜索栏不一致。 -->
+      <m3e-search-bar class="search" clearable @clear="query = ''">
+        <m3e-icon slot="leading" name="search"></m3e-icon>
+        <input
+          slot="input"
+          :value="query"
+          type="search"
+          placeholder="搜索设置项"
+          @input="(e: Event) => (query = (e.target as HTMLInputElement).value)"
+        />
+      </m3e-search-bar>
 
       <NavList :items="navItems" :active="activeId" @select="select" />
     </aside>
 
     <main class="content">
-      <!-- 原生分区用组件渲染；服务端分区交给 SettingsManifestSection 按 id 拉元配置。 -->
       <component
         v-if="active && active.kind === 'native' && active.component"
         :is="active.component"
@@ -120,8 +134,8 @@ watch(
   gap: var(--sp-6);
 }
 
-/* 不画分割线：靠留白把导航与内容分开（用户明确不要竖线）。 */
 .side {
+  /* 宽度跟随导航栏规格，搜索栏与导航项左右对齐；不写死像素，缩放时一起变。 */
   flex: none;
   width: var(--nav-width);
   min-height: 0;
@@ -130,9 +144,10 @@ watch(
   gap: var(--sp-3);
 }
 
+/* 搜索栏占满侧栏宽度（组件默认是 inline 的，不给宽度会缩成内容宽）。 */
 .search {
+  width: 100%;
   flex: none;
-  padding: 0 var(--sp-1);
 }
 
 .content {

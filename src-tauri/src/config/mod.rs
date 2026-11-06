@@ -96,6 +96,18 @@ pub struct PersonalizationSettings {
     /// 背景音乐音量（0–100）。
     #[serde(default = "default_music_volume")]
     pub music_volume: f64,
+    /// 侧边导航宽度（px，160–320）。
+    #[serde(default = "default_nav_width")]
+    pub nav_width: f64,
+    /// 界面字体：`default`（Poppins）/ `system`（跟随系统）。
+    #[serde(default = "default_ui_font")]
+    pub ui_font: String,
+    /// 视频背景是否循环播放。
+    #[serde(default = "default_true")]
+    pub video_loop: bool,
+    /// 背景音乐是否循环播放。
+    #[serde(default = "default_true")]
+    pub music_loop: bool,
 }
 
 fn default_ui_scale() -> f64 {
@@ -104,6 +116,18 @@ fn default_ui_scale() -> f64 {
 
 fn default_music_volume() -> f64 {
     60.0
+}
+
+fn default_nav_width() -> f64 {
+    208.0
+}
+
+fn default_ui_font() -> String {
+    "default".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for PersonalizationSettings {
@@ -149,6 +173,10 @@ impl Default for PersonalizationSettings {
             theme_seed_source: String::new(),
             ui_scale: default_ui_scale(),
             music_volume: default_music_volume(),
+            nav_width: default_nav_width(),
+            ui_font: default_ui_font(),
+            video_loop: default_true(),
+            music_loop: default_true(),
         }
     }
 }
