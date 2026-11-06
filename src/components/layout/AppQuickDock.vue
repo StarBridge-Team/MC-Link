@@ -1,29 +1,27 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
 
 import { openSettingsWindow } from "../../lib/api/window";
 import { useAccountStore } from "../../stores/account";
 
 /**
- * 主窗口右下角的快捷入口（与左侧导航同级）。
+ * 左侧导航下方的快捷入口：任务中心 / 账号（头像）/ 设置。
  *
- * 三项：任务中心 / 账号（头像）/ 设置。
+ * # 为什么在 Nav 下方、竖着排、但不是 Nav
  *
- * - **任务中心**：打开浮层，不占主窗口路由；
- * - **账号**：头像首字母来自后端账号（`Setting/account.yml`），点击进入设置「通用」分区；
- * - **设置**：普通图标按钮，**不用导航项组件**——设置是独立窗口，不是主窗口路由，
- *   用 `m3e-nav-item` 会让它看起来像"当前选中"的一页。
+ * 用户要求它"像 Nav 一样竖向排列"，位置在左下角——因此它和 `NavRail` 同宽、
+ * 同一条竖线，视觉上像导航的延伸。
  *
- * 与左侧 Nav 的"选中态互通"：两边都读同一个 `route.name`。左侧有对应路由的项会高亮；
- * 这里三项都没有主窗口路由，因此不显示选中——这是刻意的，避免"两个入口同时高亮"。
+ * 但它**不能是导航项**：
+ * - 「设置」打开独立窗口，不是主窗口路由，用 `m3e-nav-item` 会让它看起来像当前选中页；
+ * - 「任务中心」是浮层；
+ * - 「账号」是入口 + 身份显示。
+ *
+ * 所以这里用普通按钮，只是排布与 Nav 对齐。
  */
 const emit = defineEmits<{ tasks: [] }>();
 
-const route = useRoute();
 const account = useAccountStore();
-
-const active = computed(() => String(route.name ?? ""));
 
 /** 头像文字：取玩家名首字符（离线账号没有真实头像图源）。 */
 const initial = computed(() => {
@@ -39,82 +37,65 @@ onMounted(() => {
 
 <template>
   <div class="dock">
-    <button
-      class="dock__item"
-      type="button"
-      :class="{ 'is-active': active === 'tasks' }"
-      title="任务中心"
-      @click="emit('tasks')"
-    >
+    <button class="dock__item" type="button" title="任务中心" @click="emit('tasks')">
       <i class="material-symbols-rounded">task_alt</i>
+      <span class="dock__label">任务</span>
     </button>
 
     <button
-      class="dock__item dock__item--avatar"
+      class="dock__item"
       type="button"
       title="账号"
       @click="openSettingsWindow('general')"
     >
       <m3e-avatar class="dock__avatar">{{ initial }}</m3e-avatar>
+      <span class="dock__label">账号</span>
     </button>
 
-    <button
-      class="dock__item"
-      type="button"
-      title="设置"
-      @click="openSettingsWindow()"
-    >
+    <button class="dock__item" type="button" title="设置" @click="openSettingsWindow()">
       <i class="material-symbols-rounded">settings</i>
+      <span class="dock__label">设置</span>
     </button>
   </div>
 </template>
 
 <style scoped>
 .dock {
-  position: absolute;
-  right: var(--sp-4);
-  bottom: var(--sp-4);
-  z-index: 5;
+  /* 与 Nav 同宽、同一条竖线；不再绝对定位，由父级 flex 排在 Nav 下方。 */
+  flex: none;
+  width: var(--rail-width);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-container-high) 88%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 2px 10px color-mix(in srgb, #000 18%, transparent);
+  gap: var(--sp-1);
+  padding: var(--sp-2) 0 var(--sp-3);
 }
 
 .dock__item {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
+  gap: 2px;
+  width: 56px;
+  padding: var(--sp-2) 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--shape-corner-m, 12px);
   background: transparent;
   color: var(--on-surface);
   cursor: pointer;
 }
 
 .dock__item:hover {
-  background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
 }
 
-.dock__item.is-active {
-  background: var(--secondary-container);
-  color: var(--on-secondary-container);
-}
-
-/* 头像比图标略大，但仍然在同一个胶囊里。 */
-.dock__item--avatar {
-  width: 40px;
-  height: 40px;
+.dock__label {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-secondary);
 }
 
 .dock__avatar {
-  --m3e-avatar-size: 32px;
+  --m3e-avatar-size: 28px;
 }
 </style>

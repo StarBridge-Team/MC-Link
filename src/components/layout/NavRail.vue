@@ -44,9 +44,10 @@ const emit = defineEmits<{ select: [id: string] }>();
 
 <style scoped>
 .rail {
-  flex-shrink: 0;
-  /* 高度跟随父容器，内容超出时自己滚（而不是溢出到窗口上）。 */
-  max-height: 100%;
+  /* 占满父级剩余高度（下方还有 `AppQuickDock`），内容超出时自己滚，
+     而不是把整个窗口撑出滚动条。 */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }

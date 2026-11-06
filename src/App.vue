@@ -236,12 +236,15 @@ onMounted(async () => {
     />
 
     <div class="shell__body">
-      <NavRail
-        v-if="!hideNav"
-        :items="navItems"
-        :active="String(route.name ?? 'home')"
-        @select="onNavSelect"
-      />
+      <div v-if="!hideNav" class="shell__side">
+        <NavRail
+          :items="navItems"
+          :active="String(route.name ?? 'home')"
+          @select="onNavSelect"
+        />
+        <!-- 左下角快捷入口：与 Nav 同宽、竖向排列，但不是导航项 -->
+        <AppQuickDock @tasks="tasksOpen = true" />
+      </div>
       <NavList
         v-if="showSecondary"
         :items="secondaryItems"
@@ -269,8 +272,6 @@ onMounted(async () => {
       </main>
     </div>
 
-    <!-- 右下角快捷入口：任务中心 / 账号（头像）/ 设置，与左侧导航同级 -->
-    <AppQuickDock v-if="!hideNav" @tasks="tasksOpen = true" />
     <TaskCenterDialog :open="tasksOpen" @close="tasksOpen = false" />
 
     <OobeOverlay v-if="needsOobe" />
@@ -355,6 +356,14 @@ onMounted(async () => {
   z-index: 2;
   flex: 1;
   display: flex;
+  min-height: 0;
+}
+
+/* 左侧竖列：导航（可滚动）+ 底部快捷入口。两者同宽、同一条竖线。 */
+.shell__side {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
   min-height: 0;
 }
 
