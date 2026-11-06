@@ -5,13 +5,12 @@ import MediaControlWidget from "../widget/MediaControlWidget.vue";
 import { useUpdater } from "../../composables/useUpdater";
 
 /**
- * 任务中心浮层。
+ * 任务中心（组件库 `m3e-dialog`）。
  *
- * 目前汇总的是**自动更新**这条链路（检查/下载/安装/失败）。它本来就有一整套
- * 长任务状态，却只有设置页里能看到；放到右下角入口后，进行中/失败的任务
- * 在主窗口就能直接看到。
+ * 汇总的是**自动更新**这条链路（检查/下载/安装/失败）。它本来就有一整套长任务状态，
+ * 却只有设置页里能看到；放到左下角入口后，进行中/失败的任务在主窗口就能直接看到。
  *
- * 之后要接下载/房间任务时，在 `tasks` 里追加即可，不用改布局。
+ * 遮罩、圆角、进出动画、Esc 关闭全部由 `m3e-dialog` 提供，不再自己画 `backdrop`/`panel`。
  */
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: [] }>();
@@ -40,15 +39,10 @@ const failure = computed(() => updater.installError.value || updater.error.value
 </script>
 
 <template>
-  <div v-if="open" class="backdrop" @click="emit('close')">
-    <div class="panel" @click.stop>
-      <header class="panel__head">
-        <span class="panel__title">任务中心</span>
-        <button class="panel__close" type="button" @click="emit('close')">
-          <i class="material-symbols-rounded">close</i>
-        </button>
-      </header>
+  <m3e-dialog :open="open" @cancel="emit('close')">
+    <span slot="header">任务中心</span>
 
+    <div class="body">
       <p v-if="tasks.length === 0 && !failure" class="empty">暂无进行中的任务</p>
 
       <ul v-if="tasks.length > 0" class="tasks">
@@ -60,63 +54,20 @@ const failure = computed(() => updater.installError.value || updater.error.value
 
       <p v-if="failure" class="error">{{ failure }}</p>
 
-      <!-- 背景音视频控制：原先挂在窗口右下角，现在并入任务中心，
-           不再单独占一块悬浮区域。没有音源时组件自身不渲染。 -->
+      <!-- 背景音视频控制：原先挂在窗口角落，现在并入任务中心。没有音源时它自己不渲染。 -->
       <MediaControlWidget class="media" />
     </div>
-  </div>
+
+    <m3e-dialog-action slot="actions" @click="emit('close')">关闭</m3e-dialog-action>
+  </m3e-dialog>
 </template>
 
 <style scoped>
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: var(--sp-6);
-  background: color-mix(in srgb, #000 24%, transparent);
-}
-
-.panel {
-  width: 320px;
-  max-width: 80vw;
+.body {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: var(--sp-4);
-  border-radius: var(--shape-corner-l, 16px);
-  background: var(--surface-container-high);
-  color: var(--on-surface);
-  box-shadow: 0 8px 28px color-mix(in srgb, #000 28%, transparent);
-}
-
-.panel__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.panel__title {
-  font-weight: var(--fw-semibold);
-}
-
-.panel__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.panel__close:hover {
-  background: color-mix(in srgb, var(--on-surface) 10%, transparent);
+  min-width: 280px;
 }
 
 .empty {
@@ -150,7 +101,6 @@ const failure = computed(() => updater.installError.value || updater.error.value
   font-size: var(--fs-label);
 }
 
-/* 媒体控制自带胶囊底色，这里只让它靠左、不拉伸。 */
 .media {
   align-self: flex-start;
 }
