@@ -5,6 +5,8 @@ import PersonalizationSection from "../../views/settings/PersonalizationSection.
 import HmclSection from "../../views/settings/HmclSection.vue";
 import HomepageSection from "../../views/settings/HomepageSection.vue";
 import GeneralSection from "../../views/settings/GeneralSection.vue";
+import NetworkSection from "../../views/settings/NetworkSection.vue";
+import PluginTuningSection from "../../views/settings/PluginSection.vue";
 import UpdateSection from "../../views/settings/UpdateSection.vue";
 import AboutSection from "../../views/settings/AboutSection.vue";
 
@@ -119,6 +121,26 @@ export const NATIVE_ENTRIES: SettingEntry[] = [
     group: "常规",
     priority: 100,
     keywords: ["通用", "玩家名", "昵称", "离线", "UUID", "账号", "语言", "地区", "更多设置"],
+  },
+  {
+    id: "network",
+    label: "网络",
+    icon: "wifi",
+    kind: "native",
+    component: NetworkSection,
+    group: "网络",
+    priority: 100,
+    keywords: ["网络", "下载", "并发", "分片", "超时", "速度", "限速", "重试"],
+  },
+  {
+    id: "plugins-tuning",
+    label: "插件运行",
+    icon: "extension",
+    kind: "native",
+    component: PluginTuningSection,
+    group: "插件",
+    priority: 100,
+    keywords: ["插件", "握手", "超时", "网关", "并发", "连接", "性能", "限流"],
   },
   {
     id: "update",

@@ -6,6 +6,7 @@ mod core;
 mod domain;
 mod hmcl;
 mod persist;
+mod tuning;
 mod state;
 mod utils;
 use hmcl::*;
@@ -318,6 +319,10 @@ pub fn run() {
                 _ => false,
             };
             effect::setup_window_effects(app, &pers.transparent_effect, pers.effect_tint, dark);
+
+            // 运行时可调参数（下载并发/超时、插件握手、网关并发）也按已保存的设置预应用，
+            // 否则这些项要等用户再保存一次才生效。
+            tuning::apply(&pers);
 
             // 登记 mclink:// 深链接。**是否登记由安装形态决定**（见 deep_link::should_register_scheme）：
             // 安装版由安装器/系统登记，程序再写一遍会在卸载或挪动安装目录后残留失效的协议项；

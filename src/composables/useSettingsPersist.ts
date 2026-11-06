@@ -63,6 +63,10 @@ export function defaultSettings(): PersonalizationSettings {
     ui_font: "default",
     video_loop: true,
     music_loop: true,
+    download_parallel: 4,
+    download_idle_timeout: 30,
+    plugin_handshake_timeout: 15,
+    gateway_max_inflight: 32,
   };
 }
 

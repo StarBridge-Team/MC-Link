@@ -108,6 +108,18 @@ pub struct PersonalizationSettings {
     /// 背景音乐是否循环播放。
     #[serde(default = "default_true")]
     pub music_loop: bool,
+    /// 下载并行分片数（1–8）。
+    #[serde(default = "default_download_parallel")]
+    pub download_parallel: f64,
+    /// 下载空闲超时（秒，10–120）。
+    #[serde(default = "default_download_idle")]
+    pub download_idle_timeout: f64,
+    /// 插件握手超时（秒，5–60）。
+    #[serde(default = "default_handshake_timeout")]
+    pub plugin_handshake_timeout: f64,
+    /// 插件网关在途连接上限（4–128）。
+    #[serde(default = "default_gateway_inflight")]
+    pub gateway_max_inflight: f64,
 }
 
 fn default_ui_scale() -> f64 {
@@ -128,6 +140,22 @@ fn default_ui_font() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_download_parallel() -> f64 {
+    4.0
+}
+
+fn default_download_idle() -> f64 {
+    30.0
+}
+
+fn default_handshake_timeout() -> f64 {
+    15.0
+}
+
+fn default_gateway_inflight() -> f64 {
+    32.0
 }
 
 impl Default for PersonalizationSettings {
@@ -177,6 +205,10 @@ impl Default for PersonalizationSettings {
             ui_font: default_ui_font(),
             video_loop: default_true(),
             music_loop: default_true(),
+            download_parallel: default_download_parallel(),
+            download_idle_timeout: default_download_idle(),
+            plugin_handshake_timeout: default_handshake_timeout(),
+            gateway_max_inflight: default_gateway_inflight(),
         }
     }
 }

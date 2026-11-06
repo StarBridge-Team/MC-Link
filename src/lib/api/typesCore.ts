@@ -106,6 +106,14 @@ export interface PersonalizationSettings {
   video_loop: boolean;
   /** 背景音乐是否循环播放。 */
   music_loop: boolean;
+  /** 下载并行分片数（1–8）。 */
+  download_parallel: number;
+  /** 下载空闲超时（秒，10–120）。 */
+  download_idle_timeout: number;
+  /** 插件握手超时（秒，5–60）。 */
+  plugin_handshake_timeout: number;
+  /** 插件网关在途连接上限（4–128）。 */
+  gateway_max_inflight: number;
 }
 
 /**
