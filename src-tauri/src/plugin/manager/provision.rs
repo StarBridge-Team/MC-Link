@@ -81,8 +81,12 @@ impl PluginManager {
     /// 拉起外部插件进程。
     pub(super) async fn launch_external(&self, record: &PluginRecord) -> Result<(), ErrorInfo> {
         let (endpoint, token) = self.gateway_endpoint()?;
-        let runtime_dir = self.inner.data_dir.join("Plugins").join("runtime");
-        let (child, session) = launcher::spawn(record, &endpoint, &token, &runtime_dir)
+        // PSK 与准入表同源（同一个 `ensure_secret`），否则插件算出的 proof
+        // 与核心期望值不一致，握手必然失败。
+        let psk = record
+            .ensure_secret(&self.inner.data_dir)
+            .map_err(|e| ErrorInfo::new(error_code::INTERNAL, e))?;
+        let (child, session) = launcher::spawn(record, &endpoint, &token, &psk, &self.inner.data_dir)
             .map_err(|e| ErrorInfo::new(error_code::INTERNAL, e))?;
         let pid = child.id();
 

@@ -10,6 +10,11 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::plugin::permission::Permission;
 
+// 展示维度的归一化（工作方式/平台/标签）单独成模块：它们与结构校验是两条路，
+// 混在一起会让"哪条该严格"变得难以判断。这里再导出，调用方路径保持不变。
+mod normalize;
+pub use normalize::*;
+
 /// 清单文件名。
 pub const MANIFEST_FILE: &str = "plugin.json";
 
@@ -33,127 +38,6 @@ pub enum PluginKind {
     Widget,
     /// 工具类：不参与联机链路的小工具（脚本、批处理、辅助面板等）。
     Utility,
-}
-
-/// 工作方式：插件靠什么把局域网暴露给对端。
-///
-/// 与自由 `tags` 的区别在于**它必须可靠**——界面上的"按方式筛选"与 OOBE 的
-/// 推荐展示都直接依赖它，所以这里是枚举而非字符串：写错的取值会在解析期被拒，
-/// 不会变成筛选栏里第四个莫名的选项。
-///
-/// 刻意与"具体用什么软件"解耦：`bundled` 只说明"打包了第三方本体"，
-/// 具体是哪个软件由插件自己声明（`tags` / 清单其它字段）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ConnectionMethod {
-    /// 捆绑第三方软件本体（把别人家的整包带进来）。
-    #[serde(rename = "bundled")]
-    Bundled,
-    /// P2P 打洞直连。
-    #[serde(rename = "p2p")]
-    P2p,
-    /// 中继转发。
-    #[serde(rename = "relay")]
-    Relay,
-    /// 内网映射 / 端口映射。
-    #[serde(rename = "port-mapping")]
-    PortMapping,
-}
-
-impl ConnectionMethod {
-    /// 全部取值，供筛选界面与校验使用。
-    pub const ALL: &'static [ConnectionMethod] = &[
-        ConnectionMethod::Bundled,
-        ConnectionMethod::P2p,
-        ConnectionMethod::Relay,
-        ConnectionMethod::PortMapping,
-    ];
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ConnectionMethod::Bundled => "bundled",
-            ConnectionMethod::P2p => "p2p",
-            ConnectionMethod::Relay => "relay",
-            ConnectionMethod::PortMapping => "port-mapping",
-        }
-    }
-
-    /// 从字符串解析（大小写不敏感，接受下划线写法）。
-    pub fn parse(input: &str) -> Option<Self> {
-        let normalized = input.trim().to_ascii_lowercase().replace('_', "-");
-        ConnectionMethod::ALL
-            .iter()
-            .copied()
-            .find(|m| m.as_str() == normalized)
-    }
-}
-
-/// 已知平台取值。未知值在**展示层**被丢弃并留痕，但不会让插件加载失败——
-/// 开发者写错一个平台名，不该让整个插件不可用。
-pub const KNOWN_PLATFORMS: &[&str] = &["windows", "linux", "macos"];
-
-/// 归一化平台取值：去空白、小写、去重，并丢掉不在 [`KNOWN_PLATFORMS`] 里的。
-pub fn normalize_platforms(raw: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for item in raw {
-        let value = item.trim().to_ascii_lowercase();
-        if value.is_empty() {
-            continue;
-        }
-        if !KNOWN_PLATFORMS.contains(&value.as_str()) {
-            eprintln!("[插件] 未知平台「{value}」已忽略（可选：windows/linux/macos）");
-            continue;
-        }
-        if !out.contains(&value) {
-            out.push(value);
-        }
-    }
-    out
-}
-
-/// 归一化工作方式：丢掉未知取值并留痕。
-///
-/// 与 [`normalize_platforms`] 同口径——写错的取值只影响这一项，不会让插件不可用。
-pub fn normalize_methods(raw: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for item in raw {
-        match ConnectionMethod::parse(item) {
-            Some(method) => {
-                let value = method.as_str().to_string();
-                if !out.contains(&value) {
-                    out.push(value);
-                }
-            }
-            None => eprintln!(
-                "[插件] 未知工作方式「{}」已忽略（可选：bundled/p2p/relay/port-mapping）",
-                item.trim()
-            ),
-        }
-    }
-    out
-}
-
-/// 归一化自由标签：去空白、去重、限长限量。
-///
-/// **不做白名单**（开发者可自定义，中文标签是允许的），只做防脏数据的清洗：
-/// 一个插件写 200 个标签会让筛选栏彻底不可用。
-pub fn normalize_tags(raw: &[String]) -> Vec<String> {
-    const MAX_TAGS: usize = 12;
-    const MAX_LEN: usize = 24;
-    let mut out: Vec<String> = Vec::new();
-    for item in raw {
-        let value = item.trim();
-        if value.is_empty() {
-            continue;
-        }
-        let value: String = value.chars().take(MAX_LEN).collect();
-        if !out.contains(&value) {
-            out.push(value);
-        }
-        if out.len() >= MAX_TAGS {
-            break;
-        }
-    }
-    out
 }
 
 impl PluginKind {
@@ -209,6 +93,10 @@ pub enum RuntimeKind {
     Builtin,
     /// 独立子进程，通过回环 WebSocket 与核心通信。
     Process,
+    /// Node 脚本，由**核心提供的共享 Bun** 拉起（`entry` 必须是插件目录内的
+    /// `.js` / `.mjs` / `.cjs`；解释器路径由核心决定，见
+    /// [`crate::plugin::runtime`]）。
+    Node,
 }
 
 /// 启动描述。
@@ -447,6 +335,20 @@ impl PluginManifest {
                 return Err(format!("runtime.entry 必须是不越界的相对路径: {}", entry));
             }
         }
+        if self.runtime.kind == RuntimeKind::Node {
+            let entry = self.runtime.entry.as_deref().ok_or_else(|| {
+                "node 型插件必须在 runtime.entry 指定入口脚本（.js/.mjs/.cjs）".to_string()
+            })?;
+            if !is_safe_relative_path(entry) {
+                return Err(format!("runtime.entry 必须是不越界的相对路径: {}", entry));
+            }
+            if !is_node_script(entry) {
+                return Err(format!(
+                    "node 型插件的 runtime.entry 必须是 .js/.mjs/.cjs: {}",
+                    entry
+                ));
+            }
+        }
         if let Some(wd) = self.runtime.workdir.as_deref() {
             if !is_safe_relative_path(wd) {
                 return Err(format!("runtime.workdir 必须是不越界的相对路径: {}", wd));
@@ -480,6 +382,18 @@ impl PluginManifest {
     pub fn resolve_entry(&self, plugin_dir: &Path) -> Option<PathBuf> {
         self.runtime.entry.as_deref().map(|e| plugin_dir.join(e))
     }
+}
+
+/// 判断是否为 Node 入口脚本（扩展名大小写不敏感）。
+///
+/// 只认这三种扩展名：`.ts` 也能被 Bun 直接跑，但我们**刻意不支持**——发布包里的
+/// TypeScript 会让"用户机器上跑的到底是什么"变得不确定（Bun 版本一变，转译规则就变）。
+/// 作者应当在构建期用 `bun build` 产出 `.js`。
+pub fn is_node_script(entry: &str) -> bool {
+    let lower = entry.trim().to_ascii_lowercase();
+    [".js", ".mjs", ".cjs"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
 }
 
 /// 校验插件 ID：小写字母、数字、点、短横线、下划线；至少两段。
@@ -546,198 +460,5 @@ pub fn is_safe_relative_path(p: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::plugin::permission::TrustLevel;
-
-    fn sample() -> serde_json::Value {
-        serde_json::json!({
-            "id": "dev.example.adapter",
-            "name": "示例适配器",
-            "version": "1.0.0",
-            "kind": "adapter",
-            "permissions": ["net_listen_local", "net_udp"],
-            "runtime": { "kind": "process", "entry": "bin/adapter.exe" }
-        })
-    }
-
-    fn parse(
-        mut value: serde_json::Value,
-        patch: impl FnOnce(&mut serde_json::Value),
-    ) -> Result<PluginManifest, String> {
-        patch(&mut value);
-        PluginManifest::parse(&value.to_string())
-    }
-
-    #[test]
-    fn parses_minimal_manifest() {
-        let m = PluginManifest::parse(&sample().to_string()).unwrap();
-        assert_eq!(m.kind, PluginKind::Adapter);
-        assert_eq!(m.games, vec!["*"]);
-    }
-
-    /// 回归保护：清单里写什么都不能影响信任。
-    ///
-    /// 早期版本让清单自带 `signature` 字段并据此提权，那是"自述即可信"。现在
-    /// 该字段已从结构体移除，serde 会静默忽略它——本用例锁死这个行为：即使插件
-    /// 声明了 `permissions` 里的高权限、又伪造了签名字段，也只能拿到 `Unsigned`
-    /// 的权限上限。
-    #[test]
-    fn manifest_cannot_self_declare_trust() {
-        let m = parse(sample(), |v| {
-            v["permissions"] = serde_json::json!(["net_listen_public", "proc_spawn_game"]);
-            v["signature"] = serde_json::json!({
-                "algorithm": "ed25519",
-                "public_key": "deadbeef",
-                "signature": "cafebabe"
-            });
-        })
-        .expect("未知字段应被静默忽略，而不是解析失败");
-
-        let set = crate::plugin::permission::PermissionSet::resolve(
-            &m.permissions,
-            TrustLevel::Unsigned,
-            None,
-        );
-        assert!(!set.contains(crate::plugin::permission::Permission::ProcSpawnGame));
-        assert!(!set.contains(crate::plugin::permission::Permission::NetListenPublic));
-    }
-
-    #[test]
-    fn rejects_non_dotted_id() {
-        assert!(parse(sample(), |v| v["id"] = "adapter".into()).is_err());
-    }
-
-    /// 越界入口必须被拒，且**判定与编译平台无关**。
-    ///
-    /// `C:/evil.exe` 曾经只在 Windows 被拒（Linux 下 `is_absolute()` 为 false、
-    /// `C:` 是普通组件），导致同一份清单在两个平台校验结果不同。
-    #[test]
-    fn rejects_escaping_entry() {
-        for bad in [
-            "../../evil.exe",
-            "/etc/passwd",
-            // Windows 盘符（正/反斜杠两种写法）
-            "C:/evil.exe",
-            r"C:\evil.exe",
-            "d:evil.exe",
-            // UNC 与反斜杠逃逸
-            r"\\server\share\evil.exe",
-            r"..\..\evil.exe",
-            // 空 / 仅空白
-            "",
-            "   ",
-        ] {
-            assert!(
-                parse(sample(), |v| v["runtime"]["entry"] = bad.into()).is_err(),
-                "入口 {bad:?} 应被拒绝"
-            );
-        }
-    }
-
-    #[test]
-    fn process_runtime_requires_entry() {
-        assert!(parse(sample(), |v| v["runtime"]["entry"] =
-            serde_json::Value::Null)
-        .is_err());
-    }
-
-    #[test]
-    fn covers_game_matches_wildcard_and_id() {
-        let m = PluginManifest::parse(&sample().to_string()).unwrap();
-        assert!(m.covers_game("minecraft-java"));
-
-        let m = parse(sample(), |v| {
-            v["kind"] = "detector".into();
-            v["games"] = serde_json::json!(["terraria"]);
-        })
-        .unwrap();
-        assert!(m.covers_game("Terraria"));
-        assert!(!m.covers_game("minecraft-java"));
-    }
-
-    #[test]
-    fn rejects_unknown_protocol_version() {
-        assert!(parse(sample(), |v| v["protocol_version"] = 99.into()).is_err());
-    }
-
-    #[test]
-    fn rejects_absurd_frame_limit() {
-        assert!(parse(sample(), |v| v["limits"]["max_frame_bytes"] = 0.into()).is_err());
-    }
-
-    /// 平台：未知取值丢弃、大小写归一、去重，但**不影响插件加载**。
-    #[test]
-    fn platform_normalization_drops_unknown_values() {
-        let out = normalize_platforms(&[
-            "Windows".to_string(),
-            " windows ".to_string(),
-            "linux".to_string(),
-            "solaris".to_string(),
-            String::new(),
-        ]);
-        assert_eq!(out, vec!["windows".to_string(), "linux".to_string()]);
-    }
-
-    /// 标签是开发者自定义的：不设白名单（中文允许），但要去重、截长、限量。
-    #[test]
-    fn tag_normalization_is_lenient_but_bounded() {
-        let out = normalize_tags(&["免登录".to_string(), "免登录".to_string(), "x".repeat(200)]);
-        assert_eq!(out.len(), 2, "重复标签必须合并: {out:?}");
-        assert_eq!(out[0], "免登录");
-        assert_eq!(out[1].chars().count(), 24, "超长标签必须截断");
-
-        let many: Vec<String> = (0..50).map(|i| format!("tag-{i}")).collect();
-        assert_eq!(normalize_tags(&many).len(), 12, "标签数量必须封顶");
-    }
-
-    /// 工作方式的字符串表示必须稳定（筛选界面直接依赖），解析要宽容。
-    #[test]
-    fn connection_method_parsing_is_tolerant_and_stable() {
-        assert_eq!(ConnectionMethod::P2p.as_str(), "p2p");
-        assert_eq!(ConnectionMethod::PortMapping.as_str(), "port-mapping");
-        assert_eq!(
-            ConnectionMethod::parse(" P2P "),
-            Some(ConnectionMethod::P2p)
-        );
-        assert_eq!(
-            ConnectionMethod::parse("port_mapping"),
-            Some(ConnectionMethod::PortMapping)
-        );
-        assert_eq!(ConnectionMethod::parse("telepathy"), None);
-        assert_eq!(ConnectionMethod::ALL.len(), 4);
-    }
-
-    /// 写错的工作方式只应被丢掉，不能让插件加载失败（与平台同口径）。
-    #[test]
-    fn unknown_method_is_dropped_not_fatal() {
-        let m = parse(sample(), |v| {
-            v["methods"] = serde_json::json!(["p2p", "telepathy", "relay"]);
-        })
-        .expect("未知工作方式不应导致解析失败");
-        assert_eq!(
-            normalize_methods(&m.methods),
-            vec!["p2p".to_string(), "relay".to_string()]
-        );
-    }
-
-    /// 声明了三个新维度的清单要能完整解析出来。
-    #[test]
-    fn parses_platforms_methods_and_tags() {
-        let m = parse(sample(), |v| {
-            v["platforms"] = serde_json::json!(["windows", "linux"]);
-            v["methods"] = serde_json::json!(["p2p", "relay"]);
-            v["tags"] = serde_json::json!(["低延迟"]);
-        })
-        .unwrap();
-        assert_eq!(
-            normalize_platforms(&m.platforms),
-            vec!["windows".to_string(), "linux".to_string()]
-        );
-        assert_eq!(
-            normalize_methods(&m.methods),
-            vec!["p2p".to_string(), "relay".to_string()]
-        );
-        assert_eq!(normalize_tags(&m.tags), vec!["低延迟".to_string()]);
-    }
-}
+#[path = "manifest_tests.rs"]
+mod tests;

@@ -24,6 +24,7 @@ use tokio::net::TcpListener;
 use crate::plugin::auth::FailureTracker;
 use crate::plugin::crypto;
 use crate::plugin::manifest::LimitsSpec;
+use crate::plugin::peer::PeerHandle;
 use crate::plugin::permission::PermissionSet;
 use crate::plugin::session::{self, InboundTx};
 
@@ -108,9 +109,11 @@ impl Gateway {
 /// 在后台持续接受插件连接。
 ///
 /// 该函数会一直运行到 `shutdown` 置位；调用方负责用 `tokio::spawn` 驱动它。
+/// `peer` 是插件间通信的中转通道（见 [`crate::plugin::peer`]）。
 pub async fn serve(
     gateway: Arc<Gateway>,
     auth: AuthTable,
+    peer: PeerHandle,
     inbound: InboundTx,
     shutdown: Arc<AtomicBool>,
 ) {
@@ -127,7 +130,7 @@ pub async fn serve(
             }
         };
 
-        let (stream, peer) = match accepted {
+        let (stream, conn_peer) = match accepted {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("[插件网关] 接受连接失败: {}", e);
@@ -136,18 +139,23 @@ pub async fn serve(
         };
 
         // 纵深防御：即使绑定被误改为 0.0.0.0，也拒绝非回环来源。
-        if !peer.ip().is_loopback() {
-            eprintln!("[插件网关] 拒绝非回环连接: {}", peer);
+        if !conn_peer.ip().is_loopback() {
+            eprintln!("[插件网关] 拒绝非回环连接: {}", conn_peer);
             continue;
         }
 
         // 超过并发上限直接拒绝：不排队，避免"任务/内存被无界连接耗尽"。
         let Ok(permit) = inflight.clone().try_acquire_owned() else {
-            eprintln!("[插件网关] 并发连接已达上限（{}），拒绝 {}", max_inflight(), peer);
+            eprintln!(
+                "[插件网关] 并发连接已达上限（{}），拒绝 {}",
+                max_inflight(),
+                conn_peer
+            );
             continue;
         };
 
         let auth = auth.clone();
+        let peer_hub = peer.clone();
         let inbound = inbound.clone();
         let token = token.clone();
         let tracker = tracker.clone();
@@ -155,7 +163,7 @@ pub async fn serve(
         tokio::spawn(async move {
             // permit 随任务结束释放
             let _permit = permit;
-            handle_connection(stream, token, auth, inbound, tracker).await;
+            handle_connection(stream, token, auth, peer_hub, inbound, tracker).await;
         });
     }
 
@@ -166,6 +174,7 @@ async fn handle_connection(
     stream: tokio::net::TcpStream,
     token: String,
     auth: AuthTable,
+    peer: PeerHandle,
     inbound: InboundTx,
     tracker: Arc<SyncMutex<FailureTracker>>,
 ) {
@@ -214,6 +223,7 @@ async fn handle_connection(
         entry.psk,
         entry.permissions,
         entry.limits,
+        peer,
         inbound,
     )
     .await

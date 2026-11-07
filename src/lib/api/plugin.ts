@@ -7,6 +7,7 @@ import type {
   PluginGateway,
   PluginListQuery,
   PluginListResult,
+  PluginRuntimeStatus,
   RoutePlan,
 } from "./types";
 
@@ -71,6 +72,25 @@ export async function setPluginBlocked(pluginId: string, blocked: boolean) {
 /** 重新扫描插件目录，返回本次的告警列表。 */
 export async function reloadPlugins() {
   return invoke<string[]>("plugin_reload");
+}
+
+/**
+ * 查询共享 Node 运行时（Bun）的状态。
+ *
+ * 不发网络请求：界面据此决定要不要显示「安装运行时」以及 Node 插件能否运行。
+ */
+export async function getPluginRuntime() {
+  return invoke<PluginRuntimeStatus>("plugin_runtime_status");
+}
+
+/**
+ * 安装/修复共享运行时，返回实际安装的版本。
+ *
+ * 会下载约 90 MB 的产物（带 SHA256 校验与断点续传），因此可能耗时较久；
+ * 失败时**必须**把错误展示出来——否则用户只会看到 Node 插件"加载失败"。
+ */
+export async function installPluginRuntime() {
+  return invoke<string>("plugin_runtime_install");
 }
 
 /**

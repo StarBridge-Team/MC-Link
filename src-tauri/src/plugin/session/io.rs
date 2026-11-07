@@ -13,6 +13,8 @@ use tokio_tungstenite::WebSocketStream;
 
 use crate::plugin::crypto::{Cipher, ReplayWindow, SessionKeys};
 use crate::plugin::manifest::LimitsSpec;
+use crate::plugin::peer::{self, CallRequest, PeerHandle};
+use crate::plugin::permission::{Permission, PermissionSet};
 use crate::plugin::protocol::{self, core_method, error_code, ErrorInfo, Message};
 
 use super::wire::{now_millis, open_frame, send_message, RateLimiter};
@@ -28,6 +30,12 @@ pub(super) struct IoContext {
     pub plugin_id: String,
     pub keys: SessionKeys,
     pub limits: LimitsSpec,
+    /// 本会话生效的权限（用于 `core.*` 这类不走路由的方法自行判定）。
+    pub permissions: PermissionSet,
+    /// 插件间通信通道（由核心中转，见 [`crate::plugin::peer`]）。
+    pub peer: PeerHandle,
+    /// 出站队列的发送端：异步应答需要从任务里回写，而序号只能由主循环推进。
+    pub out_tx: mpsc::UnboundedSender<Message>,
     pub inbound: InboundTx,
     pub out_rx: mpsc::UnboundedReceiver<Message>,
     pub pending: Arc<Pending>,
@@ -43,6 +51,9 @@ pub(super) async fn io_loop(ctx: IoContext) -> String {
         plugin_id,
         keys,
         limits,
+        permissions,
+        peer,
+        out_tx,
         inbound,
         mut out_rx,
         pending,
@@ -109,8 +120,18 @@ pub(super) async fn io_loop(ctx: IoContext) -> String {
                         violations = 0;
                         last_seen.store(now_millis(), Ordering::SeqCst);
                         match dispatch_inbound(
-                            msg, &plugin_id, &mut limiter, &inbound, &pending, &mut replies,
-                        ).await {
+                            msg,
+                            &plugin_id,
+                            &permissions,
+                            &peer,
+                            &out_tx,
+                            &mut limiter,
+                            &inbound,
+                            &pending,
+                            &mut replies,
+                        )
+                        .await
+                        {
                             Ok(()) => {}
                             Err(reason) => return reason,
                         }
@@ -157,9 +178,13 @@ pub(super) async fn io_loop(ctx: IoContext) -> String {
 }
 
 /// 处理一条已解密的入站消息。
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_inbound(
     msg: Message,
     plugin_id: &str,
+    permissions: &PermissionSet,
+    peer: &PeerHandle,
+    out_tx: &mpsc::UnboundedSender<Message>,
     limiter: &mut RateLimiter,
     inbound: &InboundTx,
     pending: &Arc<Pending>,
@@ -198,12 +223,25 @@ async fn dispatch_inbound(
             });
         }
         Message::Request { id, method, params } => {
-            let (ok, result, error) = handle_core_request(&method, params);
-            replies.push(Message::Response {
-                id,
-                ok,
-                result,
-                error,
+            // **异步分派**：`core.peer.call` 要等另一枚插件回执，`core.peer.list`
+            // 要读管理器状态。若在本循环里 await，插件自己的入站队列就会被堵住，
+            // A→B→A 这种互调会直接死锁在自己的会话里。
+            //
+            // 应答从任务里回写进 `out_tx`，序号仍由主循环单调推进，
+            // 因此插件端不会看到乱序或重放。
+            let out = out_tx.clone();
+            let handle = peer.clone();
+            let perms = permissions.clone();
+            let pid = plugin_id.to_string();
+            tokio::spawn(async move {
+                let (ok, result, error) =
+                    core_request(&handle, &perms, &pid, &method, params).await;
+                let _ = out.send(Message::Response {
+                    id,
+                    ok,
+                    result,
+                    error,
+                });
             });
         }
         Message::Ping { at } => {
@@ -221,9 +259,15 @@ async fn dispatch_inbound(
 ///
 /// 这里刻意不提供任何"让核心替插件做事"的方法——核心不是插件的工具箱，
 /// 插件想访问资源必须靠自己去申请到的权限，而不是通过 RPC 借核心之手。
-pub(super) fn handle_core_request(
+///
+/// 唯一的例外是 [`crate::plugin::peer`] 的三个方法：它们不代替插件做事，
+/// 只把消息转交给同机的另一枚插件，且两端都要显式声明 `peer_message`。
+pub(super) async fn core_request(
+    peer: &PeerHandle,
+    permissions: &PermissionSet,
+    self_id: &str,
     method: &str,
-    _params: Value,
+    params: Value,
 ) -> (bool, Value, Option<ErrorInfo>) {
     match method {
         core_method::PING => (true, json!({ "at": now_millis() }), None),
@@ -232,9 +276,38 @@ pub(super) fn handle_core_request(
             json!({
                 "server": super::handshake::server_name(),
                 "protocol": protocol::PROTOCOL_VERSION,
+                "pluginId": self_id,
+                "peerApi": true,
             }),
             None,
         ),
+        core_method::PEER_LIST => match require_peer(permissions) {
+            Err(e) => denied(e),
+            Ok(()) => match peer.list(self_id).await {
+                Ok(list) => (true, serde_json::to_value(&list).unwrap_or(Value::Null), None),
+                Err(e) => denied(e),
+            },
+        },
+        core_method::PEER_CALL => match require_peer(permissions) {
+            Err(e) => denied(e),
+            Ok(()) => match parse_call(self_id, &params) {
+                Err(e) => denied(e),
+                Ok(request) => match peer.call(self_id, request).await {
+                    Ok(value) => (true, value, None),
+                    Err(e) => denied(e),
+                },
+            },
+        },
+        core_method::PEER_PUBLISH => match require_peer(permissions) {
+            Err(e) => denied(e),
+            Ok(()) => match parse_publish(&params) {
+                Err(e) => denied(e),
+                Ok((to, topic, data)) => match peer.publish(self_id, to, &topic, data) {
+                    Ok(()) => (true, json!({ "accepted": true }), None),
+                    Err(e) => denied(e),
+                },
+            },
+        },
         _ => (
             false,
             Value::Null,
@@ -244,4 +317,85 @@ pub(super) fn handle_core_request(
             ))),
         ),
     }
+}
+
+fn denied(error: ErrorInfo) -> (bool, Value, Option<ErrorInfo>) {
+    (false, Value::Null, Some(error))
+}
+
+/// 三个 peer 方法共用的权限闸门（发起方一侧；目标方一侧在管理器里判定）。
+fn require_peer(permissions: &PermissionSet) -> Result<(), ErrorInfo> {
+    permissions.require(Permission::PeerMessage)
+}
+
+fn bad(message: impl Into<String>) -> ErrorInfo {
+    ErrorInfo::new(error_code::BAD_REQUEST, message)
+}
+
+/// 解析 `core.peer.call` 的参数。
+fn parse_call(self_id: &str, params: &Value) -> Result<CallRequest, ErrorInfo> {
+    let to = params
+        .get("to")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if to.is_empty() {
+        return Err(bad("core.peer.call 缺少 to（目标插件 ID）"));
+    }
+    crate::plugin::manifest::validate_plugin_id(&to).map_err(bad)?;
+    if to == self_id {
+        return Err(bad("不允许向自己发起 peer 调用"));
+    }
+
+    let method = params
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    peer::validate_method(&method)?;
+
+    let depth = params.get("depth").and_then(Value::as_u64).unwrap_or(0);
+    if depth >= peer::MAX_DEPTH as u64 {
+        return Err(bad(format!(
+            "peer 调用嵌套过深（上限 {} 层）",
+            peer::MAX_DEPTH
+        )));
+    }
+
+    Ok(CallRequest {
+        to,
+        method,
+        params: params.get("params").cloned().unwrap_or(Value::Null),
+        depth: depth as u32,
+        launch: params.get("launch").and_then(Value::as_bool).unwrap_or(false),
+        timeout_ms: params
+            .get("timeout_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or(peer::DEFAULT_TIMEOUT_MS),
+    })
+}
+
+/// 解析 `core.peer.publish` 的参数：`to` 可省略（省略即广播）。
+fn parse_publish(params: &Value) -> Result<(Option<String>, String, Value), ErrorInfo> {
+    let to = params
+        .get("to")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    if let Some(target) = to.as_deref() {
+        crate::plugin::manifest::validate_plugin_id(target).map_err(bad)?;
+    }
+    let topic = params
+        .get("topic")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    peer::validate_topic(&topic)?;
+    Ok((
+        to,
+        topic,
+        params.get("data").cloned().unwrap_or(Value::Null),
+    ))
 }

@@ -1,0 +1,21 @@
+{
+  "id": "dev.mclink.example.echo",
+  "name": "示例 Node 适配器",
+  "version": "1.0.0",
+  "kind": "adapter",
+  "games": ["*"],
+  "author": "MC Link",
+  "description": "演示 Node 轨道 SDK 的最小适配器（不真正联机，只回固定状态）",
+  "methods": ["p2p"],
+  "permissions": ["net_listen_local", "net_connect_any", "peer_message"],
+  "runtime": {
+    "kind": "node",
+    "entry": "main.js",
+    "args": []
+  },
+  "limits": {
+    "max_rpc_per_sec": 32,
+    "heartbeat_ms": 5000,
+    "idle_timeout_ms": 20000
+  }
+}

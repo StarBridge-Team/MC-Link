@@ -453,6 +453,8 @@ pub fn run() {
             plugin_set_grants,
             plugin_set_blocked,
             plugin_reload,
+            plugin_runtime_status,
+            plugin_runtime_install,
             market_list,
             market_install,
             hmcl_list_themes,

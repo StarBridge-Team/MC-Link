@@ -20,7 +20,7 @@ export type PluginKind =
 export type PluginSource = "builtin" | "external";
 export type PluginTrust = "official" | "verified" | "unsigned" | "blocked";
 
-/** 权限稳定名（后端 plugin/permission.rs，共 14 项）。 */
+/** 权限稳定名（后端 plugin/permission.rs，共 15 项）。 */
 export type PluginPermission =
   | "net_listen_local"
   | "net_listen_public"
@@ -35,6 +35,8 @@ export type PluginPermission =
   | "proc_inspect"
   | "registry_read"
   | "game_scan"
+  /** 与本机其它插件互相收发消息（双向闸门：双方都要声明）。 */
+  | "peer_message"
   | "ui_notify";
 
 export interface PermissionDescription {
@@ -150,6 +152,12 @@ export interface PluginGateway {
   loopbackOnly?: boolean;
   protocolVersion?: number;
   subprotocol?: string;
+  /** 插件间通信（peer 信道）是否可用。 */
+  peerApi?: boolean;
+  /** peer 调用的最大嵌套深度。 */
+  peerMaxDepth?: number;
+  /** 单次 peer 调用的默认超时（毫秒）。 */
+  peerTimeoutMs?: number;
 }
 
 /** `plugin-event` 事件的三种负载形状。 */
@@ -157,6 +165,29 @@ export type PluginEvent =
   | { type: "connected"; pluginId: string }
   | { type: "disconnected"; pluginId: string; reason: string }
   | { type: "event"; pluginId: string; topic: string; data: unknown };
+
+// ===== 共享运行时（后端 plugin/runtime.rs） =====
+
+/**
+ * Node 插件共用的 Bun 运行时状态。
+ *
+ * `source` 为 `dev-override` 时说明当前用的是开发期覆盖（`MC_LINK_BUN`），
+ * 不代表用户机器上真的装好了运行时。
+ */
+export interface PluginRuntimeStatus {
+  /** 固定 `node`。 */
+  kind: string;
+  /** 是否已就绪（能直接拉起 Node 插件）。 */
+  installed: boolean;
+  /** 实际可用版本；未安装为 `null`。 */
+  version: string | null;
+  /** 可执行文件路径；未安装为 `null`。 */
+  path: string | null;
+  /** 核心锁定的版本（用户不应自己升级运行时）。 */
+  pinnedVersion: string;
+  /** `installed` / `dev-override` / `missing`。 */
+  source: "installed" | "dev-override" | "missing" | string;
+}
 
 // ===== 社区数据（后端 community.rs） =====
 

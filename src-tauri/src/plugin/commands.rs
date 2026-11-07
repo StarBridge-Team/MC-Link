@@ -256,6 +256,17 @@ pub(crate) fn plugin_gateway(manager: tauri::State<'_, Arc<PluginManager>>) -> V
             "subprotocol".to_string(),
             json!(crate::plugin::protocol::WS_SUBPROTOCOL),
         );
+        // 插件间通信是否可用（界面据此决定要不要展示"可互调插件"之类的能力）。
+        // 这是**协议能力**，不是某一枚插件的能力：具体谁能调谁由清单权限决定。
+        map.insert("peerApi".to_string(), json!(true));
+        map.insert(
+            "peerMaxDepth".to_string(),
+            json!(crate::plugin::peer::MAX_DEPTH),
+        );
+        map.insert(
+            "peerTimeoutMs".to_string(),
+            json!(crate::plugin::peer::DEFAULT_TIMEOUT_MS),
+        );
     }
     info
 }

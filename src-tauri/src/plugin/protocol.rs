@@ -45,6 +45,12 @@ pub mod core_method {
     pub const CONTEXT_UPDATE: &str = "core.context.update";
     /// 请求插件优雅退出。
     pub const SHUTDOWN: &str = "core.shutdown";
+    /// 列出本机可见的其它插件（插件间通信的发现面）。
+    pub const PEER_LIST: &str = "core.peer.list";
+    /// 调用另一枚插件（由核心中转，见 [`crate::plugin::peer`]）。
+    pub const PEER_CALL: &str = "core.peer.call";
+    /// 向其它插件投递事件（定向或广播），不需要回执。
+    pub const PEER_PUBLISH: &str = "core.peer.publish";
 }
 
 /// 适配类插件方法名。
@@ -350,16 +356,26 @@ pub struct RoomInfo {
 }
 
 /// 同一主机上其他已就绪插件的能力摘要，用于插件间协作。
+///
+/// 出现在两个地方，字段必须一致：
+/// - `core.context.update` 的 `peers` 数组（被动推送）；
+/// - `core.peer.list` 的返回值（主动查询）。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PeerPluginInfo {
     pub plugin_id: String,
-    /// 插件种类：`adapter` / `detector` / `coupler`。
+    /// 插件种类：`adapter` / `detector` / `coupler` / `bridge` / `widget` / `utility`。
     pub kind: String,
     /// 该插件覆盖的游戏 ID 列表，`*` 表示不限。
     pub games: Vec<String>,
     /// 插件可用的本机入口（适配器通常提供转发端口）。
     #[serde(default)]
     pub endpoints: Vec<String>,
+    /// 清单版本，便于调用方判断对端能力（如"老版本没有 peer 支持"）。
+    #[serde(default)]
+    pub version: String,
+    /// 是否已建立会话（`false` 表示已登记但当前没连上，调用时需 `launch: true`）。
+    #[serde(default)]
+    pub alive: bool,
 }
 
 /// 房间成员（适配器自报的参与者）。

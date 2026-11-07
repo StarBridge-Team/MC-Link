@@ -10,10 +10,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use crate::plugin::manifest::RuntimeKind;
 use crate::plugin::protocol::PROTOCOL_VERSION;
 use crate::plugin::registry::{PluginRecord, PluginSource};
 
 /// 会话文件内容：外部插件启动后读取它来知道该连哪里。
+///
+/// `psk` 也在其中：PSK 是握手的信任根，核心与插件必须共享同一份。它不出现在
+/// 命令行（进程列表可读），只出现在这份**权限受限**的文件里；文件权限由
+/// `fs_secure::restrict_to_current_user` 收紧，且路径含插件 ID 哈希、不可猜测。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionDescriptor {
     /// 协议版本。
@@ -24,6 +29,8 @@ pub struct SessionDescriptor {
     pub endpoint: String,
     /// 一次性启动令牌。
     pub token: String,
+    /// 预共享密钥（hex，64 字符）。插件用它完成 PSK 挑战-应答。
+    pub psk: String,
     /// 核心期望的心跳间隔（毫秒）。
     pub heartbeat_ms: u64,
 }
@@ -39,6 +46,7 @@ pub fn write_session_file(
     plugin_id: &str,
     endpoint: &str,
     token: &str,
+    psk_hex: &str,
     heartbeat_ms: u64,
 ) -> Result<PathBuf, String> {
     std::fs::create_dir_all(runtime_dir).map_err(|e| format!("创建插件运行时目录失败: {}", e))?;
@@ -48,42 +56,58 @@ pub fn write_session_file(
         plugin_id: plugin_id.to_string(),
         endpoint: endpoint.to_string(),
         token: token.to_string(),
+        psk: psk_hex.to_string(),
         heartbeat_ms,
     };
     let text =
         serde_json::to_string_pretty(&desc).map_err(|e| format!("序列化会话描述失败: {}", e))?;
     std::fs::write(&path, text).map_err(|e| format!("写入会话文件失败: {}", e))?;
-    // 收紧权限；失败即上抛——会话文件含一次性启动令牌，不能降级成"只有隐藏属性"。
+    // 收紧权限；失败即上抛——会话文件含一次性启动令牌与 PSK，
+    // 不能降级成"只有隐藏属性"。
     crate::plugin::fs_secure::restrict_to_current_user(&path)
         .map_err(|e| format!("收紧会话文件权限失败: {}", e))?;
     Ok(path)
 }
 
 /// 启动外部插件进程，返回进程 ID 与会话文件路径。
+///
+/// `psk` 是核心为该插件生成的预共享密钥：它被写进会话文件（而不是命令行），
+/// 插件据此完成 PSK 挑战-应答。**没有它插件连不上核心**——这是外部插件
+/// 唯一的密钥交付路径。
+///
+/// # 两条启动轨道
+///
+/// - `runtime.kind = "process"`：直接执行 `runtime.entry`（插件目录内的可执行文件）；
+/// - `runtime.kind = "node"`：用**核心提供的共享 Bun** 执行 `runtime.entry`
+///   （脚本路径仍在插件目录内，且同样过 `is_within`）。
+///
+/// 两条轨道之后共用同一套"会话文件 + 参数占位符 + 环境白名单"逻辑——插件看到的
+/// 会话契约完全一致，换轨道不需要改插件代码。
 pub fn spawn(
     record: &PluginRecord,
     endpoint: &str,
     token: &str,
-    runtime_dir: &Path,
+    psk: &[u8; 32],
+    data_dir: &Path,
 ) -> Result<(std::process::Child, PathBuf), String> {
     if record.source != PluginSource::External {
         return Err(format!("{} 不是外部插件，无需启动进程", record.id()));
     }
 
     let manifest = &record.manifest;
-    let exe = manifest
+    let entry = manifest
         .resolve_entry(&record.dir)
-        .ok_or_else(|| format!("插件 {} 未声明可执行文件", record.id()))?;
+        .ok_or_else(|| format!("插件 {} 未声明入口文件", record.id()))?;
 
     // 纵深防御：即使清单校验被绕过，也不允许启动插件目录之外的文件。
-    if !is_within(&record.dir, &exe) {
+    if !is_within(&record.dir, &entry) {
         return Err(format!(
-            "拒绝启动插件目录之外的可执行文件: {}",
-            exe.display()
+            "拒绝启动插件目录之外的文件: {}",
+            entry.display()
         ));
     }
-    if !exe.is_file() {
-        return Err(format!("插件可执行文件不存在: {}", exe.display()));
+    if !entry.is_file() {
+        return Err(format!("插件入口文件不存在: {}", entry.display()));
     }
 
     let workdir = manifest.resolve_workdir(&record.dir);
@@ -94,16 +118,41 @@ pub fn spawn(
         ));
     }
 
+    let runtime_dir = data_dir.join("Plugins").join("runtime");
     let session = write_session_file(
-        runtime_dir,
+        &runtime_dir,
         record.id(),
         endpoint,
         token,
+        &hex::encode(psk),
         manifest.limits.heartbeat_ms,
     )?;
 
-    let mut cmd = std::process::Command::new(&exe);
+    let mut cmd = match manifest.runtime.kind {
+        RuntimeKind::Process => std::process::Command::new(&entry),
+        RuntimeKind::Node => {
+            // 解释器由核心决定，清单无权指定（见 `plugin::runtime`）
+            let bun = crate::plugin::runtime::resolve(data_dir)?;
+            let mut cmd = std::process::Command::new(bun);
+            // 脚本作为第一个参数：`bun <entry> [args...]`
+            cmd.arg(&entry);
+            cmd
+        }
+        RuntimeKind::Builtin => {
+            return Err(format!("内置插件 {} 不应被拉起", record.id()));
+        }
+    };
     cmd.current_dir(&workdir);
+
+    // 控制台子系统的插件被拉起时不该弹黑框：日志走 `plugin.log`，
+    // 不是 stdout。插件作者因此也不必写 `#![windows_subsystem = "windows"]`。
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        /// `CREATE_NO_WINDOW`
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 
     for arg in &manifest.runtime.args {
         cmd.arg(substitute(arg, endpoint, &session));
@@ -141,7 +190,7 @@ pub fn spawn(
 
     let child = cmd
         .spawn()
-        .map_err(|e| format!("启动插件进程失败 {}: {}", exe.display(), e))?;
+        .map_err(|e| format!("启动插件进程失败 {}: {}", entry.display(), e))?;
     // 把 `Child` 交回调用方保管，而不是只给一个 pid：句柄被丢弃后
     // 既无法 `wait` 回收（Unix 上留下僵尸进程），也无法在超时/退出时 `kill`
     // （Windows 上应用退出后插件进程会继续残留）。见 manager 的 `children` 表。
@@ -182,11 +231,13 @@ mod tests {
             "mclink-session-{}",
             crate::plugin::crypto::random_hex(5)
         ));
+        let psk = [7u8; 32];
         let path = write_session_file(
             &dir,
             "dev.example.a",
             "ws://127.0.0.1:1/plugin",
             "tok",
+            &hex::encode(psk),
             5000,
         )
         .unwrap();
@@ -195,6 +246,8 @@ mod tests {
         assert_eq!(desc.plugin_id, "dev.example.a");
         assert_eq!(desc.token, "tok");
         assert_eq!(desc.protocol, PROTOCOL_VERSION);
+        // PSK 必须能原样取回：这是外部插件完成握手的唯一来源
+        assert_eq!(desc.psk, hex::encode(psk));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

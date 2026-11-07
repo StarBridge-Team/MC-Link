@@ -219,6 +219,11 @@ impl PluginManager {
     }
 
     /// 汇总其他插件的能力信息，供适配类插件决定如何协作。
+    ///
+    /// 这里是**信息面**（"本机还有谁在参与"），因此不按 `peer_message` 过滤——
+    /// 没声明该权限的插件依然可能占用端口、拉起游戏，适配器需要知道它们存在。
+    /// 可**调用**的插件清单是另一件事，见 `core.peer.list`（只列声明了
+    /// `peer_message` 的插件）。
     pub fn peer_summaries(&self) -> Vec<crate::plugin::protocol::PeerPluginInfo> {
         self.list()
             .into_iter()
@@ -228,6 +233,14 @@ impl PluginManager {
                 kind: r.manifest.kind.as_str().to_string(),
                 games: r.manifest.games.clone(),
                 endpoints: Vec::new(),
+                version: r.manifest.version.clone(),
+                alive: self
+                    .inner
+                    .providers
+                    .read()
+                    .ok()
+                    .and_then(|m| m.get(r.manifest.id.as_str()).map(|p| p.is_available()))
+                    .unwrap_or(false),
             })
             .collect()
     }
