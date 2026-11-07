@@ -2,7 +2,18 @@
 //!
 //! 复用 WGP Core（`app_adapter/game_tcp.rs`）的局域网广播实现，把 Minecraft Java
 //! 接入 MC Link 的本地调度入口：attach 时在局域网广播游戏入口（让同网设备可发现），
-//! detach 时停止广播，launch 时按需拉起游戏进程。同样仅依赖标准库，内联于此。
+//! detach 时停止广播。同样仅依赖标准库，内联于此。
+//!
+//! # 刻意不实现 `coupler.launch`
+//!
+//! **MC Link 不启动游戏**（见 `CLAUDE.md` §1）。内置耦合器只负责"让游戏发现我们"，
+//! 一旦它也能拉起 `java`，就等于把"联机工具"变成了启动器：
+//!
+//! - 游戏由用户的启动器启动，生命周期归用户；MC Link 抢这个职责只会和启动器打架；
+//! - 拉起进程是 `proc_spawn_game` 这类高风险权限，内置实现不该握着它当基线。
+//!
+//! `coupler.launch` 这个**协议方法保留**：第三方启动器类插件可以实现它，那是它们与
+//! 核心交流的通道（本插件的基线权限因此是 `net_connect_local`，不是 `proc_spawn_game`）。
 //!
 //! # 广播的端口是"玩家该连的那个端口"
 //!
@@ -11,7 +22,6 @@
 //! 否则自己的广播会被自己当成一台局域网游戏发现出来。
 
 use std::net::{SocketAddr, UdpSocket};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -22,7 +32,7 @@ use serde_json::{json, Value};
 use crate::plugin::capability::BuiltinCapability;
 use crate::plugin::manifest::{PluginKind, PluginManifest, RuntimeKind};
 use crate::plugin::permission::PermissionSet;
-use crate::plugin::protocol::{coupler_method, error_code, ErrorInfo};
+use crate::plugin::protocol::{coupler_method, ErrorInfo};
 
 use super::lan;
 
@@ -30,49 +40,6 @@ use super::lan;
 pub const PLUGIN_ID: &str = "dev.mclink.builtin.minecraft-java-coupler";
 
 const MULTICAST_ADDR: &str = "224.0.2.60:4445";
-
-/// 允许 `coupler.launch` 拉起的可执行文件名（Minecraft 启动器用的 java 运行时）。
-///
-/// # 为什么必须白名单
-///
-/// `coupler.launch` 的 `path` 由调用方给定。此前直接 `Command::new(path)` 执行任意
-/// 路径，等于把"以核心进程权限运行任意程序"开成一个能力方法——当前虽无命令暴露它
-/// （`connect.rs` 只用 attach/detach），但接口已经就位，任何后续接线都会立刻变成
-/// 本地代码执行。这里收紧到按文件名白名单，且**只接受纯文件名**（拒绝路径分隔符），
-/// 由系统按 PATH / 注册表解析，与用户双击启动等价。
-const ALLOWED_GAME_EXECUTABLES: &[&str] = &["javaw.exe", "java.exe", "javaw", "java"];
-
-/// 从 `path` 参数取出允许拉起的可执行文件名。
-fn allowed_executable(path: &str) -> Result<String, ErrorInfo> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Err(ErrorInfo::not_supported("游戏可执行文件路径为空"));
-    }
-    // 只接受纯文件名：带分隔符说明调用方想指定任意位置，一律拒绝
-    if std::path::Path::new(trimmed).components().count() != 1 {
-        return Err(ErrorInfo::not_supported(format!(
-            "只接受可执行文件名，不接受路径: {}",
-            trimmed
-        )));
-    }
-    let name = std::path::Path::new(trimmed)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| ErrorInfo::not_supported("非法的可执行文件路径"))?;
-    if !ALLOWED_GAME_EXECUTABLES
-        .iter()
-        .any(|a| a.eq_ignore_ascii_case(name))
-    {
-        return Err(ErrorInfo::new(
-            error_code::FORBIDDEN,
-            format!(
-                "不允许拉起 {}：只允许 Minecraft 启动器使用的 java 可执行文件",
-                name
-            ),
-        ));
-    }
-    Ok(name.to_string())
-}
 
 /// 端口参数：`u64` → 合法 `u16`，越界视为未提供（不静默截断）。
 fn port_from_params(params: &Value) -> Option<u16> {
@@ -107,10 +74,11 @@ pub fn manifest() -> PluginManifest {
         "version": "0.1.0",
         "kind": "coupler",
         "author": "MC Link 内置",
-        "description": "将 Minecraft Java Edition 接入 MC Link 调度：在局域网广播游戏入口，并按需拉起游戏进程。",
+        "description": "将 Minecraft Java Edition 接入 MC Link 调度：在局域网广播游戏入口，供本机与同网玩家发现。不启动游戏。",
         "games": ["minecraft-java"],
         "priority": 50,
-        "permissions": ["proc_spawn_game", "net_connect_local", "net_udp"],
+        // 不含 proc_spawn_game：内置耦合器不拉起游戏（见模块注释）
+        "permissions": ["net_connect_local", "net_udp"],
         "runtime": { "kind": "builtin" }
     });
     let mut m = PluginManifest::parse(&raw.to_string())
@@ -174,27 +142,6 @@ impl MinecraftCouplerProvider {
     fn status(&self) -> Result<Value, ErrorInfo> {
         Ok(json!({ "attached": self.running.load(Ordering::SeqCst) }))
     }
-
-    fn launch(&self, params: &Value) -> Result<Value, ErrorInfo> {
-        let raw = params
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ErrorInfo::not_supported("未提供游戏可执行文件路径（参数 path）"))?;
-        // 白名单 + 只接受纯文件名：绝不执行调用方指定的任意路径
-        let exe = allowed_executable(raw)?;
-
-        let mut cmd = Command::new(&exe);
-        if let Some(args) = params.get("args").and_then(|v| v.as_array()) {
-            for a in args {
-                if let Some(s) = a.as_str() {
-                    cmd.arg(s);
-                }
-            }
-        }
-        cmd.spawn()
-            .map(|_| json!({ "launched": true, "exe": exe }))
-            .map_err(|e| ErrorInfo::new(error_code::INTERNAL, format!("拉起游戏失败: {}", e)))
-    }
 }
 
 impl BuiltinCapability for MinecraftCouplerProvider {
@@ -215,7 +162,11 @@ impl BuiltinCapability for MinecraftCouplerProvider {
             coupler_method::ATTACH => self.attach(&params),
             coupler_method::DETACH => self.detach(),
             coupler_method::STATUS => self.status(),
-            coupler_method::LAUNCH => self.launch(&params),
+            // 明确拒绝而不是"不支持"：这条错误会出现在日志里，要说清是谁的选择
+            coupler_method::LAUNCH => Err(ErrorInfo::not_supported(
+                "MC Link 不启动游戏：内置耦合器只广播局域网入口。\
+                 需要托管游戏进程请用实现了 coupler.launch 的第三方插件",
+            )),
             other => Err(ErrorInfo::not_supported(format!(
                 "Minecraft Java 耦合器不支持方法 {}",
                 other

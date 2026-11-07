@@ -312,8 +312,10 @@ pub fn kind_baseline(kind: PluginKind) -> Permission {
         PluginKind::Adapter => Permission::NetConnectAny,
         // 探测器要扫描本机游戏实例
         PluginKind::Detector => Permission::GameScan,
-        // 耦合器要拉起游戏进程
-        PluginKind::Coupler => Permission::ProcSpawnGame,
+        // 耦合器的本职是"让游戏接入本机入口"（广播入口、改写 servers.dat 之类），
+        // 因此基线是连本机端口。**拉起游戏不是基线**：MC Link 不启动游戏，
+        // 只有确实实现了 `coupler.launch` 的第三方启动器类插件才需要 `proc_spawn_game`。
+        PluginKind::Coupler => Permission::NetConnectLocal,
         // 桥接器只做协议翻译，不需要额外高风险能力
         PluginKind::Bridge => Permission::NetConnectLocal,
         // 挂件要能把 UI 推送/渲染到界面
@@ -416,7 +418,13 @@ mod tests {
             Permission::NetConnectAny
         );
         assert_eq!(kind_baseline(PluginKind::Detector), Permission::GameScan);
+        // 耦合器的基线不是"拉起游戏"：MC Link 不启动游戏，
+        // 只有实现了 `coupler.launch` 的第三方启动器插件才额外申请 `proc_spawn_game`
         assert_eq!(
+            kind_baseline(PluginKind::Coupler),
+            Permission::NetConnectLocal
+        );
+        assert_ne!(
             kind_baseline(PluginKind::Coupler),
             Permission::ProcSpawnGame
         );
