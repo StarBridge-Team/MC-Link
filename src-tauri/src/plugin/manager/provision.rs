@@ -4,13 +4,16 @@
 //! 作为 `manager` 的子模块，这里可以直接访问 `Inner` 的私有字段，无需为了拆分
 //! 而把内部状态改成 `pub(crate)`。
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::plugin::capability::Provider;
 use crate::plugin::gateway::AuthEntry;
 use crate::plugin::launcher;
+use crate::plugin::manifest::RuntimeKind;
 use crate::plugin::protocol::{error_code, ErrorInfo};
 use crate::plugin::registry::{PluginRecord, PluginSource};
+use crate::plugin::runtime;
 
 use super::PluginManager;
 
@@ -81,8 +84,17 @@ impl PluginManager {
     /// 拉起外部插件进程。
     pub(super) async fn launch_external(&self, record: &PluginRecord) -> Result<(), ErrorInfo> {
         let (endpoint, token) = self.gateway_endpoint()?;
-        let runtime_dir = self.inner.data_dir.join("Plugins").join("runtime");
-        let (child, session) = launcher::spawn(record, &endpoint, &token, &runtime_dir)
+        // Node 轨道要先确认解释器就位：缺失时**在线安装**（复用 downloader/verified），
+        // 而不是直接失败让用户去猜。
+        if record.manifest.runtime.kind == RuntimeKind::Node {
+            self.ensure_node_runtime().await?;
+        }
+        // PSK 与准入表同源（同一个 `ensure_secret`），否则插件算出的 proof
+        // 与核心期望值不一致，握手必然失败。
+        let psk = record
+            .ensure_secret(&self.inner.data_dir)
+            .map_err(|e| ErrorInfo::new(error_code::INTERNAL, e))?;
+        let (child, session) = launcher::spawn(record, &endpoint, &token, &psk, &self.inner.data_dir)
             .map_err(|e| ErrorInfo::new(error_code::INTERNAL, e))?;
         let pid = child.id();
 
@@ -100,6 +112,67 @@ impl PluginManager {
             session.display()
         );
         Ok(())
+    }
+
+    /// 确保共享 Node 运行时可用（缺失时在线安装）。
+    ///
+    /// # 为什么在这里触发
+    ///
+    /// 运行时有 90 MB 级，"应用一启动就下载"会让没有 Node 插件的用户白等一次网络；
+    /// "等用户点安装"又会让插件在首次使用时莫名其妙地失败。折中是**按需**：
+    /// 真正要拉起 Node 插件时才下载（本函数），外加启动时的一次**后台预热**
+    /// （[`PluginManager::prefetch_node_runtime`]），这样两种路径用户都不用等第二次。
+    ///
+    /// 失败语义：抛 `unavailable`，消息里带"去设置里安装运行时"的指引；
+    /// 界面据此展示可操作提示，而不是"插件加载失败"。
+    pub(super) async fn ensure_node_runtime(&self) -> Result<(), ErrorInfo> {
+        let data_dir = &self.inner.data_dir;
+        if runtime::resolve(data_dir).is_ok() {
+            return Ok(());
+        }
+
+        self.emit_runtime("downloading", None, None);
+        match runtime::ensure(data_dir).await {
+            Ok(version) => {
+                self.emit_runtime("ready", Some(version), None);
+                Ok(())
+            }
+            Err(e) => {
+                self.emit_runtime("failed", None, Some(e.clone()));
+                Err(ErrorInfo::new(error_code::UNAVAILABLE, e))
+            }
+        }
+    }
+
+    /// 启动时的后台预热：**只**在"确有已启用的 Node 插件且运行时缺失"时发生。
+    ///
+    /// 不阻塞启动：下载在独立任务里跑，失败只留日志（下次按需拉起时会再试）。
+    pub(super) fn prefetch_node_runtime(self: &Arc<Self>) {
+        if runtime::resolve(&self.inner.data_dir).is_ok() {
+            return;
+        }
+        if !runtime::needed_by_enabled_plugins(&self.list()) {
+            return;
+        }
+
+        let weak = Arc::downgrade(self);
+        tauri::async_runtime::spawn(async move {
+            let Some(manager) = weak.upgrade() else { return };
+            println!("[插件] 检测到已启用的 Node 插件，开始后台安装共享运行时");
+            if let Err(e) = manager.ensure_node_runtime().await {
+                eprintln!("[插件] 运行时后台安装失败（首次使用时仍会重试）: {}", e.message);
+            }
+        });
+    }
+
+    /// 广播运行时状态（`plugin-event { type: "runtime" }`）。
+    fn emit_runtime(&self, state: &str, version: Option<String>, message: Option<String>) {
+        self.emit(serde_json::json!({
+            "type": "runtime",
+            "state": state,
+            "version": version,
+            "message": message,
+        }));
     }
 
     /// 结束并回收指定插件的进程（若存在）。

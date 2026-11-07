@@ -1,0 +1,29 @@
+{
+  "name": "@mclink/plugin-sdk",
+  "version": "1.0.0",
+  "description": "MC Link 插件 SDK（Node / Bun，零依赖）",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "mclink",
+    "plugin"
+  ],
+  "license": "GPL-3.0"
+}

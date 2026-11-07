@@ -48,6 +48,8 @@ struct Inner {
     games: RwLock<GameRegistry>,
     /// 已就绪的能力提供者（内置 + 已握手的远程插件）。
     providers: RwLock<HashMap<String, Provider>>,
+    /// peer 中枢的通道句柄（`None` = 尚未 `start`）。
+    peer_hub: RwLock<Option<crate::plugin::peer::PeerHandle>>,
     /// 已拉起的外部插件进程。
     ///
     /// **必须持有 `Child`**：只记 pid 的话，既无法 `wait` 回收（Unix 上留下僵尸进程），
@@ -112,6 +114,7 @@ impl PluginManager {
             registry: RwLock::new(registry),
             games: RwLock::new(games),
             providers: RwLock::new(providers),
+            peer_hub: RwLock::new(None),
             children: RwLock::new(HashMap::new()),
             launch_lock: tokio::sync::Mutex::new(()),
             launching: RwLock::new(HashMap::new()),
@@ -159,6 +162,12 @@ impl PluginManager {
         let gateway = Arc::new(Gateway::bind(0).await?);
         self.refresh_auth()?;
 
+        // peer 中枢：必须在网关开始接受连接前就绪，否则第一批会话拿不到通道
+        let peer_hub = self.start_peer_hub();
+        if let Ok(mut slot) = self.inner.peer_hub.write() {
+            *slot = Some(peer_hub.clone());
+        }
+
         if let Ok(mut slot) = self.inner.gateway.write() {
             *slot = Some(gateway.clone());
         }
@@ -174,10 +183,13 @@ impl PluginManager {
         let inbound = self.inner.inbound_tx.clone();
         let shutdown = self.inner.shutdown.clone();
         tauri::async_runtime::spawn(async move {
-            gateway::serve(gateway, auth, inbound, shutdown).await;
+            gateway::serve(gateway, auth, peer_hub, inbound, shutdown).await;
         });
 
         println!("[插件] 网关已就绪（仅回环）");
+
+        // 运行时不阻塞启动：只在确有已启用的 Node 插件时后台装，缺省用户零感知
+        self.prefetch_node_runtime();
         Ok(())
     }
 
@@ -205,6 +217,11 @@ impl PluginManager {
             }
         }
         if let Ok(mut slot) = self.inner.gateway.write() {
+            *slot = None;
+        }
+        // 关掉 peer 中枢：丢弃句柄后中枢任务随通道关闭自然退出，
+        // 在途调用会以 `unavailable` 失败而不是永久挂起。
+        if let Ok(mut slot) = self.inner.peer_hub.write() {
             *slot = None;
         }
     }
@@ -424,7 +441,9 @@ mod builtin;
 mod frontend;
 mod inbound;
 mod launch;
+mod peer_hub;
 mod provision;
 mod registry_ops;
 #[cfg(test)]
 mod tests;
+mod widget;

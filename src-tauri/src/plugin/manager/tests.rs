@@ -99,3 +99,104 @@ fn builtin_records_are_all_registered_as_builtin_source() {
         .all(|record| record.source == PluginSource::Builtin));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// peer 的可调用列表是**三道闸门**的交集：已启用、未被拉黑、生效了 `peer_message`。
+///
+/// 这条用例把"目标方没声明就收不到消息"钉住——它是权限模型双向闸门的接收侧，
+/// 一旦退化，任何插件都能往别的插件里塞消息。
+#[test]
+fn peer_list_only_exposes_declared_and_granted_plugins() {
+    let dir = temp_dir();
+    std::fs::create_dir_all(dir.join("Plugins")).unwrap();
+    let plugin_dir = dir.join("Plugins").join("dev.example.peer");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.json"),
+        serde_json::json!({
+            "id": "dev.example.peer",
+            "name": "示例对端",
+            "version": "1.0.0",
+            "kind": "utility",
+            "permissions": ["peer_message", "fs_plugin_data"]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let mgr = PluginManager::new(&dir).unwrap();
+
+    // 未验签插件默认停用 → 不可见
+    assert!(
+        mgr.peer_list("dev.a.a").is_empty(),
+        "未启用的插件不得出现在可调用列表里"
+    );
+
+    mgr.set_enabled("dev.example.peer", true).unwrap();
+    // 已启用但用户没授权 peer_message（未验签插件只拿到 MINIMAL）→ 仍不可见
+    assert!(
+        mgr.peer_list("dev.a.a").is_empty(),
+        "未授予 peer_message 的插件不得出现在可调用列表里"
+    );
+
+    mgr.set_grants(
+        "dev.example.peer",
+        Some(vec![Permission::PeerMessage, Permission::FsPluginData]),
+    )
+    .unwrap();
+    let list = mgr.peer_list("dev.a.a");
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].plugin_id, "dev.example.peer");
+    assert_eq!(list[0].version, "1.0.0");
+    assert!(!list[0].alive, "没有握过手，alive 必须是 false");
+
+    // 自己不会出现在自己的列表里
+    assert!(mgr.peer_list("dev.example.peer").is_empty());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 目标方闸门：**没拿到 `peer_message` 的插件，核心直接拒绝中转**。
+///
+/// 这是"双向闸门"的接收侧。少了它，任何持有 `peer_message` 的插件都能往
+/// 任意插件里塞消息（哪怕对方从没声明要参与互调）。
+#[tokio::test]
+async fn relay_rejects_target_without_peer_message() {
+    let dir = temp_dir();
+    std::fs::create_dir_all(dir.join("Plugins")).unwrap();
+    let plugin_dir = dir.join("Plugins").join("dev.example.peer");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("plugin.json"),
+        serde_json::json!({
+            "id": "dev.example.peer",
+            "name": "示例对端",
+            "version": "1.0.0",
+            "kind": "utility",
+            "permissions": ["peer_message"]
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let mgr = PluginManager::new(&dir).unwrap();
+    mgr.set_enabled("dev.example.peer", true).unwrap();
+
+    // 已启用，但未授权 peer_message（未验签插件只拿到 MINIMAL）
+    let request = crate::plugin::peer::CallRequest {
+        to: "dev.example.peer".into(),
+        method: "room.list".into(),
+        params: serde_json::Value::Null,
+        depth: 0,
+        launch: false,
+        timeout_ms: 1_000,
+    };
+    let err = super::peer_hub::relay_call(&mgr.inner, "dev.a.a", &request)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err.code,
+        crate::plugin::protocol::error_code::FORBIDDEN.to_string()
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

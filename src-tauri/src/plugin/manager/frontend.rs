@@ -14,6 +14,15 @@ use crate::plugin::router::{self, RoutePlan};
 
 use super::PluginManager;
 
+/// 一个插件的运行期状态。
+#[derive(Debug, Clone, Default)]
+pub struct PluginHealth {
+    /// 是否可用（内置=可用；外部=已握手且会话未关闭）。
+    pub alive: bool,
+    /// 会话建立时间（毫秒时间戳）；内置插件或未连接时为 `None`。
+    pub connected_at: Option<i64>,
+}
+
 impl PluginManager {
     /// 网关运行状态（不回传令牌）。
     pub fn gateway_info(&self) -> Value {
@@ -40,6 +49,34 @@ impl PluginManager {
             .read()
             .map(|w| w.clone())
             .unwrap_or_default()
+    }
+
+    /// 某个插件当前的运行期状态。
+    ///
+    /// 清单里的 `enabled` 只说明"允许运行"，不代表"正在运行"——外部插件要先被拉起、
+    /// 完成握手才可用。界面需要这个区别来解释"装了但没反应"。
+    pub fn health(&self, plugin_id: &str) -> PluginHealth {
+        match self
+            .inner
+            .providers
+            .read()
+            .ok()
+            .and_then(|m| m.get(plugin_id).cloned())
+        {
+            // 内置插件没有会话，只要它被调用就一定可用
+            Some(Provider::Builtin(_)) => PluginHealth {
+                alive: true,
+                connected_at: None,
+            },
+            Some(Provider::Remote(session)) if !session.is_closed() => PluginHealth {
+                alive: true,
+                connected_at: Some(session.connected_at),
+            },
+            _ => PluginHealth {
+                alive: false,
+                connected_at: None,
+            },
+        }
     }
 
     // ---------------------------------------------------------------- 游戏画像
@@ -194,12 +231,16 @@ impl PluginManager {
     // ---------------------------------------------------------------- 上下文广播
 
     /// 向所有已就绪插件广播上下文（游戏信息 / 房间信息 / 其他插件信息）。
+    ///
+    /// `members` 也要发：适配器需要知道"房间里都有谁"才能做成员同步；
+    /// 早先漏了它，插件只能从 `adapter.status` 自己数，多适配器场景下对不上。
     pub fn broadcast_context(&self, context: &crate::plugin::protocol::PluginContext) {
         let peers = self.peer_summaries();
         let payload = json!({
             "role": context.role,
             "game": context.game,
             "room": context.room,
+            "members": context.members,
             "peers": peers,
         });
         let providers: Vec<Provider> = self
@@ -219,6 +260,11 @@ impl PluginManager {
     }
 
     /// 汇总其他插件的能力信息，供适配类插件决定如何协作。
+    ///
+    /// 这里是**信息面**（"本机还有谁在参与"），因此不按 `peer_message` 过滤——
+    /// 没声明该权限的插件依然可能占用端口、拉起游戏，适配器需要知道它们存在。
+    /// 可**调用**的插件清单是另一件事，见 `core.peer.list`（只列声明了
+    /// `peer_message` 的插件）。
     pub fn peer_summaries(&self) -> Vec<crate::plugin::protocol::PeerPluginInfo> {
         self.list()
             .into_iter()
@@ -228,6 +274,14 @@ impl PluginManager {
                 kind: r.manifest.kind.as_str().to_string(),
                 games: r.manifest.games.clone(),
                 endpoints: Vec::new(),
+                version: r.manifest.version.clone(),
+                alive: self
+                    .inner
+                    .providers
+                    .read()
+                    .ok()
+                    .and_then(|m| m.get(r.manifest.id.as_str()).map(|p| p.is_available()))
+                    .unwrap_or(false),
             })
             .collect()
     }

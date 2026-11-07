@@ -389,6 +389,20 @@ impl PluginRegistry {
         Ok(())
     }
 
+    /// 忘掉一个插件：删掉持久化状态并移出内存表。
+    ///
+    /// 卸载时用。必须删持久化条目——只删目录的话，`registry.json` 里残留的
+    /// `granted` / `verified` / `blocked` 会在**下次同 ID 重装**时被重新套用，
+    /// 于是一个新装的插件莫名继承了上次的授权（或被上次的拉黑挡住）。
+    pub fn forget(&mut self, id: &str) -> Result<(), String> {
+        let mut state = self.read_state();
+        if state.entries.remove(id).is_some() {
+            self.write_state(&state)?;
+        }
+        self.records.remove(id);
+        Ok(())
+    }
+
     /// 拉黑/解除拉黑插件。
     ///
     /// 解除拉黑时必须**重算**信任度与权限：`set_blocked(true)` 把 `trust` 改成了

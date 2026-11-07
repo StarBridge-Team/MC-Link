@@ -13,6 +13,8 @@ use tokio_tungstenite::WebSocketStream;
 
 use crate::plugin::crypto::{Cipher, ReplayWindow, SessionKeys};
 use crate::plugin::manifest::LimitsSpec;
+use crate::plugin::peer::{self, CallRequest, PeerHandle};
+use crate::plugin::permission::{Permission, PermissionSet};
 use crate::plugin::protocol::{self, core_method, error_code, ErrorInfo, Message};
 
 use super::wire::{now_millis, open_frame, send_message, RateLimiter};
@@ -28,6 +30,12 @@ pub(super) struct IoContext {
     pub plugin_id: String,
     pub keys: SessionKeys,
     pub limits: LimitsSpec,
+    /// 本会话生效的权限（用于 `core.*` 这类不走路由的方法自行判定）。
+    pub permissions: PermissionSet,
+    /// 插件间通信通道（由核心中转，见 [`crate::plugin::peer`]）。
+    pub peer: PeerHandle,
+    /// 出站队列的发送端：异步应答需要从任务里回写，而序号只能由主循环推进。
+    pub out_tx: mpsc::UnboundedSender<Message>,
     pub inbound: InboundTx,
     pub out_rx: mpsc::UnboundedReceiver<Message>,
     pub pending: Arc<Pending>,
@@ -43,6 +51,9 @@ pub(super) async fn io_loop(ctx: IoContext) -> String {
         plugin_id,
         keys,
         limits,
+        permissions,
+        peer,
+        out_tx,
         inbound,
         mut out_rx,
         pending,
@@ -109,8 +120,18 @@ pub(super) async fn io_loop(ctx: IoContext) -> String {
                         violations = 0;
                         last_seen.store(now_millis(), Ordering::SeqCst);
                         match dispatch_inbound(
-                            msg, &plugin_id, &mut limiter, &inbound, &pending, &mut replies,
-                        ).await {
+                            msg,
+                            &plugin_id,
+                            &permissions,
+                            &peer,
+                            &out_tx,
+                            &mut limiter,
+                            &inbound,
+                            &pending,
+                            &mut replies,
+                        )
+                        .await
+                        {
                             Ok(()) => {}
                             Err(reason) => return reason,
                         }
@@ -156,16 +177,31 @@ pub(super) async fn io_loop(ctx: IoContext) -> String {
     }
 }
 
+/// 哪些入站报文计入 `max_rpc_per_sec`。
+///
+/// 只有插件**主动发起**的流量才算：请求与事件。对核心调用的回复（`Response`）
+/// 与心跳回复（`Pong`）不计——它们的节奏由核心自己的调用/心跳决定，算进去
+/// 会让"核心多问了几次状态"变成"插件被判定超速并断开"。
+///
+/// 这条口径是**对外契约**：文档里的配额解释必须与它一致。
+pub(super) fn counts_toward_budget(msg: &Message) -> bool {
+    matches!(msg, Message::Request { .. } | Message::Event { .. })
+}
+
 /// 处理一条已解密的入站消息。
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_inbound(
     msg: Message,
     plugin_id: &str,
+    permissions: &PermissionSet,
+    peer: &PeerHandle,
+    out_tx: &mpsc::UnboundedSender<Message>,
     limiter: &mut RateLimiter,
     inbound: &InboundTx,
     pending: &Arc<Pending>,
     replies: &mut Vec<Message>,
 ) -> Result<(), String> {
-    if !limiter.try_acquire() {
+    if counts_toward_budget(&msg) && !limiter.try_acquire() {
         return Err("超出速率限制，断开连接".to_string());
     }
 
@@ -198,12 +234,26 @@ async fn dispatch_inbound(
             });
         }
         Message::Request { id, method, params } => {
-            let (ok, result, error) = handle_core_request(&method, params);
-            replies.push(Message::Response {
-                id,
-                ok,
-                result,
-                error,
+            // **异步分派**：`core.peer.call` 要等另一枚插件回执，`core.peer.list`
+            // 要读管理器状态。若在本循环里 await，插件自己的入站队列就会被堵住，
+            // A→B→A 这种互调会直接死锁在自己的会话里。
+            //
+            // 应答从任务里回写进 `out_tx`，序号仍由主循环单调推进，
+            // 因此插件端不会看到乱序或重放。
+            let out = out_tx.clone();
+            let handle = peer.clone();
+            let perms = permissions.clone();
+            let pid = plugin_id.to_string();
+            let events = inbound.clone();
+            tokio::spawn(async move {
+                let (ok, result, error) =
+                    core_request(&handle, &perms, &pid, &method, params, &events).await;
+                let _ = out.send(Message::Response {
+                    id,
+                    ok,
+                    result,
+                    error,
+                });
             });
         }
         Message::Ping { at } => {
@@ -221,9 +271,16 @@ async fn dispatch_inbound(
 ///
 /// 这里刻意不提供任何"让核心替插件做事"的方法——核心不是插件的工具箱，
 /// 插件想访问资源必须靠自己去申请到的权限，而不是通过 RPC 借核心之手。
-pub(super) fn handle_core_request(
+///
+/// 唯一的例外是 [`crate::plugin::peer`] 的三个方法：它们不代替插件做事，
+/// 只把消息转交给同机的另一枚插件，且两端都要显式声明 `peer_message`。
+pub(super) async fn core_request(
+    peer: &PeerHandle,
+    permissions: &PermissionSet,
+    self_id: &str,
     method: &str,
-    _params: Value,
+    params: Value,
+    inbound: &InboundTx,
 ) -> (bool, Value, Option<ErrorInfo>) {
     match method {
         core_method::PING => (true, json!({ "at": now_millis() }), None),
@@ -232,9 +289,53 @@ pub(super) fn handle_core_request(
             json!({
                 "server": super::handshake::server_name(),
                 "protocol": protocol::PROTOCOL_VERSION,
+                "pluginId": self_id,
+                "peerApi": true,
+                "logApi": true,
             }),
             None,
         ),
+        core_method::LOG => match parse_log(&params) {
+            Err(e) => denied(e),
+            Ok(data) => {
+                // 与 `plugin.log` 事件走同一条路径：界面已经在消费它。
+                // **刻意不要求 `ui_notify`**——日志是排障基础设施，
+                // 而未签名的插件恰恰最需要被看见。
+                let _ = inbound.send(super::Inbound::Event {
+                    plugin_id: self_id.to_string(),
+                    topic: "plugin.log".to_string(),
+                    data,
+                });
+                (true, Value::Null, None)
+            }
+        },
+        core_method::PEER_LIST => match require_peer(permissions) {
+            Err(e) => denied(e),
+            Ok(()) => match peer.list(self_id).await {
+                Ok(list) => (true, serde_json::to_value(&list).unwrap_or(Value::Null), None),
+                Err(e) => denied(e),
+            },
+        },
+        core_method::PEER_CALL => match require_peer(permissions) {
+            Err(e) => denied(e),
+            Ok(()) => match parse_call(self_id, &params) {
+                Err(e) => denied(e),
+                Ok(request) => match peer.call(self_id, request).await {
+                    Ok(value) => (true, value, None),
+                    Err(e) => denied(e),
+                },
+            },
+        },
+        core_method::PEER_PUBLISH => match require_peer(permissions) {
+            Err(e) => denied(e),
+            Ok(()) => match parse_publish(&params) {
+                Err(e) => denied(e),
+                Ok((to, topic, data)) => match peer.publish(self_id, to, &topic, data) {
+                    Ok(()) => (true, json!({ "accepted": true }), None),
+                    Err(e) => denied(e),
+                },
+            },
+        },
         _ => (
             false,
             Value::Null,
@@ -244,4 +345,126 @@ pub(super) fn handle_core_request(
             ))),
         ),
     }
+}
+
+fn denied(error: ErrorInfo) -> (bool, Value, Option<ErrorInfo>) {
+    (false, Value::Null, Some(error))
+}
+
+/// 三个 peer 方法共用的权限闸门（发起方一侧；目标方一侧在管理器里判定）。
+fn require_peer(permissions: &PermissionSet) -> Result<(), ErrorInfo> {
+    permissions.require(Permission::PeerMessage)
+}
+
+fn bad(message: impl Into<String>) -> ErrorInfo {
+    ErrorInfo::new(error_code::BAD_REQUEST, message)
+}
+
+/// 日志单条消息的长度上限。
+///
+/// 日志会进界面（内存里的环形缓冲 + 渲染），一条 4 MiB 的"日志"足以把窗口卡死；
+/// 超出直接拒绝，让作者在开发期就发现自己在打印什么。
+const MAX_LOG_MESSAGE_BYTES: usize = 4 * 1024;
+
+/// 解析 `core.log` 的参数。
+///
+/// 形状：`{ level?: "debug"|"info"|"warn"|"error", message: string, ...额外字段 }`
+/// —— 额外字段原样带上，方便作者附加 `room` / `peer` 之类的上下文。
+fn parse_log(params: &Value) -> Result<Value, ErrorInfo> {
+    let message = params
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if message.is_empty() {
+        return Err(bad("core.log 缺少 message"));
+    }
+    if message.len() > MAX_LOG_MESSAGE_BYTES {
+        return Err(bad(format!(
+            "core.log 单条消息超过 {} 字节",
+            MAX_LOG_MESSAGE_BYTES
+        )));
+    }
+    let level = match params.get("level").and_then(Value::as_str) {
+        Some(level @ ("debug" | "info" | "warn" | "error")) => level,
+        // 未知/缺省一律按 info：日志不该因为拼错一个等级就被丢掉
+        _ => "info",
+    };
+
+    let mut data = match params.clone() {
+        Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    };
+    data.insert("level".to_string(), json!(level));
+    data.insert("message".to_string(), json!(message));
+    Ok(Value::Object(data))
+}
+
+/// 解析 `core.peer.call` 的参数。
+fn parse_call(self_id: &str, params: &Value) -> Result<CallRequest, ErrorInfo> {
+    let to = params
+        .get("to")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if to.is_empty() {
+        return Err(bad("core.peer.call 缺少 to（目标插件 ID）"));
+    }
+    crate::plugin::manifest::validate_plugin_id(&to).map_err(bad)?;
+    if to == self_id {
+        return Err(bad("不允许向自己发起 peer 调用"));
+    }
+
+    let method = params
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    peer::validate_method(&method)?;
+
+    let depth = params.get("depth").and_then(Value::as_u64).unwrap_or(0);
+    if depth >= peer::MAX_DEPTH as u64 {
+        return Err(bad(format!(
+            "peer 调用嵌套过深（上限 {} 层）",
+            peer::MAX_DEPTH
+        )));
+    }
+
+    Ok(CallRequest {
+        to,
+        method,
+        params: params.get("params").cloned().unwrap_or(Value::Null),
+        depth: depth as u32,
+        launch: params.get("launch").and_then(Value::as_bool).unwrap_or(false),
+        timeout_ms: params
+            .get("timeout_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or(peer::DEFAULT_TIMEOUT_MS),
+    })
+}
+
+/// 解析 `core.peer.publish` 的参数：`to` 可省略（省略即广播）。
+fn parse_publish(params: &Value) -> Result<(Option<String>, String, Value), ErrorInfo> {
+    let to = params
+        .get("to")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    if let Some(target) = to.as_deref() {
+        crate::plugin::manifest::validate_plugin_id(target).map_err(bad)?;
+    }
+    let topic = params
+        .get("topic")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    peer::validate_topic(&topic)?;
+    Ok((
+        to,
+        topic,
+        params.get("data").cloned().unwrap_or(Value::Null),
+    ))
 }

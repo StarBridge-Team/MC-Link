@@ -48,6 +48,12 @@ pub enum Permission {
     RegistryRead,
     /// 扫描本机游戏实例（组合了进程枚举 + 端口探测 + 局域网监听）。
     GameScan,
+    /// 与本机其它插件互相收发消息（peer 信道，见 [`crate::plugin::peer`]）。
+    ///
+    /// 这是**双向**闸门：发起方要有它才能发，目标方要有它才会被投递。
+    /// 它不带来任何越过本机边界的能力——消息由核心中转，目标插件收到的
+    /// 永远是固定的 `peer.call` / `peer.event`，不会被当成能力方法派发。
+    PeerMessage,
     /// 向核心推送用户可见通知。
     UiNotify,
 }
@@ -69,6 +75,7 @@ impl Permission {
             Permission::ProcInspect => "枚举系统进程列表",
             Permission::RegistryRead => "只读访问系统注册表",
             Permission::GameScan => "扫描本机游戏实例",
+            Permission::PeerMessage => "与本机其它插件互相收发消息",
             Permission::UiNotify => "向界面推送通知",
         }
     }
@@ -140,6 +147,9 @@ impl TrustLevel {
             Permission::ProcSpawnSelf,
             Permission::GameScan,
             Permission::ProcInspect,
+            // 插件间通讯不出本机，且两端都要声明才生效，因此不设信任度门槛；
+            // 用户仍可在授权界面单独撤销。
+            Permission::PeerMessage,
         ];
         const FULL: &[Permission] = &[
             Permission::NetListenLocal,
@@ -155,6 +165,7 @@ impl TrustLevel {
             Permission::ProcInspect,
             Permission::RegistryRead,
             Permission::GameScan,
+            Permission::PeerMessage,
             Permission::UiNotify,
         ];
         match self {
@@ -341,6 +352,7 @@ pub fn perm_name(perm: Permission) -> &'static str {
         Permission::ProcInspect => "proc_inspect",
         Permission::RegistryRead => "registry_read",
         Permission::GameScan => "game_scan",
+        Permission::PeerMessage => "peer_message",
         Permission::UiNotify => "ui_notify",
     }
 }
@@ -444,5 +456,29 @@ mod tests {
         let declared = [Permission::NetUdp];
         let set = PermissionSet::resolve(&declared, TrustLevel::Blocked, None);
         assert!(set.allowed().is_empty());
+    }
+
+    /// `peer_message`：可授予（在 Unsigned 上限内），但**不自动放行**。
+    ///
+    /// 这条边界是刻意的：插件间通讯不越过本机，因此不必强制验签；但它让一枚
+    /// 未验签插件能往已验签插件里投递消息，所以必须由用户表一次态。
+    #[test]
+    fn peer_message_is_grantable_but_not_auto_granted() {
+        let declared = [Permission::PeerMessage];
+
+        let undecided = PermissionSet::resolve(&declared, TrustLevel::Unsigned, None);
+        assert!(!undecided.contains(Permission::PeerMessage));
+        assert!(
+            undecided.denied_by_ceiling().is_empty(),
+            "它属于「等用户授权」，不是「被上限拒绝」——界面提示要能区分"
+        );
+
+        let granted =
+            PermissionSet::resolve(&declared, TrustLevel::Unsigned, Some(&declared));
+        assert!(granted.contains(Permission::PeerMessage));
+
+        // 已验签/official 插件在用户未决策时按声明放行
+        let verified = PermissionSet::resolve(&declared, TrustLevel::Verified, None);
+        assert!(verified.contains(Permission::PeerMessage));
     }
 }

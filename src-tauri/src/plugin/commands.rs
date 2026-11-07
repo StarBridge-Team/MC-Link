@@ -88,6 +88,8 @@ pub(crate) fn plugin_list(
         let platforms = crate::plugin::manifest::normalize_platforms(&manifest.platforms);
         let tags = crate::plugin::manifest::normalize_tags(&manifest.tags);
         let methods = crate::plugin::manifest::normalize_methods(&manifest.methods);
+        // 运行期状态：`enabled` 只说明"允许运行"，不代表"正在运行"
+        let health = manager.health(&manifest.id);
 
         let haystack = [
             manifest.id.as_str(),
@@ -118,6 +120,10 @@ pub(crate) fn plugin_list(
             "trust": record.trust,
             "enabled": record.enabled,
             "runnable": record.trust.is_runnable(),
+            // 运行期：是否已连接（外部插件要握手成功才算）
+            "alive": health.alive,
+            "connectedAt": health.connected_at,
+            "runtime": manifest.runtime.kind.as_str(),
             "permissions": record.permissions.allowed(),
             "deniedByCeiling": record.permissions.denied_by_ceiling(),
             "declaredPermissions": manifest.permissions,
@@ -255,6 +261,17 @@ pub(crate) fn plugin_gateway(manager: tauri::State<'_, Arc<PluginManager>>) -> V
         map.insert(
             "subprotocol".to_string(),
             json!(crate::plugin::protocol::WS_SUBPROTOCOL),
+        );
+        // 插件间通信是否可用（界面据此决定要不要展示"可互调插件"之类的能力）。
+        // 这是**协议能力**，不是某一枚插件的能力：具体谁能调谁由清单权限决定。
+        map.insert("peerApi".to_string(), json!(true));
+        map.insert(
+            "peerMaxDepth".to_string(),
+            json!(crate::plugin::peer::MAX_DEPTH),
+        );
+        map.insert(
+            "peerTimeoutMs".to_string(),
+            json!(crate::plugin::peer::DEFAULT_TIMEOUT_MS),
         );
     }
     info

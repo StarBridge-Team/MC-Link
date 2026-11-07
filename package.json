@@ -18,7 +18,8 @@
     "licenses": "node scripts/gen-licenses.mjs",
     "licenses:check": "node scripts/gen-licenses.mjs --check",
     "signer:generate": "node scripts/gen-signer.mjs",
-    "signer:sync": "node scripts/gen-signer.mjs --sync"
+    "signer:sync": "node scripts/gen-signer.mjs --sync",
+    "pack:plugin": "node scripts/pack-plugin.mjs"
   },
   "dependencies": {
     "@fontsource/poppins": "^5.3.0",

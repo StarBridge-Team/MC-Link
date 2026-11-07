@@ -20,7 +20,7 @@ export type PluginKind =
 export type PluginSource = "builtin" | "external";
 export type PluginTrust = "official" | "verified" | "unsigned" | "blocked";
 
-/** 权限稳定名（后端 plugin/permission.rs，共 14 项）。 */
+/** 权限稳定名（后端 plugin/permission.rs，共 15 项）。 */
 export type PluginPermission =
   | "net_listen_local"
   | "net_listen_public"
@@ -35,6 +35,8 @@ export type PluginPermission =
   | "proc_inspect"
   | "registry_read"
   | "game_scan"
+  /** 与本机其它插件互相收发消息（双向闸门：双方都要声明）。 */
+  | "peer_message"
   | "ui_notify";
 
 export interface PermissionDescription {
@@ -58,6 +60,12 @@ export interface PluginInfo {
   trust: PluginTrust | string;
   enabled: boolean;
   runnable: boolean;
+  /** 是否已连接（内置=true；外部插件要握手成功）。 */
+  alive: boolean;
+  /** 会话建立时间（毫秒时间戳）；未连接或内置插件为 null。 */
+  connectedAt: number | null;
+  /** 运行时轨道：`builtin` / `process` / `node`。 */
+  runtime: string;
   /** 已授予的权限（稳定名数组）。 */
   permissions: string[];
   /** 因信任等级上限被拒的权限。 */
@@ -150,13 +158,103 @@ export interface PluginGateway {
   loopbackOnly?: boolean;
   protocolVersion?: number;
   subprotocol?: string;
+  /** 插件间通信（peer 信道）是否可用。 */
+  peerApi?: boolean;
+  /** peer 调用的最大嵌套深度。 */
+  peerMaxDepth?: number;
+  /** 单次 peer 调用的默认超时（毫秒）。 */
+  peerTimeoutMs?: number;
 }
 
-/** `plugin-event` 事件的三种负载形状。 */
+/** `plugin-event` 事件负载。 */
 export type PluginEvent =
   | { type: "connected"; pluginId: string }
   | { type: "disconnected"; pluginId: string; reason: string }
-  | { type: "event"; pluginId: string; topic: string; data: unknown };
+  | { type: "event"; pluginId: string; topic: string; data: unknown }
+  | {
+      /** 共享运行时的后台安装进度（只在真有 Node 插件时出现）。 */
+      type: "runtime";
+      state: "downloading" | "ready" | "failed";
+      version: string | null;
+      message: string | null;
+    };
+
+// ===== 插件包安装（后端 plugin/install.rs） =====
+
+/** `plugin_install_file` 的返回值。 */
+export interface InstalledPlugin {
+  id: string;
+  name: string;
+  version: string;
+  /** `verified` / `unsigned`。 */
+  trust: string;
+  /** 非致命提示：未签名、覆盖安装等。 */
+  warnings: string[];
+  /** 解压后的实际体积（字节）。 */
+  bytes: number;
+}
+
+// ===== 挂件（后端 plugin/widget.rs） =====
+
+/** 允许的节点类型（白名单；未知类型由后端丢弃）。 */
+export type WidgetNodeType =
+  | "text"
+  | "heading"
+  | "badge"
+  | "button"
+  | "row"
+  | "column"
+  | "divider"
+  | "progress"
+  | "spacer";
+
+/** 声明式节点：插件只能描述"显示什么"，不能注入 HTML/脚本。 */
+export interface WidgetNode {
+  type: WidgetNodeType;
+  id?: string;
+  text?: string;
+  label?: string;
+  value?: string;
+  placeholder?: string;
+  /** `primary` / `danger` 之类的语义色调。 */
+  tone?: string;
+  /** 按钮点击时回传给插件的动作名。 */
+  action?: string;
+  disabled?: boolean;
+  /** 0–100。 */
+  percent?: number;
+  children?: WidgetNode[];
+}
+
+/** `widget_mount` 的返回。 */
+export interface WidgetView {
+  title: string;
+  subtitle: string;
+  nodes: WidgetNode[];
+}
+
+// ===== 共享运行时（后端 plugin/runtime.rs） =====
+
+/**
+ * Node 插件共用的 Bun 运行时状态。
+ *
+ * `source` 为 `dev-override` 时说明当前用的是开发期覆盖（`MC_LINK_BUN`），
+ * 不代表用户机器上真的装好了运行时。
+ */
+export interface PluginRuntimeStatus {
+  /** 固定 `node`。 */
+  kind: string;
+  /** 是否已就绪（能直接拉起 Node 插件）。 */
+  installed: boolean;
+  /** 实际可用版本；未安装为 `null`。 */
+  version: string | null;
+  /** 可执行文件路径；未安装为 `null`。 */
+  path: string | null;
+  /** 核心锁定的版本（用户不应自己升级运行时）。 */
+  pinnedVersion: string;
+  /** `installed` / `dev-override` / `missing`。 */
+  source: "installed" | "dev-override" | "missing" | string;
+}
 
 // ===== 社区数据（后端 community.rs） =====
 

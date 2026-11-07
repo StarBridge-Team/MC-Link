@@ -2,11 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   GameListResult,
+  InstalledPlugin,
   MarketManifest,
   PluginEvent,
   PluginGateway,
   PluginListQuery,
   PluginListResult,
+  PluginRuntimeStatus,
   RoutePlan,
 } from "./types";
 
@@ -71,6 +73,47 @@ export async function setPluginBlocked(pluginId: string, blocked: boolean) {
 /** 重新扫描插件目录，返回本次的告警列表。 */
 export async function reloadPlugins() {
   return invoke<string[]>("plugin_reload");
+}
+
+/**
+ * 查询共享 Node 运行时（Bun）的状态。
+ *
+ * 不发网络请求：界面据此决定要不要显示「安装运行时」以及 Node 插件能否运行。
+ */
+export async function getPluginRuntime() {
+  return invoke<PluginRuntimeStatus>("plugin_runtime_status");
+}
+
+/**
+ * 安装/修复共享运行时，返回实际安装的版本。
+ *
+ * 会下载约 90 MB 的产物（带 SHA256 校验与断点续传），因此可能耗时较久；
+ * 失败时**必须**把错误展示出来——否则用户只会看到 Node 插件"加载失败"。
+ *
+ * 平时不需要手动调用：核心在拉起 Node 插件前会自动安装，并在启动时对
+ * "已启用 Node 插件 + 运行时缺失"做一次后台预热。
+ */
+export async function installPluginRuntime() {
+  return invoke<string>("plugin_runtime_install");
+}
+
+/**
+ * 从本地文件安装插件包（`.mclink-plugin`，tar.gz）。
+ *
+ * `allowUnsigned` 为 `true` 表示用户已确认"我知道它没签名"；否则未签名包会被拒绝。
+ * 通过后按未签名安装并**显式启用**（安装本身就是明确的用户动作）。
+ */
+export async function installPluginPackage(path: string, allowUnsigned = false) {
+  return invoke<InstalledPlugin>("plugin_install_file", { path, allowUnsigned });
+}
+
+/**
+ * 卸载插件。
+ *
+ * `removeData = false` 时保留 `<data_dir>/PluginData/<id>/`（下次装回来还能用）。
+ */
+export async function uninstallPlugin(pluginId: string, removeData = false) {
+  return invoke<void>("plugin_uninstall", { pluginId, removeData });
 }
 
 /**

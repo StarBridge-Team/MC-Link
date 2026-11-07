@@ -29,6 +29,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::WebSocketStream;
 
 use crate::plugin::manifest::LimitsSpec;
+use crate::plugin::peer::PeerHandle;
 use crate::plugin::permission::{Permission, PermissionSet};
 use crate::plugin::protocol::{error_code, ErrorInfo, Message};
 
@@ -156,12 +157,16 @@ impl SessionHandle {
 }
 
 /// 完成握手并启动会话 IO 循环。
+///
+/// `peer` 是插件间通信的中转通道（见 [`crate::plugin::peer`]）：会话把插件发来的
+/// `core.peer.*` 请求投给管理器中枢，中枢再把消息转交给目标插件的会话。
 pub async fn serve(
     ws: WebSocketStream<TcpStream>,
     plugin_id: String,
     psk: [u8; 32],
     permissions: PermissionSet,
     limits: LimitsSpec,
+    peer: PeerHandle,
     inbound: InboundTx,
 ) -> Result<Arc<SessionHandle>, String> {
     let (ws, keys, challenge) = handshake::handshake(ws, &plugin_id, &psk, &limits).await?;
@@ -177,7 +182,7 @@ pub async fn serve(
         permissions,
         limits: limits.clone(),
         connected_at: now_millis(),
-        outbound: out_tx,
+        outbound: out_tx.clone(),
         pending: pending.clone(),
         closed: closed.clone(),
         last_seen: last_seen.clone(),
@@ -190,6 +195,9 @@ pub async fn serve(
 
     let sid = challenge.session_id.clone();
     let pid = plugin_id.clone();
+    // 权限集在会话建立时定格：IO 循环据此判定 `core.peer.*` 这类
+    // 不走路由的方法。先克隆，避免把 `handle` 移进任务后无法返回。
+    let session_permissions = handle.permissions.clone();
     tokio::spawn(async move {
         let ctx = io::IoContext {
             ws,
@@ -197,6 +205,9 @@ pub async fn serve(
             plugin_id: pid.clone(),
             keys,
             limits,
+            permissions: session_permissions,
+            peer,
+            out_tx,
             inbound: inbound.clone(),
             out_rx,
             pending: pending.clone(),
