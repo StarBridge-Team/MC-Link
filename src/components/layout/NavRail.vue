@@ -6,8 +6,13 @@
  * 配色、键盘导航全部由组件按 M3 规范处理。
  *
  * 选中态**声明式绑定**（`:selected="item.id === active"`），由路由驱动：
- * 这样首次挂载即处于正确选中态，不依赖"元素是否已升级/`items` 是否已收集"的时序，
- * 也不会出现"点了一下又变灰"（那是手动按索引同步 selected 时与组件内部选择状态打架导致的）。
+ * 这样首次挂载即处于正确选中态，不依赖"元素是否已升级/`items` 是否已收集"的时序。
+ *
+ * # 小窗口
+ *
+ * 导航项数量固定，但小窗口下高度可能不够。这里让 rail **自己滚动**
+ * （`max-height: 100%` + `overflow-y: auto`），而不是把整个窗口撑出滚动条。
+ * 底部入口（账号/设置）已移到右下角的 `AppQuickDock`，不再挤占这里的高度。
  */
 export interface NavItem {
   id: string;
@@ -39,6 +44,11 @@ const emit = defineEmits<{ select: [id: string] }>();
 
 <style scoped>
 .rail {
-  flex-shrink: 0;
+  /* 占满父级剩余高度（下方还有 `AppQuickDock`），内容超出时自己滚，
+     而不是把整个窗口撑出滚动条。 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 </style>

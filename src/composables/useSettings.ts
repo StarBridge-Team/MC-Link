@@ -110,6 +110,35 @@ function syncWindowEffect() {
 function applyChrome() {
   const root = document.documentElement;
   root.setAttribute("data-theme-mode", state.theme_mode);
+
+  // 界面缩放：Chromium 的 `zoom` 会整体缩放（含 100vw/100vh 的换算），
+  // 是本项目唯一的全局缩放手段——字号令牌是 px，改 rem 基准对它们无效。
+  const scale = Math.min(150, Math.max(80, state.ui_scale));
+  root.style.zoom = String(scale / 100);
+
+  // 侧边导航宽度：直接覆盖令牌，导航栏/设置左树共用同一个变量。
+  root.style.setProperty(
+    "--nav-width",
+    `${Math.min(320, Math.max(160, Math.round(state.nav_width)))}px`,
+  );
+
+  // 界面字体：`system` 时覆盖字体栈；`default` 时移除内联值，
+  // 让 `tokens.css` 里的 Poppins 栈重新生效（不能写死回去，否则那两处会漂移）。
+  if (state.ui_font === "system") {
+    root.style.setProperty(
+      "--font-sans",
+      '"system-ui", "Microsoft YaHei UI", "Segoe UI", sans-serif',
+    );
+  } else {
+    root.style.removeProperty("--font-sans");
+  }
+
+  // 背景音乐音量直接落到 `#bg-music`：音量不属于材质/背景链路，不必走 IPC。
+  // 房间/设置窗口没有这个元素，取不到就跳过。
+  const music = document.getElementById("bg-music") as HTMLAudioElement | null;
+  if (music) {
+    music.volume = Math.min(100, Math.max(0, state.music_volume)) / 100;
+  }
   root.classList.toggle("dark", isDark.value);
   root.classList.toggle("no-animations", !state.animation_enabled);
   root.style.setProperty(

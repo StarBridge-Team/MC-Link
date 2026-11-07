@@ -45,6 +45,9 @@ pub(crate) fn save_personalization(
     mgr: tauri::State<'_, Arc<AppMgr>>,
     settings: PersonalizationSettings,
 ) -> Result<(), String> {
+    // 先落运行时参数再写盘：写盘失败不该让这一轮调整完全不生效；
+    // 反之写盘成功但参数没应用，用户会以为设置无效。
+    crate::tuning::apply(&settings);
     mgr.write().personalization(settings)
 }
 

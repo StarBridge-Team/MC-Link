@@ -21,7 +21,7 @@
 
 /** code → 用户可见中文文案。命中即显示固定翻译，不展示后端 `message`。 */
 export const ERROR_CODE_MESSAGES: Record<string, string> = {
-  "adapter-failed": "联机适配器启动失败，请确认适配器已正确安装并可运行。",
+  "adapter-failed": "联机适配器启动失败：请检查联机引擎是否可用（首次使用需要下载），或稍后重试。",
   "invalid-argument": "请求参数不合法，请检查输入后重试。",
   "not-found": "找不到对应的内容（可能已被清理或尚未创建）。",
   internal: "程序内部出错，请重试；若反复出现请查看日志。",

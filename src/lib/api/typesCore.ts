@@ -28,13 +28,6 @@ export interface RegionInfo {
   mainland_china: boolean;
 }
 
-export interface AdapterStatus {
-  installed: boolean;
-  running: boolean;
-  starting: boolean;
-  port: number | null;
-}
-
 // ===== 个性化设置（后端 config/mod.rs::PersonalizationSettings） =====
 //
 // 字段名即 `Setting/personalization.yml` 的 key，**冻结契约**。
@@ -94,6 +87,26 @@ export interface PersonalizationSettings {
   theme_from_background: boolean;
   /** 种子色来源，见 {@link ThemeSeedSource}。 */
   theme_seed_source: ThemeSeedSource;
+  /** 界面缩放百分比（80–150，100 = 原始大小）。 */
+  ui_scale: number;
+  /** 背景音乐音量（0–100）。 */
+  music_volume: number;
+  /** 侧边导航宽度（px，160–320）。 */
+  nav_width: number;
+  /** 界面字体：`default`（Poppins）/ `system`。 */
+  ui_font: "default" | "system";
+  /** 视频背景是否循环播放。 */
+  video_loop: boolean;
+  /** 背景音乐是否循环播放。 */
+  music_loop: boolean;
+  /** 下载并行分片数（1–8）。 */
+  download_parallel: number;
+  /** 下载空闲超时（秒，10–120）。 */
+  download_idle_timeout: number;
+  /** 插件握手超时（秒，5–60）。 */
+  plugin_handshake_timeout: number;
+  /** 插件网关在途连接上限（4–128）。 */
+  gateway_max_inflight: number;
 }
 
 /**
@@ -255,47 +268,6 @@ export interface UpdateProgress {
   downloaded: number;
   /** 0 表示总长度未知 */
   total: number;
-}
-
-// ===== 陶瓦适配器 =====
-
-/**
- * 陶瓦自身的运行时状态（`/state` 的原始负载）。
- *
- * 字段由上游决定（`state` / `index` / `room` / `url` / 异常码 `type` …），
- * 因此这里只声明"是个对象"，不逐字段猜。
- */
-export type TerracottaRuntimeState = Record<string, unknown>;
-
-/** 房间成员（陶瓦 `profiles[]` 规范化后的形状，camelCase）。 */
-export interface TerracottaPlayer {
-  name: string;
-  kind: string;
-  machineId: string;
-  vendor: string;
-  /** 是否是本机。 */
-  self: boolean;
-}
-
-/**
- * `get_terracotta_state` 的返回值。
- *
- * 形状与后端 `plugin/builtin/terracotta.rs` 的 `status()` 输出**逐字对应**：
- * 适配器自身状态 + 陶瓦状态机 + 房间码 + 成员列表。
- */
-export interface TerracottaState {
-  installed: boolean;
-  running: boolean;
-  starting: boolean;
-  /** 适配器监听端口（未运行时为 null）。 */
-  port: number | null;
-  /** 陶瓦自身的状态（取不到时为 null）。 */
-  state: TerracottaRuntimeState | null;
-  /** 房间码（陶瓦的原始字段名）。 */
-  room: string;
-  /** 适配器自报的状态机取值，如 `host-ok` / `guest-ok` / `waiting`。 */
-  phase: string;
-  players: TerracottaPlayer[];
 }
 
 // ===== 窗口 / 托盘 =====

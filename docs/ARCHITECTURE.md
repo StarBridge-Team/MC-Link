@@ -11,6 +11,19 @@ MC Link **不启动游戏**。它只做三件事：
 2. 管理联机链路，**可同时运行多个房间**（经适配类 / 耦合类插件）；
 3. 提供周边工具（更新、设置、插件市场、账号、公告）。
 
+### 联机引擎 ≠ 适配器
+
+| 层 | 位置 | 管什么 | 不管什么 |
+|---|---|---|---|
+| 引擎 | `engine/easytier/` | 内核产物的版本/SHA256、下载与解压、进程起停、`easytier-cli` 运行时管理（查对端、加端口转发） | 谁是房主、房间码长什么样 |
+| 适配器 | `plugin/builtin/*` | 房间语义：房间码、握手、成员、游戏端口接出 | 怎么下载/怎么起进程 |
+
+这条边界的判据很简单：**"换一个 P2P 内核要不要改这里"**。要改的属于引擎，不用改的属于适配器。
+WGP 就位后只需新增 `engine/wgp/`，适配器改一个构造参数即可。
+
+两个内置适配器共用同一套引擎，因此**同一次联机只能有一个在用**（引擎按进程隔离一条链路）；
+适配器内部也只持有一条链路，服务端与心跳线程随 `stop_all` 一并收尾。
+
 ## 2. 分层与依赖方向
 
 ```
@@ -164,6 +177,8 @@ src-tauri/src/
 │  ├─ update/
 │  ├─ proxy/               # pool / probe ★ 代理池（内置 3 + 远端按天缓存）
 │  └─ asset/
+├─ engine/                 # 内置联机引擎 ★ 进程 / 下载 / 运行时管理，不参与能力路由
+│  └─ easytier/            # artifact / binary / provision / args / rpc / model
 ├─ plugin/                 # 保留，PluginKind 扩到 6 类
 ├─ window/                 # factory / widget / animation  ★ 全局窗口管理器
 ├─ mgr/                    # room（编排：调插件）/ account / settings / update / window
@@ -214,6 +229,7 @@ src/
 | B4 | Pinia + `bridge.ts` | `mclink://room` 只出现在 `src/ipc/**` | 完成 |
 | B5 | 账号 UUID / 代理池 / OOBE 加固 | 单测 + 断网演练 | 完成（UUID 有 Java 同值测试；代理池接进更新链路） |
 | B6 | 托盘重构 + 系统窗口动画 | 动画降级路径可复现 | 完成（**窗口内悬浮组件未做**，见下） |
-| B7 | 设置级联 + HMCL 主题 + 插件市场 6 类 | — | 待做 |
+| B7 | 设置级联 + HMCL 主题 + 插件市场 6 类 | `pnpm build` 绿 + `cargo test --lib hmcl` 通过 | 完成（设置级联/独立窗口/6 类/市场/HMCL 导入/内置挂件；第三方 widget 运行时与市场服务器清单待接入） |
+| B8 | 内置引擎 + 陶瓦原生适配器 | `cargo test --lib` 绿；两个适配器都能建房/加入 | 完成（`engine/easytier` 产物表+SHA256 下载+进程/CLI 管理；陶瓦 Scaffolding 协议重写；旧 `terracotta.exe` 链路整体删除） |
 
 每批次独立可回滚，结束时 build 绿 + 该批次验收命令通过。

@@ -90,6 +90,72 @@ pub struct PersonalizationSettings {
     /// 这样降级回旧版本时行为不会突变。
     #[serde(default)]
     pub theme_seed_source: String,
+    /// 界面缩放百分比（80–150，100 = 原始大小）。
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: f64,
+    /// 背景音乐音量（0–100）。
+    #[serde(default = "default_music_volume")]
+    pub music_volume: f64,
+    /// 侧边导航宽度（px，160–320）。
+    #[serde(default = "default_nav_width")]
+    pub nav_width: f64,
+    /// 界面字体：`default`（Poppins）/ `system`（跟随系统）。
+    #[serde(default = "default_ui_font")]
+    pub ui_font: String,
+    /// 视频背景是否循环播放。
+    #[serde(default = "default_true")]
+    pub video_loop: bool,
+    /// 背景音乐是否循环播放。
+    #[serde(default = "default_true")]
+    pub music_loop: bool,
+    /// 下载并行分片数（1–8）。
+    #[serde(default = "default_download_parallel")]
+    pub download_parallel: f64,
+    /// 下载空闲超时（秒，10–120）。
+    #[serde(default = "default_download_idle")]
+    pub download_idle_timeout: f64,
+    /// 插件握手超时（秒，5–60）。
+    #[serde(default = "default_handshake_timeout")]
+    pub plugin_handshake_timeout: f64,
+    /// 插件网关在途连接上限（4–128）。
+    #[serde(default = "default_gateway_inflight")]
+    pub gateway_max_inflight: f64,
+}
+
+fn default_ui_scale() -> f64 {
+    100.0
+}
+
+fn default_music_volume() -> f64 {
+    60.0
+}
+
+fn default_nav_width() -> f64 {
+    208.0
+}
+
+fn default_ui_font() -> String {
+    "default".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_download_parallel() -> f64 {
+    4.0
+}
+
+fn default_download_idle() -> f64 {
+    30.0
+}
+
+fn default_handshake_timeout() -> f64 {
+    15.0
+}
+
+fn default_gateway_inflight() -> f64 {
+    32.0
 }
 
 impl Default for PersonalizationSettings {
@@ -133,6 +199,16 @@ impl Default for PersonalizationSettings {
             // 空字符串表示"老配置"：前端据此按旧布尔迁移，不在这里预置 `manual`，
             // 否则无法区分"用户选过 manual"和"这个字段本来是空的"。
             theme_seed_source: String::new(),
+            ui_scale: default_ui_scale(),
+            music_volume: default_music_volume(),
+            nav_width: default_nav_width(),
+            ui_font: default_ui_font(),
+            video_loop: default_true(),
+            music_loop: default_true(),
+            download_parallel: default_download_parallel(),
+            download_idle_timeout: default_download_idle(),
+            plugin_handshake_timeout: default_handshake_timeout(),
+            gateway_max_inflight: default_gateway_inflight(),
         }
     }
 }

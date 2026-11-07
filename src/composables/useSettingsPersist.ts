@@ -57,6 +57,16 @@ export function defaultSettings(): PersonalizationSettings {
     // 与后端默认一致：默认跟随手选的 theme_color。
     theme_from_background: false,
     theme_seed_source: "manual",
+    ui_scale: 100,
+    music_volume: 60,
+    nav_width: 208,
+    ui_font: "default",
+    video_loop: true,
+    music_loop: true,
+    download_parallel: 4,
+    download_idle_timeout: 30,
+    plugin_handshake_timeout: 15,
+    gateway_max_inflight: 32,
   };
 }
 

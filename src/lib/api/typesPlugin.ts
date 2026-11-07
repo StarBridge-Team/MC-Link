@@ -4,7 +4,19 @@
 
 // ===== 插件系统（后端 plugin/**） =====
 
-export type PluginKind = "adapter" | "detector" | "coupler";
+/**
+ * 插件种类（B7 扩到 6 类）。
+ *
+ * 前三是联机链路核心；`bridge` 是纯协议兼容的桥接器（不携带引擎），
+ * `widget` 承载「窗口内挂件 / 窗口外页面」两种形态，`utility` 是不参与链路的小工具。
+ */
+export type PluginKind =
+  | "adapter"
+  | "detector"
+  | "coupler"
+  | "bridge"
+  | "widget"
+  | "utility";
 export type PluginSource = "builtin" | "external";
 export type PluginTrust = "official" | "verified" | "unsigned" | "blocked";
 
@@ -54,6 +66,29 @@ export interface PluginInfo {
   permissionDescriptions: PermissionDescription[];
   priority: number;
   fallback: string[];
+}
+
+// ===== 插件市场（后端 plugin/market.rs） =====
+
+/** 市场中一个插件的条目（与后端 `MarketEntry` 同形）。 */
+export interface MarketEntry {
+  id: string;
+  name: string;
+  version: string;
+  kind: string;
+  author: string;
+  description: string;
+  platforms: string[];
+  urls: string[];
+  /** 必填：缺失时后端拒绝安装。 */
+  sha256: string;
+  size: number | null;
+}
+
+/** 市场清单（资源服务器 `plugins/market.json`）。 */
+export interface MarketManifest {
+  manifest_version: number;
+  plugins: MarketEntry[];
 }
 
 /** 各维度的可选值与计数（分母是**其它**维度的筛选结果）。 */

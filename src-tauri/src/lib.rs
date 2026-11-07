@@ -1,12 +1,15 @@
-mod adapter;
 mod bridge;
 mod build_channel;
 mod commands;
 mod core;
 mod domain;
+mod engine;
+mod hmcl;
 mod persist;
+mod tuning;
 mod state;
 mod utils;
+use hmcl::*;
 use commands::*;
 mod asset_server;
 mod assets;
@@ -317,6 +320,10 @@ pub fn run() {
             };
             effect::setup_window_effects(app, &pers.transparent_effect, pers.effect_tint, dark);
 
+            // 运行时可调参数（下载并发/超时、插件握手、网关并发）也按已保存的设置预应用，
+            // 否则这些项要等用户再保存一次才生效。
+            tuning::apply(&pers);
+
             // 登记 mclink:// 深链接。**是否登记由安装形态决定**（见 deep_link::should_register_scheme）：
             // 安装版由安装器/系统登记，程序再写一遍会在卸载或挪动安装目录后残留失效的协议项；
             // 便携版与 Linux 没有安装器可用，只能自己登记。
@@ -400,12 +407,6 @@ pub fn run() {
             system_accent_seed,
             get_region_info,
             get_ip_info,
-            download_adapter,
-            adapter_startup_init,
-            get_adapter_status,
-            get_terracotta_state,
-            start_terracotta_host,
-            start_terracotta_guest,
             get_app_version,
             get_tauri_version,
             account_get,
@@ -452,6 +453,10 @@ pub fn run() {
             plugin_set_grants,
             plugin_set_blocked,
             plugin_reload,
+            market_list,
+            market_install,
+            hmcl_list_themes,
+            hmcl_theme_seed,
             room_prepare,
             room_start_host,
             room_join,
@@ -462,6 +467,7 @@ pub fn run() {
             room_window_open,
             room_window_focus,
             room_window_close,
+            settings_window_open,
             snap_set_bounds,
             app_show_connect,
             connect_scan,

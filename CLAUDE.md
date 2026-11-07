@@ -9,11 +9,12 @@
 ## 1. 这是什么
 
 Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加一个自建资源服务器
-（`assets-server/`，分发字体、图标、适配器包与更新包）。
+（`assets-server/`，分发字体、图标与更新包）。
 
 - 本仓库**不含任何联机服务端**（`central-server`、`mc-link-relay`、`mc-link-common` 已移除，见归档 tag）
-- 联机能力**经插件系统实现**：内置陶瓦适配器 + 检测/耦合插件。`wgp-core` **不是**本仓库依赖，
-  也不要为了"恢复联机"把它加回来
+- 联机能力**经插件系统实现**：两个内置适配器（陶瓦协议 / 通用 EasyTier）+ 检测/耦合插件，
+  它们共用 `engine/easytier` 这一套内置引擎。`wgp-core` **不是**本仓库依赖，
+  也不要为了"恢复联机"把它加回来（WGP 尚未开发完成，因此没有为它留空壳模块）
 - **MC Link 不负责启动游戏**：只扫描、只建链路、只做周边工具
 - 0.6.x 是史诗级重构（多房间 / 多窗口 / 组件系统 / 插件市场），结构按批次演进，见
   `docs/ARCHITECTURE.md` 第 8 节。**不要把当前目录形状当成约定**
@@ -103,6 +104,8 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 - 不要把私钥、token 提交进仓库（历史上有过：`.tauri/updater.key`，已移出索引但**必须轮换**）
 - 不要在 `commands/*` 里写网络/文件/线程逻辑
 - 不要新增第二个下载实现、第二个 IPC 出口、第二套样式 token 来源
+- 不要在适配器里自己 `spawn` 联机内核：进程/下载/CLI 管理只在 `engine/` 一处
+  （适配器只描述房间语义，否则"查对端""加端口转发"会在多处各写一遍）
 - 不要为窗口显隐写 CSS 动画，也不要为了动画改窗口装饰/透明/材质
 - 不要把临时产物（归档包、类型检查输出）留在仓库里
 - 不要在 `tauri.conf.json` 把 `assetProtocol.scope` 放成全盘 `**`
@@ -112,17 +115,24 @@ Tauri 2 + Vue 3 + TypeScript 桌面客户端（`src/` + `src-tauri/`），外加
 
 0.6.x 按批次推进，**完成到哪一步以 `docs/ARCHITECTURE.md` 第 8 节为准**，不要按本节的记忆做假设。
 
-- **B0–B6 已完成**：
+- **B0–B7 已完成**：
   - B0–B4：`core/` + `bridge/`、`domain/room` 多会话、房间窗口（`room.html`）、
     Pinia（`stores/rooms.ts`）+ 唯一事件桥（`ipc/bridge.ts`）
   - B5：离线账号（`domain/account`，UUID 与 Java 离线模式同值）、代理池（`domain/proxy`，
     内置 3 + 远端按天缓存，已接进更新链路）
   - B6：托盘面板改为 Vue 入口（`widget.html`）+ 预建常驻 + 位置夹取 + 系统窗口动画
     （`window/animation.rs`，Windows `AnimateWindow`，失败退化为瞬时显隐）
+  - B7：设置级联（`lib/settings/registry.ts`：原生+服务端分区同表、左树/搜索/优先级去重）、
+    设置独立窗口（`settings.html` + `settings_window_open`）、`PluginKind` 扩到 6 类
+    （`bridge` / `widget` / `utility`）、插件市场（`plugin/market.rs`：清单+下载+SHA256+解压）、
+    HMCL 主题包导入（`hmcl.rs`：宽松提取强调色作种子）、窗口内挂件容器
+    （`ui/WidgetLayer.vue`）+ 背景音视频控制面板
 - 会话命令为 `room_prepare / room_start_host / room_join / room_leave / room_snapshot /
   room_refresh / room_list`；`connect_*` 只剩扫描与缓存查询
-- **待做**：设置级联、HMCL 主题、插件市场 6 类（B7）；窗口内**悬浮组件**（等有真实组件再做）
-- 已就绪、可直接复用：插件系统后端（8 命令 + 回环网关 + 权限）、自动更新全链路、
+- **待做**：`widget` 类插件的**运行时**（第三方挂件/页面注入与沙箱）、插件市场的服务器清单
+  与真实插件包、设置级联的"跨分区字段继承"（当前只到优先级去重）、`zh-TW` 文案
+- 已就绪、可直接复用：插件系统后端（8 命令 + 回环网关 + 权限）、内置联机引擎
+  （`engine/easytier`：产物表 + SHA256 校验下载 + 进程/CLI 管理）、自动更新全链路、
   OOBE 后端与界面、i18n 基础设施（现有 `zh-CN` / `en-US`，0.6.x 要补 `zh-TW`）、
   `@m3e/web` 前端外壳
-- 已知缺口：插件**安装器**仍无后端实现；检测类/耦合类插件只有接口与路由，无内置实现
+- 已知缺口：第三方 `widget` / `page` 插件尚无沙箱运行时；检测类/耦合类插件只有接口与路由，无内置实现

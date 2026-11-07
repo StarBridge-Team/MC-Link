@@ -40,13 +40,14 @@ const JSON_PATH = join(LEGAL_DIR, "third-party.json");
  */
 const MANUAL = [
   {
-    name: "Terracotta（陶瓦联机）",
-    version: "0.4.2",
-    license: "AGPL-3.0-or-later",
-    homepage: "https://github.com/burningtnt/Terracotta",
+    name: "EasyTier",
+    version: "2.6.4",
+    license: "LGPL-3.0-only",
+    homepage: "https://github.com/EasyTier/EasyTier",
     note:
-      "以**未经修改**的二进制整包分发，并通过其进程间通信接口调用，未静态或动态链接。" +
-      "依其 AGPL 例外条款，本程序不因此被 AGPL 覆盖；但须在界面明显处标注其版权信息，并随附其许可证全文。",
+      "联机引擎。客户端在**运行时**从上游发布页下载其官方压缩包（`easytier-core` / `easytier-cli`），" +
+      "校验 SHA256 后解压执行，本仓库既不分发也不修改其二进制；两者以独立进程通信，" +
+      "不存在静态或动态链接。依 LGPL-3.0 第 4 条，此处随附其许可证全文，并给出上游源码地址。",
   },
 ];
 

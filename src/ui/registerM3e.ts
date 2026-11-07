@@ -10,6 +10,7 @@
 import "@m3e/web/theme"; // <m3e-theme>（动态配色 + 动效方案）
 import "@m3e/web/icon"; // <m3e-icon>
 import "@m3e/web/button"; // <m3e-button>
+import "@m3e/web/icon-button"; // <m3e-icon-button>（左下角快捷入口）
 import "@m3e/web/card"; // <m3e-card>
 import "@m3e/web/switch"; // <m3e-switch>
 import "@m3e/web/checkbox"; // <m3e-checkbox>

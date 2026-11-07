@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { KEYS, local } from "../persist";
 
 /**
  * 窗口与进程相关的 IPC 封装。
@@ -60,6 +61,21 @@ export async function hideSelfWindow() {
 /** 显示并聚焦主窗口（托盘菜单与深链接都会用到）。 */
 export async function showMainWindow() {
   return invoke<void>("show_main_window");
+}
+
+/**
+ * 打开（或唤出）**设置独立窗口**（B7）。
+ *
+ * 设置已从主窗口的 Tab 抽成独立窗口：主窗口导航点「设置」走这里，不再 `router.push`。
+ * 后端是单例窗口（label = `settings`），重复调用只做 show + focus。
+ *
+ * `tab` 是**要直达的分区 id**。写入与 `SettingView` 相同的持久化键，
+ * 窗口挂载时按它恢复——这样底部菜单的「账号 / 个性化」能落到各自分区，
+ * 而不是每次都在默认分区。
+ */
+export async function openSettingsWindow(tab?: string) {
+  if (tab) local.setString(KEYS.settingTab, tab);
+  return invoke<void>("settings_window_open");
 }
 
 /** 窗口边缘方向，与 `commands/window.rs::resize_drag` 的字符串一一对应。 */

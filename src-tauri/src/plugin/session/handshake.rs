@@ -15,8 +15,10 @@ use crate::plugin::crypto::{self, SessionKeys};
 use crate::plugin::manifest::LimitsSpec;
 use crate::plugin::protocol::{self, error_code, Handshake};
 
-/// 握手允许的最长时间。
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
+/// 握手允许的最长时间（来自设置「插件」分区）。
+fn handshake_timeout() -> Duration {
+    crate::tuning::plugin_handshake_timeout()
+}
 
 /// 升级成功后的连接。
 pub struct Accepted {
@@ -115,7 +117,7 @@ async fn send_handshake(
 }
 
 async fn recv_handshake(ws: &mut WebSocketStream<TcpStream>) -> Result<Handshake, String> {
-    let deadline = tokio::time::Instant::now() + HANDSHAKE_TIMEOUT;
+    let deadline = tokio::time::Instant::now() + handshake_timeout();
     loop {
         let next = tokio::time::timeout_at(deadline, ws.next())
             .await

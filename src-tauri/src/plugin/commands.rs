@@ -431,11 +431,45 @@ pub(crate) fn plugin_reload(manager: tauri::State<'_, Arc<PluginManager>>) -> Ve
     manager.reload()
 }
 
+/// 拉取插件市场清单（资源服务器 `plugins/market.json`）。
+///
+/// `async`：里面要发网络请求，同步命令会占住主线程。
+#[tauri::command]
+pub(crate) async fn market_list(
+    manager: tauri::State<'_, Arc<PluginManager>>,
+) -> Result<crate::plugin::market::MarketManifest, String> {
+    crate::plugin::market::fetch_market(manager.data_dir()).await
+}
+
+/// 安装市场插件：下载校验后解压到插件目录，并重新扫描注册表。
+#[tauri::command]
+pub(crate) async fn market_install(
+    manager: tauri::State<'_, Arc<PluginManager>>,
+    plugin_id: String,
+) -> Result<String, String> {
+    let manifest = crate::plugin::market::fetch_market(manager.data_dir()).await?;
+    let entry = manifest
+        .plugins
+        .iter()
+        .find(|p| p.id == plugin_id)
+        .ok_or_else(|| format!("插件市场里没有 {plugin_id}"))?;
+    let id = crate::plugin::market::install(manager.data_dir(), entry).await?;
+    // 装完立刻重扫：否则界面要等下次手动"重新扫描"才看得到新插件。
+    let warnings = manager.reload();
+    if !warnings.is_empty() {
+        eprintln!("[插件市场] 安装后重扫告警: {}", warnings.join(" / "));
+    }
+    Ok(id)
+}
+
 fn parse_kind(kind: &str) -> Result<PluginKind, String> {
     match kind.to_ascii_lowercase().as_str() {
         "adapter" => Ok(PluginKind::Adapter),
         "detector" => Ok(PluginKind::Detector),
         "coupler" => Ok(PluginKind::Coupler),
+        "bridge" => Ok(PluginKind::Bridge),
+        "widget" => Ok(PluginKind::Widget),
+        "utility" => Ok(PluginKind::Utility),
         other => Err(format!("未知插件种类: {}", other)),
     }
 }

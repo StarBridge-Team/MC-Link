@@ -8,11 +8,13 @@ import NavRail, { type NavItem } from "./components/layout/NavRail.vue";
 import OobeOverlay from "./components/oobe/OobeOverlay.vue";
 import { useSetup } from "./composables/useSetup";
 import { useWindowControls } from "./composables/useWindowControls";
-import { adapterStartupInit } from "./lib/api/adapter";
+import { openSettingsWindow } from "./lib/api/window";
 import { DEFAULT_SETTING_TAB, SETTING_TABS, isSettingTab } from "./router";
 import { useIntentStore } from "./stores/intent";
 import { useRegionStore } from "./stores/region";
 import { useThemeBinding } from "./ui/themeBinding";
+import AppQuickDock from "./components/layout/AppQuickDock.vue";
+import TaskCenterDialog from "./components/layout/TaskCenterDialog.vue";
 import WindowResizeEdges from "./ui/WindowResizeEdges.vue";
 
 /**
@@ -63,8 +65,15 @@ const allNavItems = computed<NavItem[]>(() => [
   { id: "connect", icon: "broadcast_on_home", label: t("nav.connect") },
   { id: "rooms", icon: "meeting_room", label: t("nav.rooms") },
   { id: "game", icon: "sports_esports", label: t("nav.game") },
-  { id: "setting", icon: "tune", label: t("nav.setting") },
 ]);
+
+/**
+ * 任务中心浮层的开关。
+ *
+ * 底部入口已移到右下角的 `AppQuickDock`：那里是**与左侧导航同级**的三个入口，
+ * 不占导航栏高度（小窗口下导航栏不再被挤得出现滚动条）。
+ */
+const tasksOpen = ref(false);
 
 /**
  * 受地区限制的功能**入口**：**只有中国大陆**命中时隐藏（判定见 `stores/region.ts`）。
@@ -108,6 +117,25 @@ const activeSecondary = computed(() =>
 );
 
 function onNavSelect(id: string) {
+  // 设置已抽成**独立窗口**（B7）：主窗口只负责把它叫出来，不再切自己的路由。
+  // `/setting` 路由仍保留，作为深链/兜底入口。
+  // 底部菜单三项都落到设置窗口，只是直达的分区不同。
+  if (id === "account" || id === "settings") {
+    void openSettingsWindow("general").catch((e) =>
+      console.warn("[app] 打开设置窗口失败:", e),
+    );
+    return;
+  }
+  if (id === "personalization") {
+    void openSettingsWindow("personalization").catch((e) =>
+      console.warn("[app] 打开设置窗口失败:", e),
+    );
+    return;
+  }
+  if (id === "setting") {
+    void openSettingsWindow().catch((e) => console.warn("[app] 打开设置窗口失败:", e));
+    return;
+  }
   if (route.name === id) return;
   void router.push({ name: id });
 }
@@ -173,9 +201,6 @@ onMounted(async () => {
       }
     })(),
   ]);
-
-  // 适配器启动初始化：失败不影响界面，插件页里可以手动重试。
-  void adapterStartupInit().catch(() => undefined);
 });
 </script>
 
@@ -207,12 +232,15 @@ onMounted(async () => {
     />
 
     <div class="shell__body">
-      <NavRail
-        v-if="!hideNav"
-        :items="navItems"
-        :active="String(route.name ?? 'home')"
-        @select="onNavSelect"
-      />
+      <div v-if="!hideNav" class="shell__side">
+        <NavRail
+          :items="navItems"
+          :active="String(route.name ?? 'home')"
+          @select="onNavSelect"
+        />
+        <!-- 左下角快捷入口：与 Nav 同宽、竖向排列，但不是导航项 -->
+        <AppQuickDock @tasks="tasksOpen = true" />
+      </div>
       <NavList
         v-if="showSecondary"
         :items="secondaryItems"
@@ -239,6 +267,8 @@ onMounted(async () => {
         </RouterView>
       </main>
     </div>
+
+    <TaskCenterDialog :open="tasksOpen" @close="tasksOpen = false" />
 
     <OobeOverlay v-if="needsOobe" />
     <!-- 边缘缩放热区：Windows 由命中测试接管，组件内部只在 Linux 渲染 -->
@@ -322,6 +352,14 @@ onMounted(async () => {
   z-index: 2;
   flex: 1;
   display: flex;
+  min-height: 0;
+}
+
+/* 左侧竖列：导航（可滚动）+ 底部快捷入口。两者同宽、同一条竖线。 */
+.shell__side {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
   min-height: 0;
 }
 

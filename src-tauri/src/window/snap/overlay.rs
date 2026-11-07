@@ -213,6 +213,16 @@ unsafe fn create_child(
 
 fn emit(state: &OverlayState, payload: serde_json::Value) {
     let label = state.window.label().to_string();
+    // payload 里带上目标窗口 label：`emit_to` 本身已定向，但前端每个窗口都订阅了
+    // 同一个主题——多窗口时一旦有哪条链路退化成广播，悬停态就会在两个窗口之间串。
+    // 带上 label 后前端可以再过滤一次，串扰不可能发生。
+    let mut payload = payload;
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert(
+            "window".to_string(),
+            serde_json::Value::String(label.clone()),
+        );
+    }
     let _ = state.window.emit_to(label, topic::WINDOW, payload);
 }
 

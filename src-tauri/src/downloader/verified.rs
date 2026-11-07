@@ -40,15 +40,21 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 /// 单次读取的空闲上限：超过这么久没有任何数据才判定为超时。
-const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+///
+/// 值来自设置「网络」分区（`tuning` 里已夹取范围）。
+fn idle_timeout() -> Duration {
+    crate::tuning::download_idle_timeout()
+}
 /// 探测 Range 支持的超时。
 const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 /// 单文件体积上限：防止对端无限推送撑爆磁盘。
 const MAX_FILE_BYTES: u64 = 256 * 1024 * 1024;
 /// 分片大小。太小会让请求数暴涨，太大则续传粒度太粗。
 const CHUNK_SIZE: u64 = 4 * 1024 * 1024;
-/// 并行分片数。
-const MAX_PARALLEL: usize = 4;
+/// 并行分片数（来自设置「网络」分区）。
+fn max_parallel() -> usize {
+    crate::tuning::download_parallel()
+}
 /// 小于该体积不值得分片：调度与握手的开销比省下的时间还多。
 const MIN_PARALLEL_BYTES: u64 = 8 * 1024 * 1024;
 
@@ -320,7 +326,7 @@ async fn download_chunked(
             Ok::<(), String>(())
         }
     }))
-    .buffer_unordered(MAX_PARALLEL)
+    .buffer_unordered(max_parallel())
     .collect::<Vec<Result<(), String>>>()
     .await;
 
@@ -356,14 +362,14 @@ async fn fetch_range(
     let mut out: Vec<u8> = Vec::with_capacity(expected_len as usize);
     let mut stream = response.bytes_stream();
     loop {
-        let step = tokio::time::timeout(IDLE_TIMEOUT, stream.next())
+        let step = tokio::time::timeout(idle_timeout(), stream.next())
             .await
             .map_err(|_| {
                 format!(
                     "分片 {}-{} 读取超时（{} 秒无数据）",
                     start,
                     end,
-                    IDLE_TIMEOUT.as_secs()
+                    idle_timeout().as_secs()
                 )
             })?;
 
@@ -433,9 +439,9 @@ async fn download_streaming(
     let mut stream = response.bytes_stream();
     let mut downloaded: u64 = 0;
     loop {
-        let step = tokio::time::timeout(IDLE_TIMEOUT, stream.next())
+        let step = tokio::time::timeout(idle_timeout(), stream.next())
             .await
-            .map_err(|_| format!("读取超时（{} 秒无数据）", IDLE_TIMEOUT.as_secs()))?;
+            .map_err(|_| format!("读取超时（{} 秒无数据）", idle_timeout().as_secs()))?;
 
         let chunk = match step {
             None => break,

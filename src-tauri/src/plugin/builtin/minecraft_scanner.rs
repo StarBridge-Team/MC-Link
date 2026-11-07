@@ -3,7 +3,14 @@
 //! 复用 WGP Core（`app_adapter/game_tcp.rs`）里扫描 Minecraft Java Edition 局域网
 //! 服务器的实现：通过 UDP 多播 MOTD 协议（224.0.2.60:4445）发现本网内开启的
 //! Java 版服务器。这段代码自包含，仅依赖标准库 + serde，因此直接内联于此，
-//! 不引入整个 wgp-core 依赖（也规避其可能带入的 eframe/egui feature 冲突）。
+//! 不引入整个 wgp-core 依赖（也规避其可能带入的 eframe/egui 冲突）。
+//!
+//! # 会排除"我们自己发的"广播
+//!
+//! 耦合器（[`super::minecraft_coupler`]）在同一多播组里广播 MC Link 的入口。若不排除，
+//! 每次扫描都会把**自己刚建立的隧道**当成一台局域网游戏列出来，用户还能拿它再建一次房
+//! ——那只是一个指向隧道的端口，既不是本地游戏，也不该出现在"本机游戏"里。
+//! 报文格式与归属判定统一由 [`super::lan`] 定义。
 
 use std::collections::HashMap;
 use std::net::UdpSocket;
@@ -16,6 +23,8 @@ use crate::plugin::manifest::{PluginKind, PluginManifest, RuntimeKind};
 use crate::plugin::permission::PermissionSet;
 use crate::plugin::protocol::{detector_method, error_code, ErrorInfo};
 
+use super::lan;
+
 /// 插件 ID。
 pub const PLUGIN_ID: &str = "dev.mclink.builtin.minecraft-java-scanner";
 
@@ -27,15 +36,6 @@ const MULTICAST_PORT: u16 = 4445;
 struct LanServer {
     motd: String,
     port: u16,
-}
-
-fn extract_tag(s: &str, start: &str, end: &str) -> String {
-    if let Some(start_pos) = s.find(start) {
-        if let Some(end_pos) = s.find(end) {
-            return s[start_pos + start.len()..end_pos].to_string();
-        }
-    }
-    String::new()
 }
 
 /// 通过 UDP 多播协议扫描局域网内开启的 Minecraft Java Edition 服务器。
@@ -51,17 +51,20 @@ fn scan_lan_servers() -> Result<Vec<LanServer>, String> {
     let mut buf = [0u8; 1024];
     let start = std::time::Instant::now();
     while start.elapsed() < Duration::from_secs(3) {
-        if let Ok((len, _)) = socket.recv_from(&mut buf) {
-            if let Ok(data) = String::from_utf8(buf[..len].to_vec()) {
-                if data.contains("[MOTD]") && data.contains("[AD]") {
-                    let motd = extract_tag(&data, "[MOTD]", "[/MOTD]");
-                    let port_str = extract_tag(&data, "[AD]", "[/AD]");
-                    if let Ok(port) = port_str.parse::<u16>() {
-                        servers.insert(port, LanServer { motd, port });
-                    }
-                }
-            }
+        let Ok((len, _)) = socket.recv_from(&mut buf) else {
+            continue;
+        };
+        let Ok(text) = std::str::from_utf8(&buf[..len]) else {
+            continue;
+        };
+        let Some((motd, port)) = lan::parse_advert(text) else {
+            continue;
+        };
+        // 自己发的广播不是"本机游戏"：跳过（见模块注释）
+        if lan::is_ours(&motd) {
+            continue;
         }
+        servers.insert(port, LanServer { motd, port });
     }
     Ok(servers.into_values().collect())
 }

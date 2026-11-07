@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "extra-windows",
   "description": "房间窗口与小组件窗口：事件订阅 + 基本窗口操作。缺这条时这些窗口既收不到事件、也无法拖动/关闭——表现为『房间列表不更新、面板只有两项、标题栏拖不动』。",
-  "windows": ["room-*", "widget-*"],
+  "windows": ["room-*", "widget-*", "settings"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

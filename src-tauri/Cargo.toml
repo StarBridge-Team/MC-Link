@@ -49,6 +49,8 @@ reqwest = { version = "0.12", features = ["blocking", "stream"] }
 futures-util = "0.3"
 tar = "0.4"
 flate2 = "1"
+# HMCL 主题包（3.6.x 的主题市场）以 zip 分发；只读不比手写 zip 目录解析更省心。
+zip = "2"
 rand_core = { version = "0.6", features = ["std"] }
 local-ip-address = "0.5"
 tokio-util = "0.7"

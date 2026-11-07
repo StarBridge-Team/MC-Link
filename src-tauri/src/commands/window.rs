@@ -197,6 +197,15 @@ pub(crate) async fn room_window_close(app: tauri::AppHandle, session_id: String)
     crate::window::factory::close_room_window(&app, &session_id);
 }
 
+/// 打开（或唤出）设置独立窗口。
+///
+/// 与 `room_window_open` 同理必须 `async`：建窗内部要 `run_on_main_thread` 并阻塞等待，
+/// 同步命令会变成"主线程等主线程"直接死锁。
+#[tauri::command]
+pub(crate) async fn settings_window_open(app: tauri::AppHandle) -> Result<(), String> {
+    crate::window::factory::open_settings_window(&app)
+}
+
 /// 上报最大化按钮矩形（CSS 逻辑像素），供 Windows 贴靠布局覆盖层跟随。
 ///
 /// `bounds` 为 `None` 表示按钮不在了（例如窗口切到没有最大化键的布局），覆盖层隐藏。

@@ -12,13 +12,14 @@ fn temp_dir() -> PathBuf {
 }
 
 #[test]
-fn manager_registers_builtin_adapter() {
+fn manager_registers_builtin_adapters() {
     let dir = temp_dir();
     let mgr = PluginManager::new(&dir).unwrap();
     let records = mgr.list();
-    assert_eq!(records.len(), 3);
+    assert_eq!(records.len(), 4);
     let ids: Vec<&str> = records.iter().map(|r| r.manifest.id.as_str()).collect();
     assert!(ids.contains(&TERRACOTTA_PLUGIN_ID));
+    assert!(ids.contains(&EASYTIER_PLUGIN_ID));
     assert!(ids.contains(&MINECRAFT_DETECTOR_PLUGIN_ID));
     assert!(ids.contains(&MINECRAFT_COUPLER_PLUGIN_ID));
     assert!(records.iter().all(|r| r.source == PluginSource::Builtin));
@@ -27,14 +28,18 @@ fn manager_registers_builtin_adapter() {
         .find(|r| r.manifest.id == TERRACOTTA_PLUGIN_ID)
         .unwrap();
     assert!(terra.permissions.contains(Permission::NetListenLocal));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn routing_prefers_builtin_for_any_game() {
+fn routing_prefers_terracotta_over_generic_easytier() {
     let dir = temp_dir();
     let mgr = PluginManager::new(&dir).unwrap();
     let plan = mgr.plan(PluginKind::Adapter, Some("minecraft-java"));
+    // 两条内置适配器都覆盖全部游戏；能与上游互通的陶瓦应是首选
     assert_eq!(plan.primary(), Some(TERRACOTTA_PLUGIN_ID));
+    assert!(plan.fallbacks().contains(&EASYTIER_PLUGIN_ID));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -51,6 +56,14 @@ fn disabled_plugin_is_not_routed() {
     // 写启用状态需要 Plugins 目录存在（注册表文件落在那里）。
     std::fs::create_dir_all(dir.join("Plugins")).unwrap();
     mgr.set_enabled(TERRACOTTA_PLUGIN_ID, false).unwrap();
+
+    // 停用首选后，通用 EasyTier 适配器仍在候选里（回退链），但首选必须变
+    let plan = mgr.plan(PluginKind::Adapter, None);
+    assert_ne!(plan.primary(), Some(TERRACOTTA_PLUGIN_ID));
+    assert_eq!(plan.primary(), Some(EASYTIER_PLUGIN_ID));
+
+    // 两条都停用后才是空计划
+    mgr.set_enabled(EASYTIER_PLUGIN_ID, false).unwrap();
     assert!(mgr.plan(PluginKind::Adapter, None).is_empty());
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -77,8 +90,12 @@ fn gateway_is_not_started_until_async_start() {
 }
 
 #[test]
-fn adapter_dir_points_into_data_dir() {
+fn builtin_records_are_all_registered_as_builtin_source() {
     let dir = temp_dir();
     let mgr = PluginManager::new(&dir).unwrap();
-    assert_eq!(mgr.adapter_dir().unwrap(), dir.join("Adapter"));
+    assert!(mgr
+        .list()
+        .iter()
+        .all(|record| record.source == PluginSource::Builtin));
+    let _ = std::fs::remove_dir_all(&dir);
 }

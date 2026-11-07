@@ -14,7 +14,6 @@ export * from "./setup";
 export * from "./legal";
 export * from "./plugin";
 export * from "./community";
-export * from "./adapter";
 export * from "./settingMeta";
 export * from "./window";
 // 联机：只读扫描（connect）+ 会话操作（room）。

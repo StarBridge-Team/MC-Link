@@ -24,6 +24,12 @@ import { parseFlatYaml, writeFlatYaml } from "../../lib/yamlLite";
  */
 const { t } = useI18n();
 
+/**
+ * 渲染范围。`sectionId` 不传时渲染清单里的**全部**远程分区（供「通用」页内嵌）；
+ * 传入时只渲染该分区（供设置页左树点选单个远程分区）。
+ */
+const props = defineProps<{ sectionId?: string }>();
+
 interface LoadedSection {
   meta: SettingMeta;
   values: Record<string, string>;
@@ -42,18 +48,19 @@ const NATIVE_SECTION_IDS = new Set(["personalization"]);
 onMounted(async () => {
   try {
     const manifest = await getSettingManifest();
+    const ids = props.sectionId ? [props.sectionId] : manifest.sections.map((s) => s.id);
     const loaded: LoadedSection[] = [];
-    for (const section of manifest.sections) {
-      if (NATIVE_SECTION_IDS.has(section.id)) continue;
+    for (const id of ids) {
+      if (NATIVE_SECTION_IDS.has(id)) continue;
       // 单个分区失败不影响其它分区：服务器可能只配了一半。
       try {
         const [meta, content] = await Promise.all([
-          getSettingMeta(section.id),
-          getSetting(section.id),
+          getSettingMeta(id),
+          getSetting(id),
         ]);
         loaded.push({ meta, values: parseFlatYaml(content) });
       } catch (e) {
-        console.warn(`[settings] 跳过分区 ${section.id}:`, e);
+        console.warn(`[settings] 跳过分区 ${id}:`, e);
       }
     }
     sections.value = loaded;

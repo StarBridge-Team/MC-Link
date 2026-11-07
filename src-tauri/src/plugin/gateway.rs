@@ -49,7 +49,9 @@ const AUTH_COOLDOWN: Duration = Duration::from_secs(60);
 /// 插件只有本机那几个（每个一条长连接），给 32 已远超正常用量。没有上限时，
 /// 同机任意进程都能循环连网关，每连一次就起一个 tokio 任务并分配握手缓冲，
 /// 直到把任务/内存耗尽（DoS）。上限之外的连接直接拒绝，不排队。
-const MAX_INFLIGHT_CONNECTIONS: usize = 32;
+fn max_inflight() -> usize {
+    crate::tuning::gateway_max_inflight()
+}
 
 /// 网关实例。
 pub struct Gateway {
@@ -115,7 +117,7 @@ pub async fn serve(
     let tracker = Arc::new(SyncMutex::new(FailureTracker::new()));
     let token = gateway.token.clone();
     // 在途连接计数：许可在连接处理结束时归还。
-    let inflight = Arc::new(tokio::sync::Semaphore::new(MAX_INFLIGHT_CONNECTIONS));
+    let inflight = Arc::new(tokio::sync::Semaphore::new(max_inflight()));
 
     while !shutdown.load(Ordering::SeqCst) {
         let accepted = tokio::select! {
@@ -141,7 +143,7 @@ pub async fn serve(
 
         // 超过并发上限直接拒绝：不排队，避免"任务/内存被无界连接耗尽"。
         let Ok(permit) = inflight.clone().try_acquire_owned() else {
-            eprintln!("[插件网关] 并发连接已达上限（{}），拒绝 {}", MAX_INFLIGHT_CONNECTIONS, peer);
+            eprintln!("[插件网关] 并发连接已达上限（{}），拒绝 {}", max_inflight(), peer);
             continue;
         };
 

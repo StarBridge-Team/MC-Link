@@ -89,6 +89,42 @@ pub mod coupler_method {
     pub const STATUS: &str = "coupler.status";
 }
 
+/// 桥接类插件方法名（B7）。
+///
+/// 桥接器**不携带引擎**，只负责把某种协议翻译成统一协议，因此没有
+/// launch/attach 这类动作，只有连接生命周期。
+pub mod bridge_method {
+    /// 初始化并声明自己兼容的协议。
+    pub const INIT: &str = "bridge.init";
+    /// 建立协议桥接。
+    pub const CONNECT: &str = "bridge.connect";
+    /// 断开桥接。
+    pub const DISCONNECT: &str = "bridge.disconnect";
+    /// 查询状态。
+    pub const STATUS: &str = "bridge.status";
+}
+
+/// 挂件类插件方法名（B7）。
+///
+/// 同一个 `widget` 类承载两种形态，由清单里的 `mount` 字段区分：
+/// `in-window` 往窗口内注入小挂件，`page` 提供窗口外页面。
+pub mod widget_method {
+    /// 挂载挂件/页面，返回渲染描述。
+    pub const MOUNT: &str = "widget.mount";
+    /// 卸载。
+    pub const UNMOUNT: &str = "widget.unmount";
+    /// 状态/数据更新。
+    pub const UPDATE: &str = "widget.update";
+}
+
+/// 工具类插件方法名（B7）。
+pub mod utility_method {
+    /// 执行一次工具动作。
+    pub const RUN: &str = "utility.run";
+    /// 查询状态。
+    pub const STATUS: &str = "utility.status";
+}
+
 /// 插件 → 核心的事件主题。
 pub mod event_topic {
     /// 适配器状态变化。
@@ -99,6 +135,12 @@ pub mod event_topic {
     pub const DETECTOR_LOST: &str = "detector.lost";
     /// 耦合状态变化。
     pub const COUPLER_STATE: &str = "coupler.state";
+    /// 桥接状态变化。
+    pub const BRIDGE_STATE: &str = "bridge.state";
+    /// 挂件状态变化。
+    pub const WIDGET_STATE: &str = "widget.state";
+    /// 工具状态变化。
+    pub const UTILITY_STATE: &str = "utility.state";
     /// 插件自定义日志。
     pub const LOG: &str = "plugin.log";
 }
@@ -331,8 +373,7 @@ pub struct PeerPluginInfo {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomMember {
-    /// 展示名（陶瓦的 `profiles[].name`）。
-    #[serde(default)]
+    /// 展示名（陶瓦的 `profiles[].name`）。    #[serde(default)]
     pub name: String,
     /// 适配器给的档案类型，如 `HOST` / `GUEST`。
     #[serde(default)]

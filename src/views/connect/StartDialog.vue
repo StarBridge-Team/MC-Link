@@ -26,6 +26,16 @@ const form = ref<Record<string, string>>({});
 
 const inputFields = computed<JoinField[]>(() => hostFields.value.filter((f) => !f.generated));
 
+/**
+ * 当前选中的适配器是否已就绪。
+ *
+ * 内置适配器共用一套 EasyTier 引擎，首次使用要先下载；此时按钮仍可点（后端会等下载
+ * 完成），但必须说明"正在准备"，否则用户会以为点了没反应。
+ */
+const selectedReady = computed(
+  () => adapters.value.find((a) => a.pluginId === selectedId.value)?.ready ?? true,
+);
+
 function fieldLabel(f: JoinField): string {
   const known: Record<string, string> = {
     room_code: t("connect.field.roomCode"),
@@ -97,6 +107,7 @@ function confirm() {
 
     <!-- 步骤二：按 host_fields 出字段 -->
     <div v-else class="dialog__body">
+      <p v-if="!selectedReady" class="hint">{{ t("connect.engineDownloading") }}</p>
       <p v-if="hostFields.length === 0" class="hint">{{ t("connect.hostModeNote") }}</p>
 
       <template v-for="f in hostFields" :key="f.key">

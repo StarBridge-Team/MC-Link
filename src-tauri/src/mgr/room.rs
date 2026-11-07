@@ -9,6 +9,7 @@
 //! （见 `is_terminal`），否则会出现"用户已断开、房间又显示在线"这种没法收场的状态。
 
 mod helpers;
+mod prepare;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -19,13 +20,13 @@ use crate::core::error::{AppError, AppResult};
 use crate::domain::room::{Phase, Role, RoomRegistry, RoomSession, RoomSnapshot};
 use crate::plugin::manager::PluginManager;
 use crate::plugin::manifest::PluginKind;
-use crate::plugin::permission::{required_for, Permission};
+use crate::plugin::permission::Permission;
 use crate::plugin::protocol::{
     adapter_method, coupler_method, detector_method, GameInfo, PluginContext, RoomInfo,
     RoomMember as PluginMember,
 };
 
-use self::helpers::{normalize_fields, port_from_value, room_members};
+use self::helpers::{port_from_value, room_members};
 
 /// 终态：`Closed`（已结束）与 `Stopping`（正在结束，下一步就是 `Closed`）。
 ///
@@ -66,36 +67,7 @@ impl RoomMgr {
     /// 一次拿齐联机页需要的静态数据：可用适配器（含各自声明的字段）+ 已扫到的本地游戏。
     /// 旧前端要连发两个命令再自己拼，中间任何一步失败都得在前端处理半成品状态。
     pub async fn prepare(&self, game_id: Option<&str>) -> Value {
-        let plan = self.plugins.plan(PluginKind::Adapter, game_id);
-        let mut adapters = Vec::new();
-        for candidate in &plan.candidates {
-            let Some(record) = self.plugins.get(&candidate.plugin_id) else {
-                continue;
-            };
-            // 定向调用**这个**适配器：走 `invoke` 会重新路由，多适配器时全部拿到第一个的字段。
-            let init = self
-                .plugins
-                .invoke_plugin(
-                    &candidate.plugin_id,
-                    required_for(PluginKind::Adapter, adapter_method::INIT),
-                    adapter_method::INIT,
-                    json!({}),
-                )
-                .await
-                .ok();
-            adapters.push(json!({
-                "pluginId": record.manifest.id,
-                "name": record.manifest.name,
-                "trust": record.trust,
-                "ready": record.enabled && record.trust.is_runnable(),
-                "hostFields": normalize_fields(init.as_ref().and_then(|v| v.get("host_fields").cloned())),
-                "joinFields": normalize_fields(init.as_ref().and_then(|v| v.get("join_fields").cloned())),
-            }));
-        }
-        json!({
-            "adapters": adapters,
-            "games": self.plugins.local_games(),
-        })
+        prepare::prepare(&self.plugins, game_id).await
     }
 
     pub fn start_host(
@@ -380,6 +352,19 @@ async fn run_link(
         .unwrap_or_default();
     let members = room_members(&value);
 
+    // 局域网广播的端口必须是「玩家该连的那个端口」：
+    //
+    // - 房主：自己的游戏端口（`port`）；
+    // - 访客：引擎把房主端口接出来后**本机**的端口，由适配器回报（`value.port`）。
+    //
+    // 早先这里一律用 `port.unwrap_or(25565)`，于是访客接出端口不是 25565 时，
+    // 局域网列表里的 "MC Link" 指向一个本机没人监听的端口——看得见、点不进去。
+    let entry_port = value
+        .get("port")
+        .and_then(port_from_value)
+        .or(port)
+        .unwrap_or(25565);
+
     // 耦合器广播是 best-effort：它失败只影响"游戏能发现我们"，
     // 房间本身已经建好，不该因此把整次联机判失败。
     let attach = plugins
@@ -387,7 +372,7 @@ async fn run_link(
             PluginKind::Coupler,
             game_id.as_deref(),
             coupler_method::ATTACH,
-            json!({ "motd": "MC Link", "port": port.unwrap_or(25565) }),
+            json!({ "motd": crate::plugin::builtin::lan::MOTD, "port": entry_port }),
         )
         .await;
     if let Err(e) = attach {
@@ -396,8 +381,8 @@ async fn run_link(
 
     plugins.broadcast_context(&PluginContext {
         role: role.as_str().to_string(),
-        game: port.map(|p| GameInfo {
-            port: Some(p),
+        game: Some(GameInfo {
+            port: Some(entry_port),
             ..Default::default()
         }),
         room: (!room_code.is_empty()).then(|| RoomInfo {
@@ -429,7 +414,10 @@ async fn run_link(
         s.phase = Phase::Online;
         s.room_code = room_code;
         s.members = members;
-        s.port = port;
+        // 会话里的 `port` 是"玩家该连的本机端口"，与会话角色无关：
+        // 房主是自己的游戏端口，访客是引擎接出来的本机端口（上面算的 `entry_port`）。
+        // 访客侧若这里留 `None`，房间窗口要等到第一次 `room_refresh` 才显示端口。
+        s.port = Some(entry_port);
         s.message = done_message.to_string();
         linked = true;
         true
