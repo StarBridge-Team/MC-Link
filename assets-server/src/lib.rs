@@ -12,8 +12,6 @@
 //!   /bootstrap-icons/*    → Assets/bootstrap-icons/
 //!   /fonts/*              → Assets/fonts/
 //!   /icons/*              → Assets/icons/
-//!   /adapter/manifest.json → Assets/adapter/manifest.json
-//!   /adapter/<file>       → Assets/adapter/<file>
 //!   /update/latest.json   → Assets/update/latest.json（回退：Updates/）
 //!   /update/list          → 列出 Assets/update/ 下的文件名（供发布脚本回收旧包）
 //!   /update/<file>        → Assets/update/<file>（回退：Updates/）
