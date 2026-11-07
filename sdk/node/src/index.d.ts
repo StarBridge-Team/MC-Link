@@ -37,6 +37,8 @@ export interface HandlerContext {
   readonly from: string | null;
   /** 本次调用所处的 peer 嵌套深度；继续转发时 SDK 会自动带回去。 */
   readonly depth: number;
+  /** 插件可写的数据目录（**不要**写插件安装目录，那会破坏整包验签）。 */
+  readonly dataDir: string | null;
   readonly context: PluginContext;
   emit(topic: string, data?: unknown): Promise<void>;
   log(level: "debug" | "info" | "warn" | "error", message: string, extra?: object): Promise<void>;
@@ -74,6 +76,8 @@ export declare class Plugin {
   static connect(options: ConnectOptions): Promise<Plugin>;
 
   readonly pluginId: string;
+  /** 插件可写的数据目录；核心未提供时为 `null`。 */
+  readonly dataDir: string | null;
   readonly context: PluginContext;
   readonly closed: boolean;
 

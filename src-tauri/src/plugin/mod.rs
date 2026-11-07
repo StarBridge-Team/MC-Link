@@ -63,6 +63,7 @@ pub mod peer;
 #[cfg(test)]
 mod node_e2e;
 pub mod permission;
+pub mod plugin_data;
 pub mod protocol;
 pub mod registry;
 pub mod router;

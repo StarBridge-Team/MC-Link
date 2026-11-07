@@ -62,6 +62,7 @@ impl Plugin {    /// 处理入站消息，直到连接断开。
         let rpc = self.rpc.clone();
         let out = self.out.clone();
         let plugin_id: Arc<str> = Arc::from(self.plugin_id.as_str());
+        let data_dir: Option<Arc<str>> = self.data_dir.as_deref().map(Arc::from);
         let s2c = self.keys.s2c;
         let mut last_seq: i64 = -1;
 
@@ -94,6 +95,7 @@ impl Plugin {    /// 处理入站消息，直到连接断开。
                                 &rpc,
                                 &out,
                                 plugin_id.clone(),
+                                data_dir.clone(),
                                 id,
                                 method,
                                 params,
@@ -153,6 +155,7 @@ fn dispatch_request(
     rpc: &Arc<AtomicU64>,
     out: &mpsc::UnboundedSender<Message>,
     plugin_id: Arc<str>,
+    data_dir: Option<Arc<str>>,
     id: String,
     method: String,
     params: Value,
@@ -210,6 +213,7 @@ fn dispatch_request(
                     out: out.clone(),
                     pending,
                     rpc,
+                    data_dir,
                 };
                 // peer 方法的入参是载荷里的 `params`；能力方法就是整个 params
                 let args = if is_peer {

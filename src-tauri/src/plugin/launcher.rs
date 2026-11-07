@@ -31,6 +31,12 @@ pub struct SessionDescriptor {
     pub token: String,
     /// 预共享密钥（hex，64 字符）。插件用它完成 PSK 挑战-应答。
     pub psk: String,
+    /// 插件可写的数据目录（见 [`crate::plugin::plugin_data`]）。
+    ///
+    /// 插件**不得**把运行期状态写进自己的安装目录：那会让下一次扫描的目录级
+    /// 验签失败，整个插件被忽略。
+    #[serde(default)]
+    pub data_dir: String,
     /// 核心期望的心跳间隔（毫秒）。
     pub heartbeat_ms: u64,
 }
@@ -41,12 +47,14 @@ pub fn session_file(runtime_dir: &Path, plugin_id: &str) -> PathBuf {
 }
 
 /// 写入会话文件并返回路径。
+#[allow(clippy::too_many_arguments)]
 pub fn write_session_file(
     runtime_dir: &Path,
     plugin_id: &str,
     endpoint: &str,
     token: &str,
     psk_hex: &str,
+    data_dir: &Path,
     heartbeat_ms: u64,
 ) -> Result<PathBuf, String> {
     std::fs::create_dir_all(runtime_dir).map_err(|e| format!("创建插件运行时目录失败: {}", e))?;
@@ -57,6 +65,7 @@ pub fn write_session_file(
         endpoint: endpoint.to_string(),
         token: token.to_string(),
         psk: psk_hex.to_string(),
+        data_dir: data_dir.to_string_lossy().to_string(),
         heartbeat_ms,
     };
     let text =
@@ -119,12 +128,15 @@ pub fn spawn(
     }
 
     let runtime_dir = data_dir.join("Plugins").join("runtime");
+    // 可写状态统一放 PluginData/：写进插件目录会让目录级验签失败（见 plugin_data）
+    let plugin_data = crate::plugin::plugin_data::ensure(data_dir, record.id())?;
     let session = write_session_file(
         &runtime_dir,
         record.id(),
         endpoint,
         token,
         &hex::encode(psk),
+        &plugin_data,
         manifest.limits.heartbeat_ms,
     )?;
 
@@ -232,12 +244,14 @@ mod tests {
             crate::plugin::crypto::random_hex(5)
         ));
         let psk = [7u8; 32];
+        let data = dir.join("PluginData").join("dev.example.a");
         let path = write_session_file(
             &dir,
             "dev.example.a",
             "ws://127.0.0.1:1/plugin",
             "tok",
             &hex::encode(psk),
+            &data,
             5000,
         )
         .unwrap();
@@ -248,6 +262,8 @@ mod tests {
         assert_eq!(desc.protocol, PROTOCOL_VERSION);
         // PSK 必须能原样取回：这是外部插件完成握手的唯一来源
         assert_eq!(desc.psk, hex::encode(psk));
+        // 数据目录必须是 PluginData/ 下那份，而不是插件安装目录
+        assert_eq!(desc.data_dir, data.to_string_lossy());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -99,6 +99,16 @@ pub enum RuntimeKind {
     Node,
 }
 
+impl RuntimeKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RuntimeKind::Builtin => "builtin",
+            RuntimeKind::Process => "process",
+            RuntimeKind::Node => "node",
+        }
+    }
+}
+
 /// 启动描述。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeSpec {

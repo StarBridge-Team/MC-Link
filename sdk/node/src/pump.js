@@ -150,6 +150,8 @@ export function makeContext(plugin, { depth, from }) {
     from: from ?? null,
     /** 本次调用所处的 peer 嵌套深度：继续转发时 SDK 会自动带回去。 */
     depth,
+    /** 插件可写的数据目录（写这里，不要写安装目录）。 */
+    dataDir: plugin.dataDir,
     get context() {
       return plugin.context;
     },

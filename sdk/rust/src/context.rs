@@ -27,6 +27,14 @@ impl Context {
         self.depth
     }
 
+    /// 插件可写的数据目录（核心在拉起时创建）。
+    ///
+    /// **不要**把运行期状态写进插件安装目录：那个目录被整包验签覆盖，
+    /// 多一个文件就会让核心下次扫描时忽略整个插件。
+    pub fn data_dir(&self) -> Option<&str> {
+        self.data_dir.as_deref()
+    }
+
     /// 最近一次上下文快照。
     pub fn context(&self) -> PluginContext {
         self.context

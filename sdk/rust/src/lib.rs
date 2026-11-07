@@ -203,6 +203,8 @@ pub struct Context {
     out: mpsc::UnboundedSender<Message>,
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<HandlerResult>>>>,
     rpc: Arc<AtomicU64>,
+    /// 插件可写的数据目录（**不要**写安装目录，那会破坏整包验签）。
+    data_dir: Option<Arc<str>>,
 }
 
 
@@ -218,6 +220,8 @@ pub(crate) struct Registry {
 /// 一枚插件。
 pub struct Plugin {
     plugin_id: String,
+    /// 插件可写的数据目录（核心在拉起时创建）。
+    data_dir: Option<String>,
     sid: String,
     keys: wire::Keys,
     ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
@@ -350,6 +354,7 @@ impl Plugin {
 
         Ok(Self {
             plugin_id: session.plugin_id,
+            data_dir: (!session.data_dir.trim().is_empty()).then(|| session.data_dir.clone()),
             sid,
             keys,
             ws,
@@ -364,6 +369,11 @@ impl Plugin {
 
     pub fn plugin_id(&self) -> &str {
         &self.plugin_id
+    }
+
+    /// 插件可写的数据目录（核心在拉起时创建）。
+    pub fn data_dir(&self) -> Option<&str> {
+        self.data_dir.as_deref()
     }
 
     /// 当前上下文快照。

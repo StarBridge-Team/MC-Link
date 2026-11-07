@@ -85,6 +85,13 @@ export class Plugin {
   /** @private */
   constructor(session, WebSocketImpl) {
     this.pluginId = session.plugin_id;
+    /**
+     * 插件可写的数据目录（核心在拉起时创建）。
+     *
+     * **不要**把运行期状态写进插件安装目录：那个目录被整包验签覆盖，
+     * 多一个文件就会让核心下次扫描时忽略整个插件。
+     */
+    this.dataDir = session.data_dir ?? null;
     this._session = session;
     this._Ws = WebSocketImpl;
     this._ws = null;

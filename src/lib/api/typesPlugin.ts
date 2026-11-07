@@ -60,6 +60,12 @@ export interface PluginInfo {
   trust: PluginTrust | string;
   enabled: boolean;
   runnable: boolean;
+  /** 是否已连接（内置=true；外部插件要握手成功）。 */
+  alive: boolean;
+  /** 会话建立时间（毫秒时间戳）；未连接或内置插件为 null。 */
+  connectedAt: number | null;
+  /** 运行时轨道：`builtin` / `process` / `node`。 */
+  runtime: string;
   /** 已授予的权限（稳定名数组）。 */
   permissions: string[];
   /** 因信任等级上限被拒的权限。 */

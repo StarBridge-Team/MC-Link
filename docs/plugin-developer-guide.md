@@ -149,9 +149,14 @@ Node 轨道的可执行文件是**核心安装的**，不在你的插件目录�
   "endpoint": "ws://127.0.0.1:49152/plugin",  // 不含 query
   "token": "<一次性启动令牌，64 hex>",
   "psk": "<预共享密钥，64 hex>",                // 握手用
+  "data_dir": "<data_dir>/PluginData/<id>",    // 你能写的目录（核心已创建）
   "heartbeat_ms": 5000
 }
 ```
+
+> **可写状态只能放 `data_dir`。** 插件安装目录被整包验签覆盖（`integrity.txt` 记录每个
+> 文件的哈希，且核心**每次扫描都复核**），往里写一个文件会让整个插件在下次扫描时被
+> 忽略——而且是静默的。这是最容易踩、后果最重的一条。
 
 连接地址 = `endpoint + "?plugin=" + plugin_id + "&token=" + token`，
 并带子协议头 `Sec-WebSocket-Protocol: mclink-plugin`。
@@ -418,10 +423,19 @@ serde_json = "1"
 | 方法 | 入参 | 返回 | 权限 |
 |---|---|---|---|
 | `core.ping` | — | `{at: <ms>}` | — |
-| `core.info` | — | `{server, protocol, pluginId, peerApi:true}` | — |
+| `core.info` | — | `{server, protocol, pluginId, peerApi:true, logApi:true}` | — |
+| `core.log` | `{level?, message, ...额外字段}` | `null` | — |
 | `core.peer.list` | — | `PeerPluginInfo[]` | `peer_message` |
 | `core.peer.call` | `{to, method, params?, depth?, launch?, timeout_ms?}` | 目标插件返回值 | `peer_message` |
 | `core.peer.publish` | `{to?, topic, data?}` | `{accepted:true}` | `peer_message` |
+
+`core.log` 是最省事的排障通道：**不要求任何权限**（未签名的插件恰恰最需要被看见），
+会以 `plugin.log` 事件转发到界面。`level` 取 `debug|info|warn|error`（其它值按 `info`），
+单条消息上限 4 KiB，额外字段原样带上：
+
+```js
+await ctx.log("warn", "端口被占用", { port: 25565 });
+```
 
 ### 4.1 事件（单向）
 
@@ -431,7 +445,10 @@ serde_json = "1"
 `adapter.state`、`detector.found`、`detector.lost`、`coupler.state`、`bridge.state`、
 `widget.state`、`utility.state`、`plugin.log`。
 
-> 事件与请求共用**同一个**入站速率桶：默认 32 条/秒。刷事件会被判定超速并断开。
+> 限流口径（重要）：**只有你主动发起的 `request` 与 `event` 计入** `max_rpc_per_sec`。
+> 对核心调用的 `response`、对心跳的 `pong` **不计入**——它们的节奏由核心决定。
+> 早先把所有入站报文塞进同一个桶，导致"核心多轮询了几次状态"就可能把插件判超速断开；
+> 现在这条口径是固定的对外契约。
 
 ---
 
@@ -691,7 +708,7 @@ function seal(msg, seq) {
 | 第三方插件安装器 / 签名打包工具 | ❌ 不存在（可手放目录、用户手动启用） |
 | `bridge` / `widget` / `utility` 的调用与渲染 | ❌ 无调用路径、无渲染宿主 |
 | `detector.watch.start/stop`、`coupler.launch`、`adapter.probe`、`adapter.install` | ❌ 已定名，核心不调用 |
-| 插件数据目录 | ❌ 核心不创建；请用插件自身目录或自己的子目录 |
+| 插件数据目录 | ✅ `<data_dir>/PluginData/<id>/`，路径在会话文件的 `data_dir` 字段 |
 | OS 级沙箱（AppContainer / 受限令牌） | ❌ 未实现 |
 | 官方 CLI（`init` / `check` / `pack` / `sign`） | ❌ 不存在，需手工组包 |
 

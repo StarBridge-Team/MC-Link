@@ -117,12 +117,14 @@ async fn node_plugin_completes_handshake_and_serves_calls() {
 
     let gateway = Arc::new(Gateway::bind(0).await.unwrap());
     let psk = [9u8; 32];
+    let plugin_data = crate::plugin::plugin_data::ensure(&dir, PLUGIN_ID).unwrap();
     let session = launcher::write_session_file(
         &runtime_dir,
         PLUGIN_ID,
         &gateway.endpoint(),
         gateway.token(),
         &hex::encode(psk),
+        &plugin_data,
         5000,
     )
     .unwrap();

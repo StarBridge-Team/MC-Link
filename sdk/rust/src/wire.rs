@@ -36,6 +36,10 @@ pub struct SessionDescriptor {
     pub token: String,
     /// 预共享密钥（hex）。
     pub psk: String,
+    /// 插件可写的数据目录。**不要**把运行期状态写进插件安装目录：那个目录被
+    /// 整包验签覆盖，多一个文件就会让核心下次扫描时忽略整个插件。
+    #[serde(default)]
+    pub data_dir: String,
     #[serde(default)]
     pub heartbeat_ms: u64,
 }
@@ -339,6 +343,7 @@ mod tests {
             endpoint: "ws://127.0.0.1:1/plugin".into(),
             token: "t".into(),
             psk: "00".repeat(31),
+            data_dir: String::new(),
             heartbeat_ms: 5000,
         };
         assert!(desc.psk_bytes().is_err());
@@ -352,6 +357,7 @@ mod tests {
             endpoint: "ws://127.0.0.1:9/plugin".into(),
             token: "a b+c".into(),
             psk: "00".repeat(32),
+            data_dir: String::new(),
             heartbeat_ms: 5000,
         };
         let url = desc.websocket_url();

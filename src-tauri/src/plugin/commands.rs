@@ -88,6 +88,8 @@ pub(crate) fn plugin_list(
         let platforms = crate::plugin::manifest::normalize_platforms(&manifest.platforms);
         let tags = crate::plugin::manifest::normalize_tags(&manifest.tags);
         let methods = crate::plugin::manifest::normalize_methods(&manifest.methods);
+        // 运行期状态：`enabled` 只说明"允许运行"，不代表"正在运行"
+        let health = manager.health(&manifest.id);
 
         let haystack = [
             manifest.id.as_str(),
@@ -118,6 +120,10 @@ pub(crate) fn plugin_list(
             "trust": record.trust,
             "enabled": record.enabled,
             "runnable": record.trust.is_runnable(),
+            // 运行期：是否已连接（外部插件要握手成功才算）
+            "alive": health.alive,
+            "connectedAt": health.connected_at,
+            "runtime": manifest.runtime.kind.as_str(),
             "permissions": record.permissions.allowed(),
             "deniedByCeiling": record.permissions.denied_by_ceiling(),
             "declaredPermissions": manifest.permissions,

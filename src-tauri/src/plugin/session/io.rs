@@ -177,6 +177,17 @@ pub(super) async fn io_loop(ctx: IoContext) -> String {
     }
 }
 
+/// 哪些入站报文计入 `max_rpc_per_sec`。
+///
+/// 只有插件**主动发起**的流量才算：请求与事件。对核心调用的回复（`Response`）
+/// 与心跳回复（`Pong`）不计——它们的节奏由核心自己的调用/心跳决定，算进去
+/// 会让"核心多问了几次状态"变成"插件被判定超速并断开"。
+///
+/// 这条口径是**对外契约**：文档里的配额解释必须与它一致。
+pub(super) fn counts_toward_budget(msg: &Message) -> bool {
+    matches!(msg, Message::Request { .. } | Message::Event { .. })
+}
+
 /// 处理一条已解密的入站消息。
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_inbound(
@@ -190,7 +201,7 @@ async fn dispatch_inbound(
     pending: &Arc<Pending>,
     replies: &mut Vec<Message>,
 ) -> Result<(), String> {
-    if !limiter.try_acquire() {
+    if counts_toward_budget(&msg) && !limiter.try_acquire() {
         return Err("超出速率限制，断开连接".to_string());
     }
 
@@ -233,9 +244,10 @@ async fn dispatch_inbound(
             let handle = peer.clone();
             let perms = permissions.clone();
             let pid = plugin_id.to_string();
+            let events = inbound.clone();
             tokio::spawn(async move {
                 let (ok, result, error) =
-                    core_request(&handle, &perms, &pid, &method, params).await;
+                    core_request(&handle, &perms, &pid, &method, params, &events).await;
                 let _ = out.send(Message::Response {
                     id,
                     ok,
@@ -268,6 +280,7 @@ pub(super) async fn core_request(
     self_id: &str,
     method: &str,
     params: Value,
+    inbound: &InboundTx,
 ) -> (bool, Value, Option<ErrorInfo>) {
     match method {
         core_method::PING => (true, json!({ "at": now_millis() }), None),
@@ -278,9 +291,24 @@ pub(super) async fn core_request(
                 "protocol": protocol::PROTOCOL_VERSION,
                 "pluginId": self_id,
                 "peerApi": true,
+                "logApi": true,
             }),
             None,
         ),
+        core_method::LOG => match parse_log(&params) {
+            Err(e) => denied(e),
+            Ok(data) => {
+                // 与 `plugin.log` 事件走同一条路径：界面已经在消费它。
+                // **刻意不要求 `ui_notify`**——日志是排障基础设施，
+                // 而未签名的插件恰恰最需要被看见。
+                let _ = inbound.send(super::Inbound::Event {
+                    plugin_id: self_id.to_string(),
+                    topic: "plugin.log".to_string(),
+                    data,
+                });
+                (true, Value::Null, None)
+            }
+        },
         core_method::PEER_LIST => match require_peer(permissions) {
             Err(e) => denied(e),
             Ok(()) => match peer.list(self_id).await {
@@ -330,6 +358,47 @@ fn require_peer(permissions: &PermissionSet) -> Result<(), ErrorInfo> {
 
 fn bad(message: impl Into<String>) -> ErrorInfo {
     ErrorInfo::new(error_code::BAD_REQUEST, message)
+}
+
+/// 日志单条消息的长度上限。
+///
+/// 日志会进界面（内存里的环形缓冲 + 渲染），一条 4 MiB 的"日志"足以把窗口卡死；
+/// 超出直接拒绝，让作者在开发期就发现自己在打印什么。
+const MAX_LOG_MESSAGE_BYTES: usize = 4 * 1024;
+
+/// 解析 `core.log` 的参数。
+///
+/// 形状：`{ level?: "debug"|"info"|"warn"|"error", message: string, ...额外字段 }`
+/// —— 额外字段原样带上，方便作者附加 `room` / `peer` 之类的上下文。
+fn parse_log(params: &Value) -> Result<Value, ErrorInfo> {
+    let message = params
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if message.is_empty() {
+        return Err(bad("core.log 缺少 message"));
+    }
+    if message.len() > MAX_LOG_MESSAGE_BYTES {
+        return Err(bad(format!(
+            "core.log 单条消息超过 {} 字节",
+            MAX_LOG_MESSAGE_BYTES
+        )));
+    }
+    let level = match params.get("level").and_then(Value::as_str) {
+        Some(level @ ("debug" | "info" | "warn" | "error")) => level,
+        // 未知/缺省一律按 info：日志不该因为拼错一个等级就被丢掉
+        _ => "info",
+    };
+
+    let mut data = match params.clone() {
+        Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    };
+    data.insert("level".to_string(), json!(level));
+    data.insert("message".to_string(), json!(message));
+    Ok(Value::Object(data))
 }
 
 /// 解析 `core.peer.call` 的参数。
