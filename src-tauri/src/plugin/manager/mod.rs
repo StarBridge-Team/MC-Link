@@ -187,6 +187,9 @@ impl PluginManager {
         });
 
         println!("[插件] 网关已就绪（仅回环）");
+
+        // 运行时不阻塞启动：只在确有已启用的 Node 插件时后台装，缺省用户零感知
+        self.prefetch_node_runtime();
         Ok(())
     }
 
@@ -443,3 +446,4 @@ mod provision;
 mod registry_ops;
 #[cfg(test)]
 mod tests;
+mod widget;

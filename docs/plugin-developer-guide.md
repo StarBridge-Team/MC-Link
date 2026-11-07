@@ -91,8 +91,33 @@ MC Link 核心 ──(拉起子进程)──▶ 你的插件（独立进程，�
 - **未签名的插件默认是停用的**，必须由用户在插件管理里显式启用；启用后也只能拿到
   最小权限集（第 7 节）。
 - 想让插件开箱即用（并能拿到 `net_listen_public` / `proc_spawn_game` / `ui_notify` 等），
-  需要发布者用官方私钥签出 `integrity.txt`。签名工具尚未随仓库发布，当前请按
-  "未签名插件"开发与调试。
+  需要用发布者私钥签出 `integrity.txt`。仓库已带打包工具（§6）。
+
+### 1.2.1 打包与安装
+
+```bash
+# 打包（默认要求签名私钥，见 scripts/signer-env.mjs）
+pnpm pack:plugin sdk/node/examples/echo-adapter --out dist-plugins
+
+# 只要调试包（跳过签名，安装器会拒绝它）
+pnpm pack:plugin <dir> --no-sign
+```
+
+产物是 `<id>-<version>.mclink-plugin`（tar.gz），包内包含：
+
+```text
+plugin.json
+main.js | bin/xxx.exe
+integrity.txt      # 每个文件的 sha256，按路径升序
+integrity.sig      # 对清单的 minisign 签名（--no-sign 时没有）
+```
+
+安装走核心的 `plugin_install_file` 命令；安装器会依次做：解包（拒绝符号链接与解压炸弹）
+→ 清单校验 → **形态校验**（入口存在且不越界、无 `node_modules`、≤10 MB）→ 验签 →
+原子落盘 → 建数据目录。任何一步失败都不留残留。
+
+> 未签名包默认被拒绝。用户在界面上确认"我知道它没签名"后，安装器才以 `Unsigned`
+> 身份安装并启用（只会拿到最小权限）。
 
 ### 1.3 你的进程会被怎样启动
 
@@ -129,12 +154,19 @@ Node 轨道的可执行文件是**核心安装的**，不在你的插件目录�
 <data_dir>/Runtime/bun.json       # 版本记录
 ```
 
-用户机器上没有运行时时，核心会明确报错（"共享 Node 运行时未安装"），界面据此提示
-安装。**不要**在插件里自带 Node/Bun，也不要要求用户装——那会让"插件体积"和
-"运行时矩阵"同时失控。
+时机由核心决定，**你不需要（也无法）管理**：
 
-开发期可以用环境变量 `MC_LINK_BUN` 指向你本机的 bun（核心会打日志提示；发行版
-行为不变）。
+| 时机 | 行为 |
+|---|---|
+| 应用启动 | 若"存在已启用的 Node 插件"且运行时缺失，后台静默安装（不阻塞启动） |
+| 首次拉起 | 若届时仍缺失，在拉起前阻塞安装一次（并发调用会被串行化，只下一份） |
+| 手动 | 用户在设置里点"安装运行时"（`plugin_runtime_install`） |
+
+安装过程中核心会广播 `plugin-event { type: "runtime", state, version, message }`，
+界面据此展示进度。**不要**在插件里自带 Node/Bun，也不要要求用户装——那会让
+"插件体积"和"运行时矩阵"同时失控。
+
+开发期可以用 `MC_LINK_BUN` 指向你本机的 bun（核心会打日志提示；发行版行为不变）。
 
 ---
 
@@ -408,11 +440,44 @@ serde_json = "1"
 
 `port` 是**玩家该连的那个端口**（房主=游戏端口；访客=本机接出端口）。
 
-### 3.4 `bridge` / `widget` / `utility`
+### 3.4 `widget`（挂件 / 页面）
 
-方法名已定义（`bridge.init|connect|disconnect|status`、`widget.mount|unmount|update`、
-`utility.run|status`），但**核心当前不会调用它们**：没有渲染宿主，也没有调用路径。
-在这些能力落地前，这三类插件只能靠事件与前端交互。
+挂件跑在核心的窗口里，因此**不能交 HTML/JS**——那等于把 DOM 与会话交给第三方代码。
+你交的是**声明式节点树**，核心只渲染白名单类型，用户点击以 `action` 回传。
+
+| 方法 | 入参 | 返回 |
+|---|---|---|
+| `widget.mount` | `{ widget: { id } }` | `{ title?, subtitle?, nodes: UiNode[] }` |
+| `widget.update` | `{ widget, action, payload }` | 新的视图，或 `null`（表示不刷新） |
+| `widget.unmount` | `{ widget }` | 任意（忽略） |
+
+节点形状（未知类型与未知字段都会被丢弃——**写错一个字段不会让挂件白屏**）：
+
+```jsonc
+{
+  "type": "column",              // text|heading|badge|button|row|column|divider|progress|spacer
+  "children": [
+    { "type": "heading", "text": "房间状态" },
+    { "type": "text", "text": "3 人在线" },
+    { "type": "badge", "text": "P2P", "tone": "ok" },
+    { "type": "progress", "percent": 42 },
+    { "type": "row", "children": [
+      { "type": "button", "label": "刷新", "action": "refresh" }
+    ]}
+  ]
+}
+```
+
+上限：200 个节点、8 层嵌套、单个文本 2000 字符。挂件类插件需要 `ui_notify` 权限，
+而未签名插件拿不到它——所以**挂件必须签名**才能被加载（见 §1.2）。
+
+前端宿主组件是 `src/components/plugin/WidgetHost.vue`（渲染 + 动作回传 + 三态处理），
+可直接嵌到任意页面。
+
+### 3.5 `bridge` / `utility`
+
+方法名已定义（`bridge.init|connect|disconnect|status`、`utility.run|status`），但
+**核心当前不会调用它们**。这些能力落地前，两类插件只能靠事件与前端交互。
 
 ---
 
@@ -705,12 +770,13 @@ function seal(msg, seq) {
 | 插件间通信（`core.peer.*`） | ✅ 可用 |
 | 官方 SDK（Rust / JavaScript） | ✅ 可用，见 [`sdk/rust`](../sdk/rust) 与 [`sdk/node`](../sdk/node) |
 | PSK 通过会话文件交付 | ✅ 可用（见 §2.1） |
-| 第三方插件安装器 / 签名打包工具 | ❌ 不存在（可手放目录、用户手动启用） |
-| `bridge` / `widget` / `utility` 的调用与渲染 | ❌ 无调用路径、无渲染宿主 |
+| 插件包安装器 + `integrity` 打包签名工具 | ✅ 可用：`pnpm pack:plugin` + `plugin_install_file`（见 §1.2.1） |
+| `widget` 挂件运行时（声明式视图 + 动作回传 + 前端宿主） | ✅ 核心与前端宿主已可用（见 §3.4）；具体页面摆放随插件管理页推进 |
+| `bridge` / `utility` 的调用路径 | ❌ 无调用点 |
 | `detector.watch.start/stop`、`coupler.launch`、`adapter.probe`、`adapter.install` | ❌ 已定名，核心不调用 |
 | 插件数据目录 | ✅ `<data_dir>/PluginData/<id>/`，路径在会话文件的 `data_dir` 字段 |
 | OS 级沙箱（AppContainer / 受限令牌） | ❌ 未实现 |
-| 官方 CLI（`init` / `check` / `pack` / `sign`） | ❌ 不存在，需手工组包 |
+| 官方 CLI（`init` / `check` / `sign` 套件） | ❌ 只有打包脚本 `scripts/pack-plugin.mjs` |
 
 ---
 

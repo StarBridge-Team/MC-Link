@@ -109,14 +109,16 @@ pub fn spawn(
         .ok_or_else(|| format!("插件 {} 未声明入口文件", record.id()))?;
 
     // 纵深防御：即使清单校验被绕过，也不允许启动插件目录之外的文件。
+    // 先判存在再判越界：`is_within` 对不存在的路径会 canonicalize 失败，
+    // 顺序反了会把"文件缺失"误报成"路径越界"。
+    if !entry.is_file() {
+        return Err(format!("插件入口文件不存在: {}", entry.display()));
+    }
     if !is_within(&record.dir, &entry) {
         return Err(format!(
             "拒绝启动插件目录之外的文件: {}",
             entry.display()
         ));
-    }
-    if !entry.is_file() {
-        return Err(format!("插件入口文件不存在: {}", entry.display()));
     }
 
     let workdir = manifest.resolve_workdir(&record.dir);

@@ -242,7 +242,25 @@ pub fn validate_manifest(manifest: &RuntimeManifest) -> Result<(), String> {
 /// 安装（或复用）共享运行时，返回实际安装的版本。
 ///
 /// 已安装且记录完好时直接返回，不重新下载。
+///
+/// # 为什么要串行化
+///
+/// 下载是"检查 → 拉清单 → 下 90 MB → 写记录"的复合动作。两处调用并发进入时，
+/// 两个任务会同时判定"未安装"并各下一份（`download_verified` 会写同一个 `.part`）。
+/// 用一个进程级锁把整段包住，后来者拿到锁后重查一次，直接命中已装好的文件。
 pub async fn ensure(data_dir: &Path) -> Result<String, String> {
+    let lock = ensure_lock();
+    let _guard = lock.lock().await;
+    ensure_locked(data_dir).await
+}
+
+/// 进程级的"安装运行时"互斥量。
+fn ensure_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+async fn ensure_locked(data_dir: &Path) -> Result<String, String> {
     if let (true, Some(state)) = (bun_path(data_dir).is_file(), installed_state(data_dir)) {
         return Ok(state.version);
     }
@@ -275,6 +293,15 @@ pub async fn ensure(data_dir: &Path) -> Result<String, String> {
     };
     crate::persist::save_json(&state_path(data_dir), &state)?;
     Ok(manifest.version)
+}
+
+/// 是否有**已启用**的 Node 插件（决定要不要在启动时后台预热运行时）。
+pub fn needed_by_enabled_plugins(records: &[crate::plugin::registry::PluginRecord]) -> bool {
+    records.iter().any(|record| {
+        record.enabled
+            && record.trust.is_runnable()
+            && record.manifest.runtime.kind == crate::plugin::manifest::RuntimeKind::Node
+    })
 }
 
 fn now_millis() -> i64 {

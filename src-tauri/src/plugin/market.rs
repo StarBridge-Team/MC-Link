@@ -23,10 +23,6 @@ use crate::plugin::manifest::validate_plugin_id;
 const MANIFEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// 客户端支持的清单版本上限。
 const MANIFEST_VERSION: u32 = 1;
-/// 解压总量上限（与适配器安装同口径）。
-const MAX_EXTRACT_BYTES: u64 = 512 * 1024 * 1024;
-/// 解压条目数上限。
-const MAX_EXTRACT_ENTRIES: usize = 4096;
 
 /// 市场中一个插件的条目。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,7 +126,8 @@ pub(crate) async fn install(data_dir: &Path, entry: &MarketEntry) -> Result<Stri
     let archive_path = download_verified(&cache_dir, &client, &remote, |_, _| {}).await?;
 
     let target = plugins_dir.join(&entry.id);
-    extract_tar_gz(&archive_path, &target)?;
+    // 解包与形态校验统一走 `package`，避免"网络装的走一套、本地拖的走另一套"
+    crate::plugin::package::extract_tar_gz(&archive_path, &target)?;
     let _ = std::fs::remove_file(&archive_path);
     Ok(entry.id.clone())
 }
@@ -147,35 +144,4 @@ fn sanitize(version: &str) -> String {
             }
         })
         .collect()
-}
-
-/// 解压 `.tar.gz`，带展开体积与条目数上限（防解压炸弹）。
-fn extract_tar_gz(archive_path: &Path, target: &Path) -> Result<(), String> {
-    // 先探一遍：只读，不落盘。
-    {
-        let file =
-            std::fs::File::open(archive_path).map_err(|e| format!("打开插件包失败: {e}"))?;
-        let mut probe = tar::Archive::new(flate2::read::GzDecoder::new(file));
-        let mut total: u64 = 0;
-        let mut count: usize = 0;
-        for entry in probe.entries().map_err(|e| format!("读取插件包失败: {e}"))? {
-            let entry = entry.map_err(|e| format!("读取插件包条目失败: {e}"))?;
-            total = total.saturating_add(entry.header().size().unwrap_or(0));
-            count += 1;
-            if total > MAX_EXTRACT_BYTES || count > MAX_EXTRACT_ENTRIES {
-                return Err(format!(
-                    "插件包展开后过大或条目过多（累计 {total} 字节 / {count} 项），已中止安装"
-                ));
-            }
-        }
-    }
-
-    std::fs::create_dir_all(target).map_err(|e| format!("创建插件目录失败: {e}"))?;
-    let file = std::fs::File::open(archive_path).map_err(|e| format!("打开插件包失败: {e}"))?;
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
-    // tar crate 的 `unpack` 会拒绝绝对路径与 `..`（路径穿越）。
-    archive
-        .unpack(target)
-        .map_err(|e| format!("解压插件包失败: {e}"))?;
-    Ok(())
 }

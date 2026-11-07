@@ -166,11 +166,72 @@ export interface PluginGateway {
   peerTimeoutMs?: number;
 }
 
-/** `plugin-event` 事件的三种负载形状。 */
+/** `plugin-event` 事件负载。 */
 export type PluginEvent =
   | { type: "connected"; pluginId: string }
   | { type: "disconnected"; pluginId: string; reason: string }
-  | { type: "event"; pluginId: string; topic: string; data: unknown };
+  | { type: "event"; pluginId: string; topic: string; data: unknown }
+  | {
+      /** 共享运行时的后台安装进度（只在真有 Node 插件时出现）。 */
+      type: "runtime";
+      state: "downloading" | "ready" | "failed";
+      version: string | null;
+      message: string | null;
+    };
+
+// ===== 插件包安装（后端 plugin/install.rs） =====
+
+/** `plugin_install_file` 的返回值。 */
+export interface InstalledPlugin {
+  id: string;
+  name: string;
+  version: string;
+  /** `verified` / `unsigned`。 */
+  trust: string;
+  /** 非致命提示：未签名、覆盖安装等。 */
+  warnings: string[];
+  /** 解压后的实际体积（字节）。 */
+  bytes: number;
+}
+
+// ===== 挂件（后端 plugin/widget.rs） =====
+
+/** 允许的节点类型（白名单；未知类型由后端丢弃）。 */
+export type WidgetNodeType =
+  | "text"
+  | "heading"
+  | "badge"
+  | "button"
+  | "row"
+  | "column"
+  | "divider"
+  | "progress"
+  | "spacer";
+
+/** 声明式节点：插件只能描述"显示什么"，不能注入 HTML/脚本。 */
+export interface WidgetNode {
+  type: WidgetNodeType;
+  id?: string;
+  text?: string;
+  label?: string;
+  value?: string;
+  placeholder?: string;
+  /** `primary` / `danger` 之类的语义色调。 */
+  tone?: string;
+  /** 按钮点击时回传给插件的动作名。 */
+  action?: string;
+  disabled?: boolean;
+  /** 0–100。 */
+  percent?: number;
+  children?: WidgetNode[];
+}
+
+/** `widget_mount` 的返回。 */
+export interface WidgetView {
+  title: string;
+  subtitle: string;
+  nodes: WidgetNode[];
+}
 
 // ===== 共享运行时（后端 plugin/runtime.rs） =====
 

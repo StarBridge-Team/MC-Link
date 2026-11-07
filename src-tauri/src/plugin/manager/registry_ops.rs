@@ -3,8 +3,9 @@
 //! 这些动作都只碰“注册表 + 准入表 + 已就绪的提供者”，与调度中枢的生命周期
 //! 无关，因此单独成文件，让 [`super::PluginManager`] 只保留拉起与路由。
 
-use crate::plugin::permission::Permission;
-use crate::plugin::registry::PluginRecord;
+use crate::plugin::install::{self, Installed};
+use crate::plugin::permission::{Permission, TrustLevel};
+use crate::plugin::registry::{PluginRecord, PluginSource};
 
 use super::{builtin, PluginManager};
 
@@ -54,15 +55,61 @@ impl PluginManager {
         }
         self.refresh_auth()?;
         if !enabled {
-            if let Ok(mut providers) = self.inner.providers.write() {
-                if let Some(p) = providers.get(plugin_id) {
-                    p.close("插件已被停用");
-                }
-                providers.remove(plugin_id);
-            }
-            // 进程也要收掉：只关会话时插件可以选择不理会，进程会继续跑
-            self.reap_child(plugin_id, "插件已被停用");
+            self.stop_plugin(plugin_id, "插件已被停用");
         }
+        Ok(())
+    }
+
+    /// 停掉一个插件：关会话、收进程。
+    ///
+    /// 停用、拉黑、覆盖安装、卸载都走这一处——否则四份"关会话 + kill"的逻辑迟早漂移，
+    /// 表现为某一入口下"插件停了但进程还在"。
+    fn stop_plugin(&self, plugin_id: &str, why: &str) {
+        if let Ok(mut providers) = self.inner.providers.write() {
+            if let Some(p) = providers.get(plugin_id) {
+                p.close(why);
+            }
+            providers.remove(plugin_id);
+        }
+        // 进程也要收掉：只关会话时插件可以选择不理会，进程会继续跑
+        self.reap_child(plugin_id, why);
+    }
+
+    /// 安装一个本地插件包，返回安装结论。
+    ///
+    /// 未签名包需要调用方传 `allow_unsigned = true`（界面上的二次确认）；
+    /// 通过后按"用户已显式启用"对待——安装本身就是一次明确的用户动作。
+    pub fn install_package(&self, path: &std::path::Path, allow_unsigned: bool) -> Result<Installed, String> {
+        let mut outcome = install::install_from_file(&self.inner.data_dir, path, allow_unsigned)?;
+        // 同 ID 覆盖安装：先把旧进程收掉，否则"文件换了、进程还在跑旧代码"
+        self.stop_plugin(&outcome.id, "插件正在覆盖安装");
+        outcome.warnings.extend(self.reload());
+        if outcome.trust == TrustLevel::Unsigned {
+            // 已二次确认安装 = 显式启用（否则用户装完发现"什么都没发生"）
+            if let Err(e) = self.set_enabled(&outcome.id, true) {
+                outcome.warnings.push(format!("已安装但启用失败: {e}"));
+            }
+        }
+        Ok(outcome)
+    }
+
+    /// 卸载插件：停掉、删目录、清注册表状态。
+    pub fn uninstall(&self, plugin_id: &str, remove_data: bool) -> Result<(), String> {
+        let record = self
+            .get(plugin_id)
+            .ok_or_else(|| format!("插件不存在: {plugin_id}"))?;
+        if record.source != PluginSource::External {
+            return Err(format!("{plugin_id} 是内置插件，不能卸载"));
+        }
+
+        self.stop_plugin(plugin_id, "插件正在卸载");
+        install::uninstall(&self.inner.data_dir, plugin_id, remove_data)?;
+        if let Ok(mut registry) = self.inner.registry.write() {
+            registry.forget(plugin_id)?;
+        }
+        let _ = self.refresh_auth();
+        // 重扫：让调用方拿到的列表与磁盘一致
+        let _ = self.reload();
         Ok(())
     }
 
@@ -96,11 +143,7 @@ impl PluginManager {
             registry.set_blocked(plugin_id, blocked)?;
         }
         if blocked {
-            if let Ok(mut providers) = self.inner.providers.write() {
-                if let Some(p) = providers.remove(plugin_id) {
-                    p.close("插件已被拉黑");
-                }
-            }
+            self.stop_plugin(plugin_id, "插件已被拉黑");
         }
         self.refresh_auth()
     }
